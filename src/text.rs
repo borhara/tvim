@@ -85,3 +85,36 @@ pub(crate) fn caret(c: char) -> char {
         _ => '?',
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classes() {
+        assert_eq!(class('a', false), Class::Word);
+        assert_eq!(class('_', false), Class::Word);
+        assert_eq!(class('.', false), Class::Punct);
+        assert_eq!(class('.', true), Class::Word);
+        assert_eq!(class('\t', true), Class::Blank);
+    }
+
+    #[test]
+    fn columns_follow_tabs_and_wide_characters() {
+        assert_eq!(vcol("\tx", 1, 4), 4);
+        assert_eq!(vcol("ab\tx", 3, 4), 4);
+        assert_eq!(vcol("界x", 1, 4), 2);
+        assert_eq!(col_at("\tx", 2, 4), 0);
+        assert_eq!(col_at("\tx", 4, 4), 1);
+        assert_eq!(col_at("ab", 9, 4), 2);
+        assert_eq!(expand("a\tb\r", 4), "a   b^M");
+    }
+
+    #[test]
+    fn indents() {
+        assert_eq!(indent("  \tx y"), "  \t");
+        assert_eq!(first_non_blank("    "), 4);
+        assert_eq!(byte_at("aé b", 2), 3);
+        assert_eq!(byte_at("ab", 5), 2);
+    }
+}
