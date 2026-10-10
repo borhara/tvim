@@ -1,0 +1,42 @@
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Pos {
+    pub row: usize,
+    pub col: usize,
+}
+
+impl Pos {
+    pub const fn new(row: usize, col: usize) -> Pos {
+        Pos { row, col }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Buffer {
+    lines: Vec<String>,
+}
+
+impl Default for Buffer {
+    fn default() -> Self {
+        Buffer::new()
+    }
+}
+
+impl Buffer {
+    pub fn new() -> Buffer {
+        Buffer {
+            lines: vec![String::new()],
+        }
+    }
+
+    pub fn from_lines(mut lines: Vec<String>) -> Buffer {
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        Buffer { lines }
+    }
+
+    pub fn from_text(text: &str) -> Buffer {
+        Buffer::from_lines(text.split('\n').map(str::to_string).collect())
+    }
+
+}
