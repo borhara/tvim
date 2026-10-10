@@ -1,3 +1,5 @@
+use crate::text::char_count;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pos {
     pub row: usize,
@@ -53,6 +55,30 @@ impl Buffer {
 
     pub fn is_empty(&self) -> bool {
         self.lines.len() == 1 && self.lines[0].is_empty()
+    }
+
+    pub fn line(&self, row: usize) -> &str {
+        self.lines.get(row).map_or("", String::as_str)
+    }
+
+    pub fn line_len(&self, row: usize) -> usize {
+        char_count(self.line(row))
+    }
+
+    pub fn last_row(&self) -> usize {
+        self.lines.len() - 1
+    }
+
+    pub fn char_at(&self, p: Pos) -> Option<char> {
+        self.line(p.row).chars().nth(p.col)
+    }
+
+    pub fn set_line(&mut self, row: usize, text: String) {
+        self.lines[row] = text;
+    }
+
+    pub fn end(&self) -> Pos {
+        Pos::new(self.last_row(), self.line_len(self.last_row()))
     }
 
 }
