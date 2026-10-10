@@ -7,3 +7,4 @@ license = "MIT"
 repository = "https://github.com/borhara/tvim"
 
 [dependencies]
+tinsel = { path = "../tinsel" }
