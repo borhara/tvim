@@ -1,3 +1,5 @@
+use tinsel::text::char_width;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Class {
     Blank,
@@ -33,4 +35,28 @@ pub fn indent(s: &str) -> &str {
 
 pub fn first_non_blank(s: &str) -> usize {
     char_count(indent(s))
+}
+
+pub fn cell_width(c: char, vcol: usize, tabstop: usize) -> usize {
+    match c {
+        '\t' => tabstop - vcol % tabstop,
+        c if c.is_control() => 2,
+        c => char_width(c),
+    }
+}
+
+pub fn vcol(line: &str, col: usize, tabstop: usize) -> usize {
+    line.chars().take(col).fold(0, |v, c| v + cell_width(c, v, tabstop))
+}
+
+pub fn col_at(line: &str, target: usize, tabstop: usize) -> usize {
+    let mut v = 0;
+    for (i, c) in line.chars().enumerate() {
+        let w = cell_width(c, v, tabstop);
+        if v + w > target {
+            return i;
+        }
+        v += w;
+    }
+    char_count(line)
 }
