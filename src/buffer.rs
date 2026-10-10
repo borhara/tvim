@@ -1,4 +1,4 @@
-use crate::text::char_count;
+use crate::text::{byte_at, char_count};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pos {
@@ -79,6 +79,25 @@ impl Buffer {
 
     pub fn end(&self) -> Pos {
         Pos::new(self.last_row(), self.line_len(self.last_row()))
+    }
+
+    pub fn insert(&mut self, at: Pos, text: &str) -> Pos {
+        let line = &self.lines[at.row];
+        let split = byte_at(line, at.col);
+        let tail = line[split..].to_string();
+        let mut parts = text.split('\n');
+        let first = parts.next().unwrap_or("");
+        let head = format!("{}{first}", &line[..split]);
+        let mut end = Pos::new(at.row, char_count(&head));
+        self.lines[at.row] = head;
+        let mut row = at.row;
+        for part in parts {
+            row += 1;
+            self.lines.insert(row, part.to_string());
+            end = Pos::new(row, char_count(part));
+        }
+        self.lines[row].push_str(&tail);
+        end
     }
 
 }
