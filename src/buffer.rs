@@ -135,4 +135,28 @@ impl Buffer {
         gone
     }
 
+    pub fn delete_lines(&mut self, first: usize, last: usize) -> Vec<String> {
+        let gone: Vec<String> = self.lines.drain(first..=last.min(self.last_row())).collect();
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        gone
+    }
+
+    pub fn replace_lines(&mut self, first: usize, last: usize, new: Vec<String>) {
+        let last = last.min(self.last_row());
+        self.lines.splice(first..=last, new);
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+    }
+
+    pub fn insert_lines(&mut self, at: usize, lines: Vec<String>) {
+        let at = at.min(self.lines.len());
+        self.lines.splice(at..at, lines);
+    }
+
+    pub fn replace_all(&mut self, lines: Vec<String>) {
+        *self = Buffer::from_lines(lines);
+    }
 }
