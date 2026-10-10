@@ -1,0 +1,9 @@
+[package]
+name = "tvim"
+version = "0.1.0"
+edition = "2024"
+description = "A vim-like terminal text editor written in Rust."
+license = "MIT"
+repository = "https://github.com/borhara/tvim"
+
+[dependencies]
