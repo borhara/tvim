@@ -100,4 +100,39 @@ impl Buffer {
         end
     }
 
+    pub fn slice(&self, from: Pos, to: Pos) -> String {
+        if from >= to {
+            return String::new();
+        }
+        if from.row == to.row {
+            let line = self.line(from.row);
+            return line[byte_at(line, from.col)..byte_at(line, to.col)].to_string();
+        }
+        let first = self.line(from.row);
+        let mut out = first[byte_at(first, from.col)..].to_string();
+        for row in from.row + 1..to.row {
+            out.push('\n');
+            out.push_str(self.line(row));
+        }
+        out.push('\n');
+        let last = self.line(to.row);
+        out.push_str(&last[..byte_at(last, to.col)]);
+        out
+    }
+
+    pub fn delete(&mut self, from: Pos, to: Pos) -> String {
+        let to = to.min(self.end());
+        if from >= to {
+            return String::new();
+        }
+        let gone = self.slice(from, to);
+        let last = &self.lines[to.row];
+        let tail = last[byte_at(last, to.col)..].to_string();
+        let first = &mut self.lines[from.row];
+        first.truncate(byte_at(first, from.col));
+        first.push_str(&tail);
+        self.lines.drain(from.row + 1..=to.row);
+        gone
+    }
+
 }
