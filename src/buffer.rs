@@ -160,3 +160,46 @@ impl Buffer {
         *self = Buffer::from_lines(lines);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inserts_text_with_line_breaks() {
+        let mut b = Buffer::from_text("hello world");
+        let end = b.insert(Pos::new(0, 5), ",\nbig");
+        assert_eq!(b.text(), "hello,\nbig world");
+        assert_eq!(end, Pos::new(1, 3));
+        assert_eq!(b.insert(Pos::new(1, 0), ""), Pos::new(1, 0));
+    }
+
+    #[test]
+    fn slices_and_deletes_across_lines() {
+        let mut b = Buffer::from_text("one\ntwo\nthree");
+        assert_eq!(b.slice(Pos::new(0, 1), Pos::new(2, 2)), "ne\ntwo\nth");
+        assert_eq!(b.slice(Pos::new(0, 3), Pos::new(1, 0)), "\n");
+        assert_eq!(b.delete(Pos::new(0, 1), Pos::new(2, 2)), "ne\ntwo\nth");
+        assert_eq!(b.text(), "oree");
+        assert_eq!(b.delete(Pos::new(0, 2), Pos::new(9, 9)), "ee");
+        assert_eq!(b.text(), "or");
+    }
+
+    #[test]
+    fn line_operations_keep_one_line() {
+        let mut b = Buffer::from_text("a\nb\nc");
+        assert_eq!(b.delete_lines(0, 1), ["a", "b"]);
+        assert_eq!(b.delete_lines(0, 5), ["c"]);
+        assert!(b.is_empty());
+        b.insert_lines(1, vec!["x".into(), "y".into()]);
+        assert_eq!(b.text(), "\nx\ny");
+    }
+
+    #[test]
+    fn wide_characters_count_once() {
+        let b = Buffer::from_text("héllo");
+        assert_eq!(b.line_len(0), 5);
+        assert_eq!(b.char_at(Pos::new(0, 1)), Some('é'));
+        assert_eq!(b.char_at(Pos::new(0, 5)), None);
+    }
+}
