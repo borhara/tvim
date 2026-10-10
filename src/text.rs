@@ -60,3 +60,28 @@ pub fn col_at(line: &str, target: usize, tabstop: usize) -> usize {
     }
     char_count(line)
 }
+
+pub fn expand(line: &str, tabstop: usize) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut v = 0;
+    for c in line.chars() {
+        let w = cell_width(c, v, tabstop);
+        match c {
+            '\t' => out.extend(std::iter::repeat_n(' ', w)),
+            c if c.is_control() => {
+                out.push('^');
+                out.push(caret(c));
+            }
+            c => out.push(c),
+        }
+        v += w;
+    }
+    out
+}
+
+pub(crate) fn caret(c: char) -> char {
+    match c as u32 {
+        n @ 0..=0x1f => char::from_u32(n + 0x40).unwrap_or('?'),
+        _ => '?',
+    }
+}
