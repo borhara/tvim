@@ -39,4 +39,20 @@ impl Buffer {
         Buffer::from_lines(text.split('\n').map(str::to_string).collect())
     }
 
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub fn text(&self) -> String {
+        self.lines.join("\n")
+    }
+
+    pub fn len(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.len() == 1 && self.lines[0].is_empty()
+    }
+
 }
