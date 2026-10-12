@@ -301,4 +301,27 @@ mod tests {
         assert_eq!(word_end_back(&b, Pos::new(2, 2), false), Some(Pos::new(1, 0)));
     }
 
+    #[test]
+    fn paragraphs() {
+        let b = buf("a\nb\n\nc\n\n\nd");
+        assert_eq!(paragraph_forward(&b, Pos::new(0, 0)), Pos::new(2, 0));
+        assert_eq!(paragraph_forward(&b, Pos::new(2, 0)), Pos::new(4, 0));
+        assert_eq!(paragraph_forward(&b, Pos::new(6, 0)), Pos::new(6, 1));
+        assert_eq!(paragraph_back(&b, Pos::new(6, 0)), Pos::new(5, 0));
+        assert_eq!(paragraph_back(&b, Pos::new(3, 0)), Pos::new(2, 0));
+        assert_eq!(paragraph_back(&b, Pos::new(1, 0)), Pos::new(0, 0));
+    }
+
+    #[test]
+    fn brackets() {
+        let b = buf("f(a, [b]) {\n  x\n}");
+        assert_eq!(match_bracket(&b, Pos::new(0, 0)), Some(Pos::new(0, 8)));
+        assert_eq!(match_bracket(&b, Pos::new(0, 8)), Some(Pos::new(0, 1)));
+        assert_eq!(match_bracket(&b, Pos::new(0, 5)), Some(Pos::new(0, 7)));
+        assert_eq!(match_bracket(&b, Pos::new(0, 9)), Some(Pos::new(2, 0)));
+        assert_eq!(match_bracket(&b, Pos::new(2, 0)), Some(Pos::new(0, 10)));
+        assert_eq!(match_bracket(&b, Pos::new(1, 0)), None);
+        assert_eq!(find_open(&b, Pos::new(1, 2), '{', '}'), Some(Pos::new(0, 10)));
+    }
+
 }
