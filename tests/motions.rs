@@ -20,3 +20,30 @@ fn the_column_is_remembered_through_short_lines() {
     assert_eq!(at(t, "6ljj"), (2, 6));
     assert_eq!(at(t, "$jj"), (2, 10));
 }
+
+#[test]
+fn line_starts_and_ends() {
+    let t = "   indented line\nnext";
+    assert_eq!(at(t, "$"), (0, 15));
+    assert_eq!(at(t, "$0"), (0, 0));
+    assert_eq!(at(t, "$^"), (0, 3));
+    assert_eq!(at(t, "2$"), (1, 3));
+    assert_eq!(at("a b  \n", "g_"), (0, 2));
+    assert_eq!(at(t, "j_"), (1, 0));
+    assert_eq!(at(t, "5|"), (0, 4));
+}
+
+#[test]
+fn words() {
+    let t = "one two.three\n  four";
+    assert_eq!(at(t, "w"), (0, 4));
+    assert_eq!(at(t, "ww"), (0, 7));
+    assert_eq!(at(t, "W"), (0, 4));
+    assert_eq!(at(t, "WW"), (1, 2));
+    assert_eq!(at(t, "e"), (0, 2));
+    assert_eq!(at(t, "3e"), (0, 7));
+    assert_eq!(at(t, "jb"), (0, 8));
+    assert_eq!(at(t, "jB"), (0, 4));
+    assert_eq!(at(t, "Gwge"), (0, 12));
+    assert_eq!(at(t, "10w"), (1, 5), "past the last word: the end of the buffer");
+}
