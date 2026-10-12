@@ -260,3 +260,26 @@ pub fn find_in_line(line: &str, col: usize, find: Find, count: usize, repeat: bo
         (true, false) => hit + 1,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buf(s: &str) -> Buffer {
+        Buffer::from_text(s)
+    }
+
+    #[test]
+    fn words_forward() {
+        let b = buf("foo.bar  baz\n\n  qux");
+        let w = |r, c| word_forward(&b, Pos::new(r, c), false);
+        assert_eq!(w(0, 0), Pos::new(0, 3));
+        assert_eq!(w(0, 3), Pos::new(0, 4));
+        assert_eq!(w(0, 4), Pos::new(0, 9));
+        assert_eq!(w(0, 9), Pos::new(1, 0), "an empty line is a word");
+        assert_eq!(w(1, 0), Pos::new(2, 2));
+        assert_eq!(w(2, 2), Pos::new(2, 5), "the last word goes to the end");
+        assert_eq!(word_forward(&b, Pos::new(0, 0), true), Pos::new(0, 9));
+    }
+
+}
