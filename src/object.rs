@@ -12,6 +12,7 @@ pub fn object(b: &Buffer, p: Pos, kind: char, inner: bool, count: usize) -> Opti
     match kind {
         'w' => word(b, p, inner, false, count),
         'W' => word(b, p, inner, true, count),
+        '"' | '\'' | '`' => quote(b, p, kind, inner),
         _ => None,
     }
 }
@@ -60,6 +61,45 @@ fn word(b: &Buffer, p: Pos, inner: bool, big: bool, count: usize) -> Option<Span
                 while start > 0 && cls(start - 1) == Class::Blank {
                     start -= 1;
                 }
+            }
+        }
+    }
+    Some(Span {
+        start: Pos::new(p.row, start),
+        end: Pos::new(p.row, end),
+        linewise: false,
+    })
+}
+
+fn quote(b: &Buffer, p: Pos, q: char, inner: bool) -> Option<Span> {
+    let chars: Vec<char> = b.line(p.row).chars().collect();
+    let mut quotes = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' {
+            i += 2;
+            continue;
+        }
+        if chars[i] == q {
+            quotes.push(i);
+        }
+        i += 1;
+    }
+    let (open, close) = quotes
+        .chunks_exact(2)
+        .map(|w| (w[0], w[1]))
+        .find(|&(o, c)| o <= p.col && p.col <= c)
+        .or_else(|| quotes.chunks_exact(2).map(|w| (w[0], w[1])).find(|&(o, _)| o > p.col))?;
+    let (mut start, mut end) = if inner { (open + 1, close) } else { (open, close + 1) };
+    if !inner {
+        let blank = |i: usize| chars[i] == ' ' || chars[i] == '\t';
+        if end < chars.len() && blank(end) {
+            while end < chars.len() && blank(end) {
+                end += 1;
+            }
+        } else {
+            while start > 0 && blank(start - 1) {
+                start -= 1;
             }
         }
     }
