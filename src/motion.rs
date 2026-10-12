@@ -224,3 +224,39 @@ pub fn find_open(b: &Buffer, at: Pos, open: char, close: char) -> Option<Pos> {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Find {
+    pub forward: bool,
+    pub till: bool,
+    pub ch: char,
+}
+
+impl Find {
+    pub fn reversed(self) -> Find {
+        Find {
+            forward: !self.forward,
+            ..self
+        }
+    }
+}
+
+pub fn find_in_line(line: &str, col: usize, find: Find, count: usize, repeat: bool) -> Option<usize> {
+    let chars: Vec<char> = line.chars().collect();
+    let skip = usize::from(find.till && repeat);
+    let hit = if find.forward {
+        (col + 1 + skip..chars.len())
+            .filter(|&i| chars[i] == find.ch)
+            .nth(count - 1)?
+    } else {
+        (0..col.saturating_sub(skip))
+            .rev()
+            .filter(|&i| chars[i] == find.ch)
+            .nth(count - 1)?
+    };
+    Some(match (find.till, find.forward) {
+        (false, _) => hit,
+        (true, true) => hit - 1,
+        (true, false) => hit + 1,
+    })
+}
