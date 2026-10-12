@@ -141,3 +141,29 @@ pub fn word_end_back(b: &Buffer, p: Pos, big: bool) -> Option<Pos> {
         cls = k;
     }
 }
+
+fn blank_line(b: &Buffer, row: usize) -> bool {
+    b.line(row).is_empty()
+}
+
+pub fn paragraph_forward(b: &Buffer, p: Pos) -> Pos {
+    let mut r = p.row;
+    while r < b.len() && blank_line(b, r) {
+        r += 1;
+    }
+    while r < b.len() && !blank_line(b, r) {
+        r += 1;
+    }
+    if r >= b.len() { b.end() } else { Pos::new(r, 0) }
+}
+
+pub fn paragraph_back(b: &Buffer, p: Pos) -> Pos {
+    let mut r = p.row;
+    while r > 0 && blank_line(b, r) {
+        r -= 1;
+    }
+    while r > 0 && !blank_line(b, r) {
+        r -= 1;
+    }
+    Pos::new(r, 0)
+}
