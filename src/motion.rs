@@ -167,3 +167,60 @@ pub fn paragraph_back(b: &Buffer, p: Pos) -> Pos {
     }
     Pos::new(r, 0)
 }
+
+const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
+
+pub fn match_bracket(b: &Buffer, p: Pos) -> Option<Pos> {
+    let line: Vec<char> = b.line(p.row).chars().collect();
+    let (col, c) = line
+        .iter()
+        .enumerate()
+        .skip(p.col)
+        .find(|(_, c)| PAIRS.iter().any(|&(o, cl)| **c == o || **c == cl))?;
+    let at = Pos::new(p.row, col);
+    match PAIRS.iter().find(|&&(o, _)| o == *c) {
+        Some(&(open, close)) => find_close(b, at, open, close),
+        None => {
+            let &(open, close) = PAIRS.iter().find(|&&(_, cl)| cl == *c)?;
+            find_open(b, at, open, close)
+        }
+    }
+}
+
+pub fn find_close(b: &Buffer, at: Pos, open: char, close: char) -> Option<Pos> {
+    let mut l = Line::new(b);
+    let mut depth = 0usize;
+    let mut p = at;
+    loop {
+        p = l.next(p)?;
+        match l.at(p) {
+            Some(c) if c == open => depth += 1,
+            Some(c) if c == close => {
+                if depth == 0 {
+                    return Some(p);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn find_open(b: &Buffer, at: Pos, open: char, close: char) -> Option<Pos> {
+    let mut l = Line::new(b);
+    let mut depth = 0usize;
+    let mut p = at;
+    loop {
+        p = l.prev(p)?;
+        match l.at(p) {
+            Some(c) if c == close => depth += 1,
+            Some(c) if c == open => {
+                if depth == 0 {
+                    return Some(p);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+}
