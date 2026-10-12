@@ -66,3 +66,39 @@ impl<'a> Line<'a> {
 pub(crate) fn class_at(b: &Buffer, p: Pos, big: bool) -> Option<Class> {
     b.char_at(p).map(|c| class(c, big))
 }
+
+pub fn word_forward(b: &Buffer, mut p: Pos, big: bool) -> Pos {
+    let mut l = Line::new(b);
+    let start = l.class(p, big);
+    if start != Class::Blank {
+        while l.at(p).is_some_and(|c| class(c, big) == start) {
+            p.col += 1;
+        }
+    }
+    loop {
+        match l.at(p) {
+            Some(c) if class(c, big) == Class::Blank => p.col += 1,
+            Some(_) => return p,
+            None if p.row + 1 >= b.len() => return p,
+            None => {
+                p = Pos::new(p.row + 1, 0);
+                if l.len(p.row) == 0 {
+                    return p;
+                }
+            }
+        }
+    }
+}
+
+pub fn word_end(b: &Buffer, p: Pos, big: bool) -> Option<Pos> {
+    let mut l = Line::new(b);
+    let mut p = l.next(p)?;
+    while l.class(p, big) == Class::Blank {
+        p = l.next(p)?;
+    }
+    let cls = l.class(p, big);
+    while l.class(Pos::new(p.row, p.col + 1), big) == cls && p.col + 1 < l.len(p.row) {
+        p.col += 1;
+    }
+    Some(p)
+}
