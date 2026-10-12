@@ -86,3 +86,11 @@ fn brackets_and_paragraphs() {
     assert_eq!(at(t, "G{"), (5, 0));
     assert_eq!(at(t, "G2{"), (2, 0));
 }
+
+#[test]
+fn brackets_on_a_very_long_line() {
+    let line = format!("({})", "ab ".repeat(66_000));
+    let mut e = common::ed(&line);
+    e.keys(&tvim::keys::parse("%"));
+    assert_eq!(e.cursor().col, line.chars().count() - 1);
+}
