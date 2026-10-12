@@ -102,3 +102,42 @@ pub fn word_end(b: &Buffer, p: Pos, big: bool) -> Option<Pos> {
     }
     Some(p)
 }
+
+pub fn word_back(b: &Buffer, p: Pos, big: bool) -> Option<Pos> {
+    let mut l = Line::new(b);
+    let mut p = l.prev_stop(p)?;
+    loop {
+        match l.at(p) {
+            None => return Some(p),
+            Some(c) if class(c, big) == Class::Blank => match l.prev_stop(p) {
+                Some(q) => p = q,
+                None => return Some(p),
+            },
+            Some(_) => break,
+        }
+    }
+    let cls = l.class(p, big);
+    while p.col > 0 && l.class(Pos::new(p.row, p.col - 1), big) == cls {
+        p.col -= 1;
+    }
+    Some(p)
+}
+
+pub fn word_end_back(b: &Buffer, p: Pos, big: bool) -> Option<Pos> {
+    let mut l = Line::new(b);
+    let mut cls = l.class(p, big);
+    let mut p = p;
+    loop {
+        let q = l.prev_stop(p)?;
+        if q.row != p.row {
+            cls = Class::Blank;
+        }
+        p = q;
+        let Some(c) = l.at(p) else { return Some(p) };
+        let k = class(c, big);
+        if k != Class::Blank && k != cls {
+            return Some(p);
+        }
+        cls = k;
+    }
+}
