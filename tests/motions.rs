@@ -74,3 +74,15 @@ fn finding_characters() {
     assert_eq!(at(t, "$T,"), (0, 6));
     assert_eq!(at(t, "fz"), (0, 0));
 }
+
+#[test]
+fn brackets_and_paragraphs() {
+    assert_eq!(at("x (a [b] c)", "%"), (0, 10));
+    assert_eq!(at("x (a [b] c)", "%%"), (0, 2));
+    let t = "a\nb\n\nc\nd\n\ne";
+    assert_eq!(at(t, "}"), (2, 0));
+    assert_eq!(at(t, "}}"), (5, 0));
+    assert_eq!(at(t, "}}}"), (6, 0));
+    assert_eq!(at(t, "G{"), (5, 0));
+    assert_eq!(at(t, "G2{"), (2, 0));
+}
