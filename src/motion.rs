@@ -324,4 +324,16 @@ mod tests {
         assert_eq!(find_open(&b, Pos::new(1, 2), '{', '}'), Some(Pos::new(0, 10)));
     }
 
+    #[test]
+    fn finds_in_a_line() {
+        let f = |forward, till, ch| Find { forward, till, ch };
+        assert_eq!(find_in_line("a,b,c", 0, f(true, false, ','), 1, false), Some(1));
+        assert_eq!(find_in_line("a,b,c", 0, f(true, false, ','), 2, false), Some(3));
+        assert_eq!(find_in_line("a,b,c", 0, f(true, false, ','), 3, false), None);
+        assert_eq!(find_in_line("a,b,c", 0, f(true, true, ','), 1, false), Some(0));
+        assert_eq!(find_in_line("a,b,c", 0, f(true, true, ','), 1, true), Some(2));
+        assert_eq!(find_in_line("a,b,c", 4, f(false, false, ','), 1, false), Some(3));
+        assert_eq!(find_in_line("a,b,c", 4, f(false, true, ','), 1, false), Some(4));
+        assert_eq!(find_in_line("a,b,c", 4, f(false, true, ','), 1, true), Some(2));
+    }
 }
