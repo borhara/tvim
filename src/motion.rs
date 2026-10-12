@@ -282,4 +282,23 @@ mod tests {
         assert_eq!(word_forward(&b, Pos::new(0, 0), true), Pos::new(0, 9));
     }
 
+    #[test]
+    fn word_ends_and_backs() {
+        let b = buf("foo.bar  baz\n\n  qux");
+        assert_eq!(word_end(&b, Pos::new(0, 0), false), Some(Pos::new(0, 2)));
+        assert_eq!(word_end(&b, Pos::new(0, 2), false), Some(Pos::new(0, 3)));
+        assert_eq!(word_end(&b, Pos::new(0, 2), true), Some(Pos::new(0, 6)));
+        assert_eq!(word_end(&b, Pos::new(0, 11), false), Some(Pos::new(2, 4)));
+        assert_eq!(word_end(&b, Pos::new(2, 4), false), None);
+        assert_eq!(word_back(&b, Pos::new(2, 2), false), Some(Pos::new(1, 0)));
+        assert_eq!(word_back(&b, Pos::new(1, 0), false), Some(Pos::new(0, 9)));
+        assert_eq!(word_back(&b, Pos::new(0, 5), false), Some(Pos::new(0, 4)));
+        assert_eq!(word_back(&b, Pos::new(0, 4), false), Some(Pos::new(0, 3)));
+        assert_eq!(word_back(&b, Pos::new(0, 9), true), Some(Pos::new(0, 0)));
+        assert_eq!(word_back(&b, Pos::new(0, 0), false), None);
+        assert_eq!(word_end_back(&b, Pos::new(0, 9), false), Some(Pos::new(0, 6)));
+        assert_eq!(word_end_back(&b, Pos::new(0, 4), false), Some(Pos::new(0, 3)));
+        assert_eq!(word_end_back(&b, Pos::new(2, 2), false), Some(Pos::new(1, 0)));
+    }
+
 }
