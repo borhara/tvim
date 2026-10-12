@@ -47,3 +47,30 @@ fn words() {
     assert_eq!(at(t, "Gwge"), (0, 12));
     assert_eq!(at(t, "10w"), (1, 5), "past the last word: the end of the buffer");
 }
+
+#[test]
+fn lines_by_number() {
+    let t = "a\n  b\nc\nd";
+    assert_eq!(at(t, "G"), (3, 0));
+    assert_eq!(at(t, "Ggg"), (0, 0));
+    assert_eq!(at(t, "2G"), (1, 2));
+    assert_eq!(at(t, "3gg"), (2, 0));
+    assert_eq!(at(t, "99G"), (3, 0));
+    assert_eq!(at(t, "<CR>"), (1, 2));
+    assert_eq!(at(t, "G-"), (2, 0));
+    assert_eq!(at(t, "50%"), (1, 2));
+}
+
+#[test]
+fn finding_characters() {
+    let t = "a,b,c,d";
+    assert_eq!(at(t, "f,"), (0, 1));
+    assert_eq!(at(t, "2f,"), (0, 3));
+    assert_eq!(at(t, "f,;"), (0, 3));
+    assert_eq!(at(t, "f,;,"), (0, 1));
+    assert_eq!(at(t, "t,"), (0, 0));
+    assert_eq!(at(t, "t,;"), (0, 2), "a repeated t goes on to the next");
+    assert_eq!(at(t, "$F,"), (0, 5));
+    assert_eq!(at(t, "$T,"), (0, 6));
+    assert_eq!(at(t, "fz"), (0, 0));
+}
