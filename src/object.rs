@@ -18,6 +18,7 @@ pub fn object(b: &Buffer, p: Pos, kind: char, inner: bool, count: usize) -> Opti
         '[' | ']' => bracket(b, p, '[', ']', inner, count),
         '{' | '}' | 'B' => bracket(b, p, '{', '}', inner, count),
         '<' | '>' => bracket(b, p, '<', '>', inner, count),
+        'p' => paragraph(b, p, inner, count),
         _ => None,
     }
 }
@@ -155,5 +156,41 @@ fn bracket(b: &Buffer, p: Pos, open: char, close: char, inner: bool, count: usiz
         start,
         end: end.max(start),
         linewise: false,
+    })
+}
+
+fn paragraph(b: &Buffer, p: Pos, inner: bool, count: usize) -> Option<Span> {
+    let blank = |r: usize| b.line(r).trim().is_empty();
+    let run_end = |from: usize| {
+        let k = blank(from);
+        let mut r = from;
+        while r + 1 < b.len() && blank(r + 1) == k {
+            r += 1;
+        }
+        r
+    };
+    let mut start = p.row;
+    while start > 0 && blank(start - 1) == blank(p.row) {
+        start -= 1;
+    }
+    let mut end = run_end(p.row);
+    for n in 0..count {
+        if n > 0 && end + 1 < b.len() {
+            end = run_end(end + 1);
+        }
+        if !inner {
+            if end + 1 < b.len() && blank(end + 1) != blank(end) {
+                end = run_end(end + 1);
+            } else if n == 0 {
+                while start > 0 && blank(start - 1) {
+                    start -= 1;
+                }
+            }
+        }
+    }
+    Some(Span {
+        start: Pos::new(start, 0),
+        end: Pos::new(end, 0),
+        linewise: true,
     })
 }
