@@ -248,4 +248,22 @@ mod tests {
         assert_eq!(obj("x[]", Pos::new(0, 1), '[', true).as_deref(), Some(""));
     }
 
+    #[test]
+    fn blocks_over_lines_are_whole_lines_inside() {
+        let b = Buffer::from_text("fn x() {\n    a;\n    b;\n}");
+        let s = object(&b, Pos::new(1, 4), '{', true, 1).unwrap();
+        assert!(s.linewise);
+        assert_eq!((s.start.row, s.end.row), (1, 2));
+        let s = object(&b, Pos::new(1, 4), 'B', false, 1).unwrap();
+        assert_eq!(b.slice(s.start, s.end), "{\n    a;\n    b;\n}");
+    }
+
+    #[test]
+    fn paragraphs() {
+        let src = "a\nb\n\n\nc";
+        assert_eq!(obj(src, Pos::new(0, 0), 'p', true).as_deref(), Some("a\nb"));
+        assert_eq!(obj(src, Pos::new(0, 0), 'p', false).as_deref(), Some("a\nb\n\n"));
+        assert_eq!(obj(src, Pos::new(4, 0), 'p', false).as_deref(), Some("\n\nc"));
+        assert_eq!(obj(src, Pos::new(2, 0), 'p', true).as_deref(), Some("\n"));
+    }
 }
