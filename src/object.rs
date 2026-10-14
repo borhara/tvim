@@ -194,3 +194,35 @@ fn paragraph(b: &Buffer, p: Pos, inner: bool, count: usize) -> Option<Span> {
         linewise: true,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(b: &Buffer, s: Span) -> String {
+        if s.linewise {
+            b.lines()[s.start.row..=s.end.row].join("\n")
+        } else {
+            b.slice(s.start, s.end)
+        }
+    }
+
+    fn obj(src: &str, p: Pos, kind: char, inner: bool) -> Option<String> {
+        let b = Buffer::from_text(src);
+        object(&b, p, kind, inner, 1).map(|s| text(&b, s))
+    }
+
+    #[test]
+    fn words() {
+        assert_eq!(obj("foo bar baz", Pos::new(0, 5), 'w', true).as_deref(), Some("bar"));
+        assert_eq!(obj("foo bar baz", Pos::new(0, 5), 'w', false).as_deref(), Some("bar "));
+        assert_eq!(obj("foo bar", Pos::new(0, 5), 'w', false).as_deref(), Some(" bar"));
+        assert_eq!(obj("foo  bar", Pos::new(0, 3), 'w', false).as_deref(), Some("  bar"));
+        assert_eq!(obj("a.b c", Pos::new(0, 0), 'W', true).as_deref(), Some("a.b"));
+        assert_eq!(obj("", Pos::new(0, 0), 'w', true), None);
+        let b = Buffer::from_text("one two three");
+        let s = object(&b, Pos::new(0, 0), 'w', false, 2).unwrap();
+        assert_eq!(b.slice(s.start, s.end), "one two ");
+    }
+
+}
