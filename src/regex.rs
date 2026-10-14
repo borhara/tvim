@@ -85,4 +85,28 @@ impl Parser {
         Ok(Node::Concat(nodes))
     }
 
+    fn atom(&mut self) -> Result<Node, String> {
+        let c = self.next().unwrap_or_default();
+        Ok(match c {
+        })
+    }
+
+}
+
+fn perl(e: char) -> Item {
+    let kind = match e.to_ascii_lowercase() {
+        'd' => Perl::Digit,
+        'w' => Perl::Word,
+        _ => Perl::Space,
+    };
+    Item::Perl(kind, e.is_ascii_uppercase())
+}
+
+fn unescape(e: char) -> char {
+    match e {
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
+        e => e,
+    }
 }
