@@ -1,5 +1,6 @@
 use crate::buffer::{Buffer, Pos};
-use crate::text::{Class, class};
+use crate::motion::{find_close, find_open};
+use crate::text::{Class, class, first_non_blank};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -13,6 +14,10 @@ pub fn object(b: &Buffer, p: Pos, kind: char, inner: bool, count: usize) -> Opti
         'w' => word(b, p, inner, false, count),
         'W' => word(b, p, inner, true, count),
         '"' | '\'' | '`' => quote(b, p, kind, inner),
+        '(' | ')' | 'b' => bracket(b, p, '(', ')', inner, count),
+        '[' | ']' => bracket(b, p, '[', ']', inner, count),
+        '{' | '}' | 'B' => bracket(b, p, '{', '}', inner, count),
+        '<' | '>' => bracket(b, p, '<', '>', inner, count),
         _ => None,
     }
 }
@@ -106,6 +111,49 @@ fn quote(b: &Buffer, p: Pos, q: char, inner: bool) -> Option<Span> {
     Some(Span {
         start: Pos::new(p.row, start),
         end: Pos::new(p.row, end),
+        linewise: false,
+    })
+}
+
+fn bracket(b: &Buffer, p: Pos, open: char, close: char, inner: bool, count: usize) -> Option<Span> {
+    let mut at = p;
+    let mut found = None;
+    for _ in 0..count {
+        let o = if found.is_none() && b.char_at(at) == Some(open) {
+            at
+        } else {
+            find_open(b, at, open, close)?
+        };
+        let c = find_close(b, o, open, close)?;
+        found = Some((o, c));
+        at = o;
+    }
+    let (o, c) = found?;
+    if !inner {
+        return Some(Span {
+            start: o,
+            end: Pos::new(c.row, c.col + 1),
+            linewise: false,
+        });
+    }
+    let mut start = Pos::new(o.row, o.col + 1);
+    let mut end = c;
+    if start.col >= b.line_len(o.row) && o.row < c.row {
+        start = Pos::new(o.row + 1, 0);
+    }
+    if c.col <= first_non_blank(b.line(c.row)) && c.row > start.row {
+        end = Pos::new(c.row - 1, b.line_len(c.row - 1));
+        if start.col == 0 {
+            return Some(Span {
+                start,
+                end: Pos::new(end.row, 0),
+                linewise: true,
+            });
+        }
+    }
+    Some(Span {
+        start,
+        end: end.max(start),
         linewise: false,
     })
 }
