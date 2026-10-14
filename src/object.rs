@@ -225,4 +225,27 @@ mod tests {
         assert_eq!(b.slice(s.start, s.end), "one two ");
     }
 
+    #[test]
+    fn quotes() {
+        let src = r#"say("hi \"you\"", 'x')"#;
+        assert_eq!(obj(src, Pos::new(0, 6), '"', true).as_deref(), Some(r#"hi \"you\""#));
+        assert_eq!(obj(src, Pos::new(0, 0), '"', false).as_deref(), Some(r#""hi \"you\"""#));
+        assert_eq!(obj(src, Pos::new(0, 18), '\'', true).as_deref(), Some("x"));
+        assert_eq!(obj("a = 'b' c", Pos::new(0, 5), '\'', false).as_deref(), Some("'b' "));
+        assert_eq!(obj("nothing", Pos::new(0, 0), '"', true), None);
+    }
+
+    #[test]
+    fn brackets() {
+        let src = "f(a, (b, c), d)";
+        assert_eq!(obj(src, Pos::new(0, 7), '(', true).as_deref(), Some("b, c"));
+        assert_eq!(obj(src, Pos::new(0, 7), 'b', false).as_deref(), Some("(b, c)"));
+        assert_eq!(obj(src, Pos::new(0, 3), ')', true).as_deref(), Some("a, (b, c), d"));
+        assert_eq!(obj(src, Pos::new(0, 1), '(', true).as_deref(), Some("a, (b, c), d"));
+        let b = Buffer::from_text(src);
+        let s = object(&b, Pos::new(0, 7), '(', true, 2).unwrap();
+        assert_eq!(b.slice(s.start, s.end), "a, (b, c), d");
+        assert_eq!(obj("x[]", Pos::new(0, 1), '[', true).as_deref(), Some(""));
+    }
+
 }
