@@ -3,6 +3,7 @@ use crate::text::is_word;
 const MAX_INSTS: usize = 20_000;
 const MAX_REPEAT: u32 = 1000;
 const MAX_STEPS: usize = 2_000_000;
+const MAX_MEMO: usize = 1 << 24;
 
 pub type Span = (usize, usize);
 
@@ -91,6 +92,32 @@ impl Regex {
         c.push(Inst::Match)?;
         Ok(Regex {
         })
+    }
+
+    pub fn find_at(&self, hay: &[char], from: usize) -> Option<Vec<Option<Span>>> {
+        if from > hay.len() {
+            return None;
+        }
+        let len = hay.len() - from + 1;
+        // plain backtracking first, then remember dead states if it gets slow
+        let budget = 1000 + 4 * self.insts.len() * len;
+        let slots = match self.scan(hay, from, None, budget) {
+            Ok(found) => found,
+            Err(()) if self.insts.len() * (hay.len() + 1) <= MAX_MEMO => {
+                let mut memo = vec![0u64; (self.insts.len() * (hay.len() + 1)).div_ceil(64)];
+                self.scan(hay, from, Some(&mut memo), usize::MAX).ok().flatten()
+            }
+            Err(()) => self.scan(hay, from, None, MAX_STEPS).ok().flatten(),
+        }?;
+        Some(
+            slots
+                .chunks(2)
+                .map(|p| match (p[0], p[1]) {
+                    (Some(a), Some(b)) => Some((a, b)),
+                    _ => None,
+                })
+                .collect(),
+        )
     }
 
     fn scan(
