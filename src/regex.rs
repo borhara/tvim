@@ -1,3 +1,4 @@
+const MAX_INSTS: usize = 20_000;
 const MAX_REPEAT: u32 = 1000;
 
 pub type Span = (usize, usize);
@@ -46,6 +47,18 @@ enum Node {
         max: Option<u32>,
         greedy: bool,
     },
+}
+
+#[derive(Clone, Debug)]
+enum Inst {
+    Char(char),
+    Any,
+    Set(Set),
+    Look(Look),
+    Split(usize, usize),
+    Jmp(usize),
+    Save(usize),
+    Match,
 }
 
 struct Parser {
@@ -222,4 +235,19 @@ fn unescape(e: char) -> char {
         'r' => '\r',
         e => e,
     }
+}
+
+struct Compiler {
+    insts: Vec<Inst>,
+}
+
+impl Compiler {
+    fn push(&mut self, i: Inst) -> Result<usize, String> {
+        if self.insts.len() >= MAX_INSTS {
+            return Err("pattern too big".into());
+        }
+        self.insts.push(i);
+        Ok(self.insts.len() - 1)
+    }
+
 }
