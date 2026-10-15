@@ -634,3 +634,33 @@ impl Compiler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn all(pat: &str, text: &str) -> Vec<Span> {
+        Regex::new(pat).unwrap().spans(text)
+    }
+
+    fn first(pat: &str, text: &str) -> Option<Span> {
+        all(pat, text).first().copied()
+    }
+
+    fn groups(pat: &str, text: &str) -> Vec<Option<String>> {
+        let hay: Vec<char> = text.chars().collect();
+        let caps = Regex::new(pat).unwrap().find_at(&hay, 0).unwrap();
+        caps.iter()
+            .map(|c| c.map(|(a, b)| hay[a..b].iter().collect()))
+            .collect()
+    }
+
+    #[test]
+    fn literals_and_dots() {
+        assert_eq!(all("ab", "xabyab"), [(1, 3), (4, 6)]);
+        assert_eq!(first("a.c", "abc a-c"), Some((0, 3)));
+        assert_eq!(first("a.c", "ac"), None);
+        assert_eq!(all("é", "café é"), [(3, 4), (5, 6)], "columns are chars");
+    }
+
+}
