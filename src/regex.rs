@@ -120,6 +120,33 @@ impl Regex {
         )
     }
 
+    pub fn captures_all(&self, hay: &[char]) -> Vec<Vec<Option<Span>>> {
+        let mut out = Vec::new();
+        let mut from = 0;
+        let mut last_end = None;
+        while let Some(caps) = self.find_at(hay, from) {
+            let Some((s, e)) = caps[0] else { break };
+            from = if e > s { e } else { e + 1 };
+            // like vim, no empty match right where the last one ended
+            if s == e && last_end == Some(s) {
+                continue;
+            }
+            last_end = Some(e);
+            out.push(caps);
+        }
+        out
+    }
+
+    pub fn spans(&self, line: &str) -> Vec<Span> {
+        let hay: Vec<char> = line.chars().collect();
+        self.captures_all(&hay).into_iter().filter_map(|c| c[0]).collect()
+    }
+
+    pub fn is_match(&self, line: &str) -> bool {
+        let hay: Vec<char> = line.chars().collect();
+        self.find_at(&hay, 0).is_some()
+    }
+
     fn scan(
         &self,
         hay: &[char],
