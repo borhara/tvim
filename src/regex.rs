@@ -250,4 +250,70 @@ impl Compiler {
         Ok(self.insts.len() - 1)
     }
 
+    fn emit(&mut self, node: &Node) -> Result<(), String> {
+        match node {
+            Node::Empty => {}
+            Node::Char(c) => _ = self.push(Inst::Char(*c))?,
+            Node::Any => _ = self.push(Inst::Any)?,
+            Node::Set(s) => _ = self.push(Inst::Set(s.clone()))?,
+            Node::Look(l) => _ = self.push(Inst::Look(*l))?,
+            Node::Group(inner, cap) => {
+                if let Some(k) = cap {
+                    self.push(Inst::Save(2 * k))?;
+                }
+                self.emit(inner)?;
+                if let Some(k) = cap {
+                    self.push(Inst::Save(2 * k + 1))?;
+                }
+            }
+            Node::Concat(nodes) => {
+                for n in nodes {
+                    self.emit(n)?;
+                }
+            }
+            Node::Alt(alts) => {
+                let mut ends = Vec::new();
+                for (i, n) in alts.iter().enumerate() {
+                    if i + 1 == alts.len() {
+                        self.emit(n)?;
+                        break;
+                    }
+                    let split = self.push(Inst::Split(0, 0))?;
+                    self.emit(n)?;
+                    ends.push(self.push(Inst::Jmp(0))?);
+                    self.insts[split] = Inst::Split(split + 1, self.insts.len());
+                }
+                let end = self.insts.len();
+                for j in ends {
+                    self.insts[j] = Inst::Jmp(end);
+                }
+            }
+            Node::Repeat { node, min, max, greedy } => {
+                for _ in 0..*min {
+                    self.emit(node)?;
+                }
+                let split = |a, b| if *greedy { Inst::Split(a, b) } else { Inst::Split(b, a) };
+                match max {
+                    None => {
+                        let at = self.push(Inst::Split(0, 0))?;
+                        self.emit(node)?;
+                        self.push(Inst::Jmp(at))?;
+                        self.insts[at] = split(at + 1, self.insts.len());
+                    }
+                    Some(m) => {
+                        let mut holes = Vec::new();
+                        for _ in *min..*m {
+                            holes.push(self.push(Inst::Split(0, 0))?);
+                            self.emit(node)?;
+                        }
+                        let end = self.insts.len();
+                        for h in holes {
+                            self.insts[h] = split(h + 1, end);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
