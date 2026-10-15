@@ -162,6 +162,48 @@ impl Parser {
         while self.next().is_some_and(|c| c != '}') {}
     }
 
+    fn set(&mut self) -> Result<Set, String> {
+        let negated = self.peek() == Some('^');
+        if negated {
+            self.i += 1;
+        }
+        let mut items = Vec::new();
+        let mut first = true;
+        loop {
+            let Some(c) = self.next() else {
+                return Err("unmatched [".into());
+            };
+            if c == ']' && !first {
+                break;
+            }
+            first = false;
+            let lo = if c == '\\' {
+                let e = self.next().ok_or("unmatched [")?;
+                if "dwsDWS".contains(e) {
+                    items.push(perl(e));
+                    continue;
+                }
+                unescape(e)
+            } else {
+                c
+            };
+            let hi = if self.peek() == Some('-') && !matches!(self.chars.get(self.i + 1), None | Some(']')) {
+                self.i += 1;
+                match self.next() {
+                    Some('\\') => unescape(self.next().ok_or("unmatched [")?),
+                    Some(h) => h,
+                    None => return Err("unmatched [".into()),
+                }
+            } else {
+                lo
+            };
+            if hi < lo {
+                return Err(format!("bad range {lo}-{hi}"));
+            }
+            items.push(Item::Range(lo, hi));
+        }
+        Ok(Set { negated, items })
+    }
 }
 
 fn perl(e: char) -> Item {
