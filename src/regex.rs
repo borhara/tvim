@@ -71,6 +71,7 @@ pub struct Regex {
     slots: usize,
     pub ignore_case: bool,
     forced: Option<bool>,
+    upper: bool,
 }
 
 impl Regex {
@@ -79,6 +80,7 @@ impl Regex {
             chars: pattern.chars().collect(),
             i: 0,
             groups: 0,
+            upper: false,
             forced: None,
         };
         let root = p.alt()?;
@@ -91,7 +93,17 @@ impl Regex {
         c.push(Inst::Save(1))?;
         c.push(Inst::Match)?;
         Ok(Regex {
+            insts: c.insts,
+            slots: 2 * (p.groups + 1),
+            ignore_case: false,
+            forced: p.forced,
+            upper: p.upper,
         })
+    }
+
+    // \c and \C win over the options
+    pub fn set_case(&mut self, ignore_case: bool, smart_case: bool) {
+        self.ignore_case = self.forced.unwrap_or(ignore_case && !(smart_case && self.upper));
     }
 
     pub fn find_at(&self, hay: &[char], from: usize) -> Option<Vec<Option<Span>>> {
@@ -252,9 +264,33 @@ impl Regex {
         Ok(None)
     }
 
+    fn same(&self, a: char, b: char) -> bool {
+        a == b || self.ignore_case && fold(a) == fold(b)
+    }
+
     fn in_set(&self, set: &Set, c: char) -> bool {
         let has = |c: char| set.items.iter().any(|it| item_has(it, c));
+        let hit = has(c) || self.ignore_case && (has(fold(c)) || has(upper(c)));
         hit != set.negated
+    }
+}
+
+fn fold(c: char) -> char {
+    convert(c, char::to_ascii_lowercase, char::to_lowercase)
+}
+
+fn upper(c: char) -> char {
+    convert(c, char::to_ascii_uppercase, char::to_uppercase)
+}
+
+fn convert<I: Iterator<Item = char>>(c: char, ascii: fn(&char) -> char, full: fn(char) -> I) -> char {
+    if c.is_ascii() {
+        return ascii(&c);
+    }
+    let mut m = full(c);
+    match (m.next(), m.next()) {
+        (Some(x), None) => x,
+        _ => c,
     }
 }
 
@@ -289,6 +325,7 @@ struct Parser {
     chars: Vec<char>,
     i: usize,
     groups: usize,
+    upper: bool,
     forced: Option<bool>,
 }
 
@@ -328,6 +365,50 @@ impl Parser {
     fn atom(&mut self) -> Result<Node, String> {
         let c = self.next().unwrap_or_default();
         Ok(match c {
+            '(' => {
+                let cap = if self.chars[self.i..].starts_with(&['?', ':']) {
+                    self.i += 2;
+                    None
+                } else {
+                    self.groups += 1;
+                    Some(self.groups)
+                };
+                let inner = self.alt()?;
+                if self.next() != Some(')') {
+                    return Err("unmatched (".into());
+                }
+                Node::Group(Box::new(inner), cap)
+            }
+            '.' => Node::Any,
+            '^' => Node::Look(Look::Start),
+            '$' => Node::Look(Look::End),
+            '[' => Node::Set(self.set()?),
+            '*' | '+' | '?' => return Err(format!("nothing to repeat before {c}")),
+            '{' if self.braces(self.i)?.is_some() => return Err("nothing to repeat before {".into()),
+            '\\' => {
+                let Some(e) = self.next() else {
+                    return Err("trailing \\".into());
+                };
+                match e {
+                    'd' | 'w' | 's' | 'D' | 'W' | 'S' => Node::Set(Set {
+                        negated: false,
+                        items: vec![perl(e)],
+                    }),
+                    'b' => Node::Look(Look::Boundary),
+                    'B' => Node::Look(Look::NotBoundary),
+                    '<' => Node::Look(Look::WordStart),
+                    '>' => Node::Look(Look::WordEnd),
+                    'c' | 'C' => {
+                        self.forced = Some(e == 'c');
+                        Node::Empty
+                    }
+                    _ => Node::Char(unescape(e)),
+                }
+            }
+            c => {
+                self.upper |= c.is_uppercase();
+                Node::Char(c)
+            }
         })
     }
 
@@ -437,6 +518,7 @@ impl Parser {
             if hi < lo {
                 return Err(format!("bad range {lo}-{hi}"));
             }
+            self.upper |= lo.is_uppercase() || hi.is_uppercase();
             items.push(Item::Range(lo, hi));
         }
         Ok(Set { negated, items })
