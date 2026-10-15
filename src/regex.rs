@@ -1,3 +1,5 @@
+use crate::text::is_word;
+
 const MAX_INSTS: usize = 20_000;
 const MAX_REPEAT: u32 = 1000;
 const MAX_STEPS: usize = 2_000_000;
@@ -196,6 +198,37 @@ impl Regex {
         Ok(None)
     }
 
+    fn in_set(&self, set: &Set, c: char) -> bool {
+        let has = |c: char| set.items.iter().any(|it| item_has(it, c));
+        hit != set.negated
+    }
+}
+
+fn item_has(item: &Item, c: char) -> bool {
+    match *item {
+        Item::Range(a, b) => a <= c && c <= b,
+        Item::Perl(p, negated) => {
+            let hit = match p {
+                Perl::Digit => c.is_ascii_digit(),
+                Perl::Word => is_word(c),
+                Perl::Space => c.is_whitespace(),
+            };
+            hit != negated
+        }
+    }
+}
+
+fn looks(l: Look, hay: &[char], pos: usize) -> bool {
+    let before = pos.checked_sub(1).is_some_and(|i| is_word(hay[i]));
+    let after = hay.get(pos).is_some_and(|&c| is_word(c));
+    match l {
+        Look::Start => pos == 0,
+        Look::End => pos == hay.len(),
+        Look::Boundary => before != after,
+        Look::NotBoundary => before == after,
+        Look::WordStart => !before && after,
+        Look::WordEnd => before && !after,
+    }
 }
 
 struct Parser {
