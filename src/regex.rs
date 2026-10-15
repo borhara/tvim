@@ -275,6 +275,17 @@ impl Regex {
     }
 }
 
+pub fn escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        if "\\.^$|()[]{}*+?".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn fold(c: char) -> char {
     convert(c, char::to_ascii_lowercase, char::to_lowercase)
 }
