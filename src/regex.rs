@@ -689,4 +689,40 @@ mod tests {
         assert_eq!(all(r"\<", "ab cd"), [(0, 0), (3, 3)]);
     }
 
+    #[test]
+    fn groups_and_alternation() {
+        assert_eq!(first("cat|dog", "hotdog"), Some((3, 6)));
+        assert_eq!(first("(ab)+", "xababa"), Some((1, 5)));
+        assert_eq!(first("a(b|c)d", "acd"), Some((0, 3)));
+        assert_eq!(first("(?:ab)+", "abab"), Some((0, 4)));
+        assert_eq!(first("x(|y)z", "xz"), Some((0, 2)));
+        assert_eq!(
+            groups(r"(\w+)@(\w+)(x)?", "me@home"),
+            [Some("me@home".into()), Some("me".into()), Some("home".into()), None]
+        );
+        assert_eq!(first("a|ab", "ab"), Some((0, 1)), "first alternative wins");
+    }
+
+    #[test]
+    fn quantifiers() {
+        assert_eq!(first("ab*", "abbbc"), Some((0, 4)));
+        assert_eq!(first("ab+", "ac ab"), Some((3, 5)));
+        assert_eq!(first("colou?r", "color"), Some((0, 5)));
+        assert_eq!(first("a{2}", "aaaa"), Some((0, 2)));
+        assert_eq!(first("a{2,}", "aaaa"), Some((0, 4)));
+        assert_eq!(first("a{,2}", "aaaa"), Some((0, 2)));
+        assert_eq!(first("a{1,3}", "aaaa"), Some((0, 3)));
+        assert_eq!(first("<.*>", "<a><b>"), Some((0, 6)));
+        assert_eq!(first("<.*?>", "<a><b>"), Some((0, 3)));
+        assert_eq!(first("a+?", "aaa"), Some((0, 1)));
+        assert_eq!(first("a??b", "ab"), Some((0, 2)));
+        assert_eq!(first("a{2,3}?", "aaaa"), Some((0, 2)));
+        assert_eq!(
+            first("a{x}", "a{x}"),
+            Some((0, 4)),
+            "a brace that isn't a count is literal"
+        );
+        assert_eq!(all("x*", "ab"), [(0, 0), (1, 1), (2, 2)]);
+    }
+
 }
