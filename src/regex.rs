@@ -1,5 +1,6 @@
 const MAX_INSTS: usize = 20_000;
 const MAX_REPEAT: u32 = 1000;
+const MAX_STEPS: usize = 2_000_000;
 
 pub type Span = (usize, usize);
 
@@ -88,6 +89,111 @@ impl Regex {
         c.push(Inst::Match)?;
         Ok(Regex {
         })
+    }
+
+    fn scan(
+        &self,
+        hay: &[char],
+        from: usize,
+        mut memo: Option<&mut Vec<u64>>,
+        limit: usize,
+    ) -> Result<Option<Vec<Option<usize>>>, ()> {
+        let first = match self.insts.get(1) {
+            Some(Inst::Char(c)) => Some(*c),
+            _ => None,
+        };
+        let mut steps = 0;
+        for start in from..=hay.len() {
+            if let Some(c) = first {
+                if !hay.get(start).is_some_and(|&h| self.same(h, c)) {
+                    continue;
+                }
+            }
+            if let Some(found) = self.run(hay, start, memo.as_deref_mut(), &mut steps, limit)? {
+                return Ok(Some(found));
+            }
+        }
+        Ok(None)
+    }
+
+    fn run(
+        &self,
+        hay: &[char],
+        start: usize,
+        mut memo: Option<&mut Vec<u64>>,
+        steps: &mut usize,
+        limit: usize,
+    ) -> Result<Option<Vec<Option<usize>>>, ()> {
+        enum Job {
+            Try(usize, usize),
+            Restore(usize, Option<usize>),
+        }
+        let width = hay.len() + 1;
+        let mut slots = vec![None; self.slots];
+        let mut stack = vec![Job::Try(0, start)];
+        while let Some(job) = stack.pop() {
+            let (mut pc, mut pos) = match job {
+                Job::Restore(s, v) => {
+                    slots[s] = v;
+                    continue;
+                }
+                Job::Try(pc, pos) => (pc, pos),
+            };
+            loop {
+                if let Some(m) = memo.as_deref_mut() {
+                    let k = pc * width + pos;
+                    if m[k / 64] & (1 << (k % 64)) != 0 {
+                        break;
+                    }
+                    m[k / 64] |= 1 << (k % 64);
+                }
+                *steps += 1;
+                if *steps > limit {
+                    return Err(());
+                }
+                match &self.insts[pc] {
+                    Inst::Char(c) => {
+                        if !hay.get(pos).is_some_and(|&h| self.same(h, *c)) {
+                            break;
+                        }
+                        pc += 1;
+                        pos += 1;
+                    }
+                    Inst::Any => {
+                        if pos >= hay.len() {
+                            break;
+                        }
+                        pc += 1;
+                        pos += 1;
+                    }
+                    Inst::Set(set) => {
+                        if !hay.get(pos).is_some_and(|&h| self.in_set(set, h)) {
+                            break;
+                        }
+                        pc += 1;
+                        pos += 1;
+                    }
+                    Inst::Look(l) => {
+                        if !looks(*l, hay, pos) {
+                            break;
+                        }
+                        pc += 1;
+                    }
+                    Inst::Split(a, b) => {
+                        stack.push(Job::Try(*b, pos));
+                        pc = *a;
+                    }
+                    Inst::Jmp(a) => pc = *a,
+                    Inst::Save(s) => {
+                        stack.push(Job::Restore(*s, slots[*s]));
+                        slots[*s] = Some(pos);
+                        pc += 1;
+                    }
+                    Inst::Match => return Ok(Some(slots)),
+                }
+            }
+        }
+        Ok(None)
     }
 
 }
