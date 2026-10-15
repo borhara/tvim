@@ -61,6 +61,37 @@ enum Inst {
     Match,
 }
 
+#[derive(Clone, Debug)]
+pub struct Regex {
+    insts: Vec<Inst>,
+    slots: usize,
+    pub ignore_case: bool,
+    forced: Option<bool>,
+}
+
+impl Regex {
+    pub fn new(pattern: &str) -> Result<Regex, String> {
+        let mut p = Parser {
+            chars: pattern.chars().collect(),
+            i: 0,
+            groups: 0,
+            forced: None,
+        };
+        let root = p.alt()?;
+        if p.i < p.chars.len() {
+            return Err("unmatched )".into());
+        }
+        let mut c = Compiler { insts: Vec::new() };
+        c.push(Inst::Save(0))?;
+        c.emit(&root)?;
+        c.push(Inst::Save(1))?;
+        c.push(Inst::Match)?;
+        Ok(Regex {
+        })
+    }
+
+}
+
 struct Parser {
     chars: Vec<char>,
     i: usize,
