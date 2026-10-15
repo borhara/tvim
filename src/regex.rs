@@ -663,4 +663,30 @@ mod tests {
         assert_eq!(all("é", "café é"), [(3, 4), (5, 6)], "columns are chars");
     }
 
+    #[test]
+    fn classes() {
+        assert_eq!(first("[a-c]+", "xxbcaz"), Some((2, 5)));
+        assert_eq!(first("[^a-c ]+", "ab xyz"), Some((3, 6)));
+        assert_eq!(first("[]x]+", "a]x]"), Some((1, 4)), "a leading ] is literal");
+        assert_eq!(first("[a-]+", "b-a"), Some((1, 3)), "so is a trailing -");
+        assert_eq!(first(r"[\d.]+", "v1.25"), Some((1, 5)));
+        assert_eq!(first(r"\d+", "ab 123"), Some((3, 6)));
+        assert_eq!(first(r"\w+", "  foo_1 "), Some((2, 7)));
+        assert_eq!(first(r"\s+", "a \tb"), Some((1, 3)));
+        assert_eq!(first(r"\D+", "12ab3"), Some((2, 4)));
+        assert_eq!(first(r"\W+", "ab, c"), Some((2, 4)));
+        assert_eq!(first(r"\S+", "  ab "), Some((2, 4)));
+    }
+
+    #[test]
+    fn anchors_and_word_edges() {
+        assert_eq!(all("^a", "aaa"), [(0, 1)]);
+        assert_eq!(all("a$", "aaa"), [(2, 3)]);
+        assert_eq!(all("^$", ""), [(0, 0)]);
+        assert_eq!(all(r"\bcat\b", "cat concat cat"), [(0, 3), (11, 14)]);
+        assert_eq!(all(r"\<cat\>", "cat concat cats"), [(0, 3)]);
+        assert_eq!(all(r"\Bcat", "cat concat"), [(7, 10)]);
+        assert_eq!(all(r"\<", "ab cd"), [(0, 0), (3, 3)]);
+    }
+
 }
