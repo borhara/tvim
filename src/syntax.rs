@@ -1,4 +1,31 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Plain,
+    Keyword,
+    Function,
+    Type,
+    Str,
+    Escape,
+    Number,
+    Constant,
+    Comment,
+    Todo,
+    Macro,
+    Attribute,
+    Punct,
+    Operator,
+    Label,
+    Heading,
+    Strong,
+    Emphasis,
+    Code,
+    Link,
+    Url,
+    ListMark,
+    Quote,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Syntax {
     Rust,
     Python,
@@ -60,4 +87,21 @@ impl Syntax {
         }
     }
 
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum State {
+    #[default]
+    Normal,
+    Comment(u8),
+    Str(char),
+    Triple(char),
+    Fence,
+}
+
+pub fn highlight(line: &str, syntax: Syntax, state: State) -> (Vec<Kind>, State) {
+    let chars: Vec<char> = line.chars().collect();
+    match syntax {
+        Syntax::Markdown => markdown(&chars, state),
+    }
 }
