@@ -225,6 +225,34 @@ impl Syntax {
         }
     }
 
+    fn constants(self) -> &'static [&'static str] {
+        match self {
+            Syntax::Rust => &["true", "false", "self", "Self", "Some", "None", "Ok", "Err"],
+            Syntax::Python => &["True", "False", "None", "self", "cls"],
+            Syntax::JavaScript => &["true", "false", "null", "undefined", "this", "NaN", "Infinity"],
+            Syntax::Go => &["true", "false", "nil", "iota"],
+            Syntax::C | Syntax::Java => &["true", "false", "NULL", "nullptr", "null", "this", "self", "nil"],
+            Syntax::Lua => &["true", "false", "nil", "self"],
+            Syntax::Toml | Syntax::Yaml | Syntax::Json => &["true", "false", "null", "yes", "no", "on", "off"],
+            _ => &[],
+        }
+    }
+
+    fn quotes(self) -> &'static [char] {
+        match self {
+            Syntax::Rust | Syntax::C | Syntax::Java | Syntax::Json | Syntax::Go => &['"', '`'],
+            Syntax::JavaScript => &['"', '\'', '`'],
+            Syntax::Python | Syntax::Shell | Syntax::Lua | Syntax::Toml | Syntax::Yaml => &['"', '\''],
+            Syntax::Markdown => &[],
+        }
+    }
+
+    fn multiline_quote(self, q: char) -> bool {
+        matches!(
+            (self, q),
+            (Syntax::JavaScript | Syntax::Go, '`') | (Syntax::Rust, '"') | (Syntax::Shell, _)
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
