@@ -271,3 +271,41 @@ pub fn highlight(line: &str, syntax: Syntax, state: State) -> (Vec<Kind>, State)
         Syntax::Markdown => markdown(&chars, state),
     }
 }
+
+const TODO: [&str; 6] = ["TODO", "FIXME", "XXX", "HACK", "NOTE", "SAFETY"];
+
+fn starts(chars: &[char], i: usize, s: &str) -> bool {
+    let mut j = i;
+    for c in s.chars() {
+        if chars.get(j) != Some(&c) {
+            return false;
+        }
+        j += 1;
+    }
+    true
+}
+
+fn fill(kinds: &mut [Kind], from: usize, to: usize, kind: Kind) {
+    let to = to.min(kinds.len());
+    for k in &mut kinds[from.min(to)..to] {
+        *k = kind;
+    }
+}
+
+fn comment(chars: &[char], kinds: &mut [Kind], from: usize, to: usize) {
+    fill(kinds, from, to, Kind::Comment);
+    let mut i = from;
+    while i < to {
+        if let Some(word) = TODO.iter().find(|w| starts(chars, i, w)) {
+            let end = i + word.len();
+            let bounded =
+                (i == 0 || !chars[i - 1].is_alphanumeric()) && chars.get(end).is_none_or(|c| !c.is_alphanumeric());
+            if bounded {
+                fill(kinds, i, end, Kind::Todo);
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+}
