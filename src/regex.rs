@@ -763,4 +763,23 @@ mod tests {
         assert!(re.is_match("STRAßE"));
     }
 
+    #[test]
+    fn bad_patterns_are_errors() {
+        for bad in [
+            "(a", "a)", "[ab", "*a", "a**", "+", "a{3,1}", "\\", "a{5000}", "[z-a]", "(?:x",
+        ] {
+            assert!(Regex::new(bad).is_err(), "{bad}");
+        }
+        assert!(Regex::new("(a{1000}){1000}").is_err(), "too big");
+    }
+
+    #[test]
+    fn catastrophic_patterns_finish() {
+        let hay = "a".repeat(30);
+        assert!(!Regex::new("(a*)*b").unwrap().is_match(&hay));
+        assert!(!Regex::new("(a|aa)+c").unwrap().is_match(&hay));
+        assert!(!Regex::new("(x+x+)+y").unwrap().is_match(&"x".repeat(5000)));
+        assert!(Regex::new("(a*)*").unwrap().is_match(&hay));
+        assert_eq!(first("(a|a)*$", &hay), Some((0, 30)));
+    }
 }
