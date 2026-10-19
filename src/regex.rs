@@ -725,4 +725,42 @@ mod tests {
         assert_eq!(all("x*", "ab"), [(0, 0), (1, 1), (2, 2)]);
     }
 
+    #[test]
+    fn escapes() {
+        assert_eq!(first(r"a\.b", "axb a.b"), Some((4, 7)));
+        assert_eq!(first(r"\(\)", "f()"), Some((1, 3)));
+        assert_eq!(first(r"\t", "a\tb"), Some((1, 2)));
+        assert_eq!(first(r"\\", r"a\b"), Some((1, 2)));
+        let tricky = "a.b*(c)[d]{e}|f+?^$\\";
+        assert_eq!(first(&escape(tricky), tricky), Some((0, tricky.chars().count())));
+    }
+
+    #[test]
+    fn case() {
+        let mut re = Regex::new("foo").unwrap();
+        assert!(!re.is_match("FOO"));
+        re.set_case(true, true);
+        assert!(re.is_match("FOO"));
+        let mut re = Regex::new("Foo").unwrap();
+        re.set_case(true, true);
+        assert!(!re.is_match("foo"), "smart case");
+        re.set_case(true, false);
+        assert!(re.is_match("foo"));
+        let mut re = Regex::new(r"\W\S\D").unwrap();
+        re.set_case(true, true);
+        assert!(re.ignore_case, "escapes aren't capitals");
+        let mut re = Regex::new(r"Foo\c").unwrap();
+        re.set_case(false, false);
+        assert!(re.is_match("fOO"));
+        let mut re = Regex::new(r"\Cfoo").unwrap();
+        re.set_case(true, false);
+        assert!(!re.is_match("FOO"));
+        let mut re = Regex::new("[a-c]+").unwrap();
+        re.set_case(true, true);
+        assert_eq!(re.spans("xABC"), [(1, 4)]);
+        let mut re = Regex::new("straße").unwrap();
+        re.set_case(true, true);
+        assert!(re.is_match("STRAßE"));
+    }
+
 }
