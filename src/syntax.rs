@@ -309,3 +309,37 @@ fn comment(chars: &[char], kinds: &mut [Kind], from: usize, to: usize) {
         i += 1;
     }
 }
+
+fn is_ident_start(c: char) -> bool {
+    c.is_alphabetic() || c == '_'
+}
+
+fn closing(chars: &[char], from: usize, quote: char) -> Option<usize> {
+    let mut j = from;
+    while j < chars.len() {
+        match chars[j] {
+            '\\' => j += 2,
+            c if c == quote => return Some(j),
+            _ => j += 1,
+        }
+    }
+    None
+}
+
+fn is_function(prev_word: &str, next: Option<char>, chars: &[char], end: usize, syntax: Syntax) -> bool {
+    matches!(prev_word, "fn" | "def" | "func" | "function")
+        || next == Some('(')
+        || syntax == Syntax::Rust
+            && next == Some(':')
+            && chars.get(end + 1) == Some(&':')
+            && chars.get(end + 2) == Some(&'<')
+}
+
+fn fill_str(kinds: &mut [Kind], from: usize, to: usize) {
+    let to = to.min(kinds.len());
+    for k in &mut kinds[from.min(to)..to] {
+        if *k != Kind::Escape && *k != Kind::Operator {
+            *k = Kind::Str;
+        }
+    }
+}
