@@ -25,6 +25,29 @@ impl Hunk {
     }
 }
 
+pub fn marks(old: &[String], new: &[String]) -> Vec<Option<Mark>> {
+    marks_from(&hunks(old, new), new.len())
+}
+
+pub fn marks_from(hunks: &[Hunk], len: usize) -> Vec<Option<Mark>> {
+    let mut out = vec![None; len];
+    for h in hunks {
+        if !h.new.is_empty() {
+            let mark = if h.old.is_empty() { Mark::Added } else { Mark::Changed };
+            for m in &mut out[h.new.clone()] {
+                *m = Some(mark);
+            }
+        } else if h.new.start == 0 {
+            if let Some(m) = out.first_mut().filter(|m| m.is_none()) {
+                *m = Some(Mark::RemovedAbove);
+            }
+        } else if let Some(m) = out.get_mut(h.new.start - 1).filter(|m| m.is_none()) {
+            *m = Some(Mark::Removed);
+        }
+    }
+    out
+}
+
 pub fn common_ends(old: &[String], new: &[String]) -> (usize, usize) {
     let prefix = old.iter().zip(new).take_while(|(a, b)| a == b).count();
     let room = old.len().min(new.len()) - prefix;
