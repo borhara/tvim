@@ -38,6 +38,34 @@ pub fn common_ends(old: &[String], new: &[String]) -> (usize, usize) {
     (prefix, suffix)
 }
 
+pub fn hunks(old: &[String], new: &[String]) -> Vec<Hunk> {
+    let mut out = Vec::new();
+    let (prefix, suffix) = common_ends(old, new);
+    let a = &old[prefix..old.len() - suffix];
+    let b = &new[prefix..new.len() - suffix];
+    if a.is_empty() && b.is_empty() {
+        return out;
+    }
+    // LCS is O(n*m), so give up on big hunks
+    let pairs = if a.len().saturating_mul(b.len()) <= 4_000_000 {
+        common(a, b)
+    } else {
+        Vec::new()
+    };
+    let (mut i, mut j) = (0, 0);
+    for (pi, pj) in pairs.into_iter().chain(std::iter::once((a.len(), b.len()))) {
+        if pi > i || pj > j {
+            out.push(Hunk {
+                old: prefix + i..prefix + pi,
+                new: prefix + j..prefix + pj,
+            });
+        }
+        i = pi + 1;
+        j = pj + 1;
+    }
+    out
+}
+
 fn common(a: &[String], b: &[String]) -> Vec<(usize, usize)> {
     let (n, m) = (a.len(), b.len());
     let mut len = vec![0u32; (n + 1) * (m + 1)];
