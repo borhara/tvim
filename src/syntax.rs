@@ -175,6 +175,60 @@ impl Syntax {
                 "type",
                 "var",
             ],
+            Syntax::C => &[
+                "auto",
+                "break",
+                "case",
+                "catch",
+                "class",
+                "const",
+                "constexpr",
+                "continue",
+                "default",
+                "delete",
+                "do",
+                "else",
+                "enum",
+                "extern",
+                "for",
+                "friend",
+                "goto",
+                "if",
+                "inline",
+                "namespace",
+                "new",
+                "operator",
+                "private",
+                "protected",
+                "public",
+                "return",
+                "sizeof",
+                "static",
+                "struct",
+                "switch",
+                "template",
+                "throw",
+                "try",
+                "typedef",
+                "typename",
+                "union",
+                "using",
+                "virtual",
+                "volatile",
+                "while",
+                "#include",
+                "#define",
+                "#if",
+                "#ifdef",
+                "#ifndef",
+                "#endif",
+                "#else",
+                "#pragma",
+                "func",
+                "let",
+                "var",
+                "fn",
+            ],
             Syntax::Java => &[
                 "abstract",
                 "break",
@@ -666,5 +720,61 @@ fn markdown(chars: &[char], state: State) -> (Vec<Kind>, State) {
             i = lead + digits + 2;
         }
     }
+    inline(chars, &mut kinds, i);
     (kinds, State::Normal)
+}
+
+fn inline(chars: &[char], kinds: &mut [Kind], from: usize) {
+    let n = chars.len();
+    let mut i = from;
+    while i < n {
+        let c = chars[i];
+        if c == '`' {
+            let ticks = chars[i..].iter().take_while(|c| **c == '`').count();
+            if let Some(end) = (i + ticks..n).find(|&j| chars[j..].starts_with(&chars[i..i + ticks])) {
+                fill(kinds, i, end + ticks, Kind::Code);
+                i = end + ticks;
+                continue;
+            }
+        }
+        if (c == '*' || c == '_') && chars.get(i + 1) == Some(&c) {
+            let pair = [c, c];
+            if let Some(end) = (i + 2..n.saturating_sub(1)).find(|&j| chars[j..j + 2] == pair) {
+                fill(kinds, i, end + 2, Kind::Strong);
+                i = end + 2;
+                continue;
+            }
+        }
+        if (c == '*' || c == '_')
+            && chars.get(i + 1).is_some_and(|n| !n.is_whitespace())
+            && (i == 0 || !is_word(chars[i - 1]))
+        {
+            if let Some(end) = (i + 1..n).find(|&j| chars[j] == c && !chars[j - 1].is_whitespace()) {
+                fill(kinds, i, end + 1, Kind::Emphasis);
+                i = end + 1;
+                continue;
+            }
+        }
+        if c == '[' {
+            if let Some(close) = (i + 1..n).find(|&j| chars[j] == ']') {
+                if chars.get(close + 1) == Some(&'(') {
+                    if let Some(end) = (close + 2..n).find(|&j| chars[j] == ')') {
+                        fill(kinds, i, close + 1, Kind::Link);
+                        fill(kinds, close + 1, end + 1, Kind::Url);
+                        i = end + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        if starts(chars, i, "http://") || starts(chars, i, "https://") {
+            let end = (i..n)
+                .find(|&j| chars[j].is_whitespace() || chars[j] == ')')
+                .unwrap_or(n);
+            fill(kinds, i, end, Kind::Url);
+            i = end;
+            continue;
+        }
+        i += 1;
+    }
 }
