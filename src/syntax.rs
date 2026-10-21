@@ -76,6 +76,7 @@ impl Syntax {
 
     pub fn name(self) -> &'static str {
         match self {
+            Syntax::Rust => "rust",
             Syntax::Python => "python",
             Syntax::JavaScript => "javascript",
             Syntax::Go => "go",
@@ -777,4 +778,52 @@ fn inline(chars: &[char], kinds: &mut [Kind], from: usize) {
         }
         i += 1;
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use Kind::*;
+
+    fn kinds_of(line: &str, syntax: Syntax) -> Vec<(String, Kind)> {
+        let (kinds, _) = highlight(line, syntax, State::Normal);
+        let chars: Vec<char> = line.chars().collect();
+        let mut out: Vec<(String, Kind)> = Vec::new();
+        for (c, k) in chars.iter().zip(kinds) {
+            match out.last_mut() {
+                Some((s, last)) if *last == k => s.push(*c),
+                _ => out.push((c.to_string(), k)),
+            }
+        }
+        out.retain(|(s, _)| !s.trim().is_empty());
+        out
+    }
+
+    fn kind_of(line: &str, syntax: Syntax, word: &str) -> Kind {
+        kinds_of(line, syntax)
+            .into_iter()
+            .find(|(s, _)| s.trim() == word)
+            .map(|(_, k)| k)
+            .unwrap_or_else(|| panic!("{word} in {:?}", kinds_of(line, syntax)))
+    }
+
+    #[test]
+    fn rust() {
+        let r = Syntax::Rust;
+        let line = "pub fn draw(e: &Editor) -> Option<u8> { println!(\"hi\\n\"); MAX + 1.5 } // TODO: tidy";
+        assert_eq!(kind_of(line, r, "pub"), Keyword);
+        assert_eq!(kind_of(line, r, "draw"), Function);
+        assert_eq!(kind_of(line, r, "Editor"), Type);
+        assert_eq!(kind_of(line, r, "println!"), Macro);
+        assert_eq!(kind_of(line, r, "\\n"), Escape);
+        assert_eq!(kind_of(line, r, "MAX"), Constant);
+        assert_eq!(kind_of(line, r, "1.5"), Number);
+        assert_eq!(kind_of(line, r, "TODO"), Todo);
+        assert_eq!(kind_of("fn f<'a>(x: &'a str) -> char { 'x' }", r, "'a"), Label);
+        assert_eq!(kind_of("let c = 'x';", r, "'x'"), Str);
+        assert_eq!(kind_of("#[derive(Debug)]", r, "#[derive(Debug)]"), Attribute);
+        assert_eq!(kind_of("x.len()", r, "len"), Function);
+        assert_eq!(kind_of("Vec::<u8>::new()", r, "new"), Function);
+    }
+
 }
