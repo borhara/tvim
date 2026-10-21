@@ -609,3 +609,62 @@ fn fill_str(kinds: &mut [Kind], from: usize, to: usize) {
         }
     }
 }
+
+fn markdown(chars: &[char], state: State) -> (Vec<Kind>, State) {
+    let n = chars.len();
+    let mut kinds = vec![Kind::Plain; n];
+    let lead = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(n);
+    let fence = starts(chars, lead, "```") || starts(chars, lead, "~~~");
+    if state == State::Fence {
+        if fence {
+            fill(&mut kinds, 0, n, Kind::Punct);
+            return (kinds, State::Normal);
+        }
+        fill(&mut kinds, 0, n, Kind::Code);
+        return (kinds, State::Fence);
+    }
+    if fence {
+        fill(&mut kinds, 0, n, Kind::Punct);
+        fill(&mut kinds, lead + 3, n, Kind::Label);
+        return (kinds, State::Fence);
+    }
+    if chars.get(lead) == Some(&'#') {
+        let hashes = chars[lead..].iter().take_while(|c| **c == '#').count();
+        if hashes <= 6 && chars.get(lead + hashes).is_none_or(|c| *c == ' ') {
+            fill(&mut kinds, lead, lead + hashes, Kind::Punct);
+            fill(&mut kinds, lead + hashes, n, Kind::Heading);
+            return (kinds, State::Normal);
+        }
+    }
+    let first = chars.get(lead).copied();
+    if matches!(first, Some('-' | '*' | '='))
+        && chars.iter().filter(|c| !c.is_whitespace()).count() >= 3
+        && chars.iter().all(|&c| c.is_whitespace() || Some(c) == first)
+    {
+        fill(&mut kinds, 0, n, Kind::Punct);
+        return (kinds, State::Normal);
+    }
+    let mut i = lead;
+    if chars.get(lead) == Some(&'>') {
+        fill(&mut kinds, lead, n, Kind::Quote);
+        return (kinds, State::Normal);
+    }
+    if matches!(chars.get(lead), Some('-' | '*' | '+')) && chars.get(lead + 1) == Some(&' ') {
+        kinds[lead] = Kind::ListMark;
+        i = lead + 2;
+        if starts(chars, i, "[ ]") || starts(chars, i, "[x]") || starts(chars, i, "[X]") {
+            fill(&mut kinds, i, i + 3, Kind::ListMark);
+            i += 3;
+        }
+    } else {
+        let digits = chars[lead..].iter().take_while(|c| c.is_ascii_digit()).count();
+        if digits > 0
+            && matches!(chars.get(lead + digits), Some('.' | ')'))
+            && chars.get(lead + digits + 1) == Some(&' ')
+        {
+            fill(&mut kinds, lead, lead + digits + 1, Kind::ListMark);
+            i = lead + digits + 2;
+        }
+    }
+    (kinds, State::Normal)
+}
