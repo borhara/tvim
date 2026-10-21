@@ -808,6 +808,17 @@ mod tests {
     }
 
     #[test]
+    fn an_escaped_backslash_closes_its_quote() {
+        let r = Syntax::Rust;
+        assert_eq!(kind_of("let c = '\\\\'; foo()", r, "foo"), Function);
+    }
+
+    #[test]
+    fn an_attribute_ends_at_its_own_bracket() {
+        assert_eq!(kind_of("#[inline] fn f() -> [u8; 4]", Syntax::Rust, "fn"), Keyword);
+    }
+
+    #[test]
     fn rust() {
         let r = Syntax::Rust;
         let line = "pub fn draw(e: &Editor) -> Option<u8> { println!(\"hi\\n\"); MAX + 1.5 } // TODO: tidy";
