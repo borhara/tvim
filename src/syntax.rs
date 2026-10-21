@@ -1,3 +1,5 @@
+use crate::text::is_word;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Plain,
@@ -269,6 +271,7 @@ pub fn highlight(line: &str, syntax: Syntax, state: State) -> (Vec<Kind>, State)
     let chars: Vec<char> = line.chars().collect();
     match syntax {
         Syntax::Markdown => markdown(&chars, state),
+        _ => code(&chars, syntax, state),
     }
 }
 
@@ -324,6 +327,269 @@ fn closing(chars: &[char], from: usize, quote: char) -> Option<usize> {
         }
     }
     None
+}
+
+fn code(chars: &[char], syntax: Syntax, mut state: State) -> (Vec<Kind>, State) {
+    let n = chars.len();
+    let mut kinds = vec![Kind::Plain; n];
+    let mut i = 0;
+    let first_word = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(n);
+    let mut prev_word = String::new();
+    let mut word = String::new();
+    let config = matches!(syntax, Syntax::Toml | Syntax::Yaml | Syntax::Json);
+
+    if config && state == State::Normal {
+        if syntax == Syntax::Toml && chars.get(first_word) == Some(&'[') {
+            let end = chars.iter().rposition(|&c| c == ']').map_or(n, |e| e + 1);
+            fill(&mut kinds, first_word, end, Kind::Type);
+            fill(&mut kinds, first_word, first_word + 1, Kind::Punct);
+            if end > 0 {
+                fill(&mut kinds, end - 1, end, Kind::Punct);
+            }
+            i = end;
+        } else if syntax != Syntax::Json {
+            let mut start = first_word;
+            if syntax == Syntax::Yaml && starts(chars, start, "- ") {
+                fill(&mut kinds, start, start + 1, Kind::ListMark);
+                start += 2;
+            }
+            let sep = if syntax == Syntax::Toml { '=' } else { ':' };
+            let quoted = chars.get(start).is_some_and(|c| *c == '"' || *c == '\'');
+            if let Some(at) = (start..n)
+                .find(|&j| chars[j] == sep && (sep == '=' || chars.get(j + 1).is_none_or(|c| c.is_whitespace())))
+            {
+                let key_ok = !quoted && chars[start..at].iter().all(|c| is_word(*c) || "-. ".contains(*c));
+                if key_ok && at > start && !(syntax == Syntax::Yaml && chars[start] == '#') {
+                    fill(&mut kinds, at, at + 1, Kind::Punct);
+                    i = at + 1;
+                }
+            }
+        }
+    }
+
+    while i < n {
+        let c = chars[i];
+        match state {
+            State::Comment(depth) => {
+                let start = i;
+                let mut depth = depth;
+                while i < n {
+                    if syntax == Syntax::Rust && starts(chars, i, open) {
+                        depth += 1;
+                        i += open.chars().count();
+                    } else if starts(chars, i, close) {
+                        i += close.chars().count();
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+                comment(chars, &mut kinds, start, i);
+                state = if depth == 0 {
+                    State::Normal
+                } else {
+                    State::Comment(depth)
+                };
+                continue;
+            }
+            State::Str(q) => {
+                let start = i;
+                while i < n {
+                    if chars[i] == '\\' && (syntax != Syntax::Toml || q == '"') {
+                        fill(&mut kinds, i, i + 2, Kind::Escape);
+                        i += 2;
+                        continue;
+                    }
+                    if chars[i] == q {
+                        i += 1;
+                        state = State::Normal;
+                        break;
+                    }
+                    if syntax == Syntax::JavaScript && q == '`' && starts(chars, i, "${") {
+                        let end = (i..n).find(|&j| chars[j] == '}').map_or(n, |e| e + 1);
+                        fill(&mut kinds, i, end, Kind::Operator);
+                        i = end;
+                        continue;
+                    }
+                    if kinds[i] == Kind::Plain {
+                        kinds[i] = Kind::Str;
+                    }
+                    i += 1;
+                }
+                fill_str(&mut kinds, start, i);
+                if state == State::Str(q) && !syntax.multiline_quote(q) {
+                    state = State::Normal;
+                }
+                continue;
+            }
+            State::Triple(q) => {
+                let start = i;
+                while i < n && !chars[i..].starts_with(&[q; 3]) {
+                    i += 1;
+                }
+                if i < n {
+                    i += 3;
+                    state = State::Normal;
+                }
+                fill(&mut kinds, start, i, Kind::Str);
+                continue;
+            }
+            State::Fence => unreachable!("only Markdown has fences"),
+            State::Normal => {}
+        }
+        if syntax == Syntax::Python && (starts(chars, i, "\"\"\"") || starts(chars, i, "'''")) {
+            state = State::Triple(c);
+            fill(&mut kinds, i, i + 3, Kind::Str);
+            i += 3;
+            continue;
+        }
+        // 'a is a lifetime, 'a' is a char
+        if syntax == Syntax::Rust && c == '\'' {
+            let is_char = chars.get(i + 2) == Some(&'\'') || chars.get(i + 1) == Some(&'\\');
+            if !is_char {
+                let end = (i + 1..n).find(|&j| !is_word(chars[j])).unwrap_or(n);
+                fill(&mut kinds, i, end, Kind::Label);
+                i = end.max(i + 1);
+                continue;
+            }
+            let end = closing(chars, i + 1, '\'').map_or(n, |e| e + 1);
+            fill(&mut kinds, i, end, Kind::Str);
+            if chars.get(i + 1) == Some(&'\\') {
+                fill(&mut kinds, i + 1, (i + 3).min(end), Kind::Escape);
+            }
+            i = end;
+            continue;
+        }
+        if syntax.quotes().contains(&c) || (syntax == Syntax::Rust && c == '\'') {
+            kinds[i] = Kind::Str;
+            state = State::Str(c);
+            i += 1;
+            if syntax == Syntax::Json {
+                let end = closing(chars, i, '"');
+                if let Some(end) = end {
+                    let after = (end + 1..n).find(|&j| !chars[j].is_whitespace());
+                    if after.is_some_and(|a| chars[a] == ':') {
+                        i = end + 1;
+                        state = State::Normal;
+                    }
+                }
+            }
+            continue;
+        }
+        if c.is_ascii_digit()
+            || (c == '.' && chars.get(i + 1).is_some_and(char::is_ascii_digit) && (i == 0 || !is_word(chars[i - 1])))
+        {
+            if i > 0 && is_word(chars[i - 1]) {
+                i += 1;
+                continue;
+            }
+            let end = (i..n)
+                .find(|&j| {
+                    !(is_word(chars[j]) || chars[j] == '.' && chars.get(j + 1).is_some_and(char::is_ascii_digit))
+                })
+                .unwrap_or(n);
+            fill(&mut kinds, i, end, Kind::Number);
+            i = end;
+            continue;
+        }
+        if is_ident_start(c) || (c == '#' && syntax == Syntax::C && i == first_word) {
+            let end = (i + 1..n).find(|&j| !is_word(chars[j])).unwrap_or(n);
+            word.clear();
+            word.extend(&chars[i..end]);
+            let next = (end..n).find(|&j| !chars[j].is_whitespace()).map(|j| chars[j]);
+            let kind = if syntax.keywords().contains(&word.as_str()) {
+                Kind::Keyword
+            } else if syntax.constants().contains(&word.as_str()) {
+                Kind::Constant
+            } else if syntax == Syntax::Rust && chars.get(end) == Some(&'!') && chars.get(end + 1) != Some(&'=') {
+                fill(&mut kinds, i, end + 1, Kind::Macro);
+                std::mem::swap(&mut prev_word, &mut word);
+                i = end + 1;
+                continue;
+            } else if word.len() > 1
+                && word.chars().all(|c| c.is_uppercase() || c.is_ascii_digit() || c == '_')
+                && word.chars().any(char::is_alphabetic)
+            {
+                Kind::Constant
+            } else if is_function(&prev_word, next, chars, end, syntax) || syntax == Syntax::Shell && i == first_word {
+                Kind::Function
+            } else if word.starts_with(char::is_uppercase) && !config
+                || matches!(
+                    prev_word.as_str(),
+                    "struct" | "enum" | "trait" | "type" | "class" | "interface" | "impl"
+                )
+            {
+                Kind::Type
+            } else {
+                Kind::Plain
+            };
+            fill(&mut kinds, i, end, kind);
+            std::mem::swap(&mut prev_word, &mut word);
+            i = end;
+            continue;
+        }
+        if c == '$' && syntax == Syntax::Shell {
+            let end = if chars.get(i + 1) == Some(&'{') {
+                (i..n).find(|&j| chars[j] == '}').map_or(n, |e| e + 1)
+            } else {
+                (i + 1..n).find(|&j| !is_word(chars[j])).unwrap_or(n).max(i + 2).min(n)
+            };
+            fill(&mut kinds, i, end, Kind::Constant);
+            i = end;
+            continue;
+        }
+        if c == '#' && syntax == Syntax::Rust && matches!(chars.get(i + 1), Some('[') | Some('!')) {
+            let mut depth = 0usize;
+            let end = (i..n)
+                .find(|&j| match chars[j] {
+                    '[' => {
+                        depth += 1;
+                        false
+                    }
+                    ']' => {
+                        depth = depth.saturating_sub(1);
+                        depth == 0
+                    }
+                    _ => false,
+                })
+                .map_or(n, |e| e + 1);
+            fill(&mut kinds, i, end, Kind::Attribute);
+            i = end;
+            continue;
+        }
+        if c == '@' && matches!(syntax, Syntax::Python | Syntax::Java | Syntax::JavaScript) {
+            let end = (i + 1..n)
+                .find(|&j| !(is_word(chars[j]) || chars[j] == '.'))
+                .unwrap_or(n);
+            fill(&mut kinds, i, end, Kind::Attribute);
+            i = end;
+            continue;
+        }
+        if syntax == Syntax::Yaml && (c == '&' || c == '*') && chars.get(i + 1).is_some_and(|c| is_ident_start(*c)) {
+            let end = (i + 1..n).find(|&j| !is_word(chars[j])).unwrap_or(n);
+            fill(&mut kinds, i, end, Kind::Label);
+            i = end;
+            continue;
+        }
+        if "()[]{},;.".contains(c) {
+            kinds[i] = Kind::Punct;
+        } else if "=+-*/<>!&|%^?:~".contains(c) {
+            kinds[i] = Kind::Operator;
+        }
+        if !c.is_whitespace() {
+            prev_word.clear();
+        }
+        i += 1;
+    }
+    if let State::Str(q) = state {
+        if !syntax.multiline_quote(q) {
+            state = State::Normal;
+        }
+    }
+    (kinds, state)
 }
 
 fn is_function(prev_word: &str, next: Option<char>, chars: &[char], end: usize, syntax: Syntax) -> bool {
