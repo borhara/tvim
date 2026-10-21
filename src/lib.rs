@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod diff;
 pub mod motion;
 pub mod object;
 pub mod regex;
