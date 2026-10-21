@@ -837,4 +837,22 @@ mod tests {
         assert_eq!(kind_of("Vec::<u8>::new()", r, "new"), Function);
     }
 
+    #[test]
+    fn comments_and_strings_over_lines() {
+        let (k, s) = highlight("a /* open", Syntax::C, State::Normal);
+        assert_eq!((k[0], k[2], s), (Plain, Comment, State::Comment(1)));
+        let (k, s) = highlight("still */ b", Syntax::C, s);
+        assert_eq!((k[0], k[9], s), (Comment, Plain, State::Normal));
+        let (_, s) = highlight("/* /* nested */", Syntax::Rust, State::Normal);
+        assert_eq!(s, State::Comment(1));
+        let (_, s) = highlight("x = \"\"\"doc", Syntax::Python, State::Normal);
+        assert_eq!(s, State::Triple('"'));
+        let (k, s) = highlight("end\"\"\" + y", Syntax::Python, s);
+        assert_eq!((k[0], k[9], s), (Str, Plain, State::Normal));
+        let (_, s) = highlight("let s = `multi", Syntax::JavaScript, State::Normal);
+        assert_eq!(s, State::Str('`'));
+        let (_, s) = highlight("x = \"unclosed", Syntax::Python, State::Normal);
+        assert_eq!(s, State::Normal, "a Python string doesn't run on");
+    }
+
 }
