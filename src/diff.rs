@@ -117,3 +117,49 @@ fn common(a: &[String], b: &[String]) -> Vec<(usize, usize)> {
     }
     pairs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use Mark::*;
+
+    fn lines(s: &str) -> Vec<String> {
+        s.split('\n').map(str::to_string).collect()
+    }
+
+    fn m(old: &str, new: &str) -> Vec<Option<Mark>> {
+        marks(&lines(old), &lines(new))
+    }
+
+    #[test]
+    fn nothing_changed() {
+        assert_eq!(m("a\nb", "a\nb"), [None, None]);
+    }
+
+    #[test]
+    fn added_changed_removed() {
+        assert_eq!(m("a\nb", "a\nx\nb"), [None, Some(Added), None]);
+        assert_eq!(m("a\nb\nc", "a\nB\nc"), [None, Some(Changed), None]);
+        assert_eq!(m("a\nb\nc", "a\nc"), [Some(Removed), None]);
+        assert_eq!(m("a\nb", "b"), [Some(RemovedAbove)]);
+        assert_eq!(
+            m("a\nb\nc\nd", "A\nb\nc\nd\ne"),
+            [Some(Changed), None, None, None, Some(Added)]
+        );
+    }
+
+    #[test]
+    fn scattered_changes_are_marked_apart() {
+        assert_eq!(
+            m("1\n2\n3\n4\n5", "1\nX\n3\n4\nY"),
+            [None, Some(Changed), None, None, Some(Changed)]
+        );
+    }
+
+    #[test]
+    fn hunks_know_both_sides() {
+        let h = hunks(&lines("1\n2\n3\n4"), &lines("1\nX\nY\n3"));
+        assert_eq!(h, [Hunk { old: 1..2, new: 1..3 }, Hunk { old: 3..4, new: 4..4 }]);
+        assert_eq!((h[0].row(), h[1].row()), (1, 3));
+    }
+}
