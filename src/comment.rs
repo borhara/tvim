@@ -1,4 +1,28 @@
+use crate::syntax::{Syntax, extension};
 use crate::text::{byte_at, char_count, indent};
+
+pub fn markers(name: &str) -> (&'static str, &'static str) {
+    match extension(name).as_str() {
+        "html" | "htm" | "xml" | "xhtml" | "svg" | "vue" | "svelte" | "md" | "markdown" | "mdx" => {
+            return ("<!--", "-->");
+        }
+        "css" | "less" => return ("/*", "*/"),
+        "scss" | "sass" | "php" => return ("//", ""),
+        "sql" | "hs" | "elm" | "ada" => return ("--", ""),
+        "lisp" | "el" | "clj" | "cljs" | "scm" | "rkt" | "asm" | "s" | "ini" => return (";", ""),
+        "vim" => return ("\"", ""),
+        "tex" | "erl" | "m4" => return ("%", ""),
+        _ => {}
+    }
+    match Syntax::detect(name) {
+        Some(s) => match (s.line_comment().first(), s.block_comment()) {
+            (Some(line), _) => (line, ""),
+            (None, Some(block)) => block,
+            (None, None) => ("#", ""),
+        },
+        None => ("#", ""),
+    }
+}
 
 fn is_commented(line: &str, open: &str, close: &str) -> bool {
     let t = line.trim();
