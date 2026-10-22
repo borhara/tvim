@@ -1,6 +1,7 @@
 pub mod buffer;
 pub mod clipboard;
 pub mod comment;
+pub mod complete;
 pub mod diff;
 pub mod motion;
 pub mod object;
