@@ -90,6 +90,25 @@ impl Syntax {
         }
     }
 
+    pub(crate) fn line_comment(self) -> &'static [&'static str] {
+        match self {
+            Syntax::Rust | Syntax::JavaScript | Syntax::Go | Syntax::C | Syntax::Java | Syntax::Json => &["//"],
+            Syntax::Python | Syntax::Shell | Syntax::Toml | Syntax::Yaml => &["#"],
+            Syntax::Lua => &["--"],
+            Syntax::Markdown => &[],
+        }
+    }
+
+    pub(crate) fn block_comment(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Syntax::Rust | Syntax::JavaScript | Syntax::Go | Syntax::C | Syntax::Java | Syntax::Json => {
+                Some(("/*", "*/"))
+            }
+            Syntax::Lua => Some(("--[[", "]]")),
+            _ => None,
+        }
+    }
+
     fn keywords(self) -> &'static [&'static str] {
         match self {
             Syntax::Rust => &[
@@ -426,6 +445,7 @@ fn code(chars: &[char], syntax: Syntax, mut state: State) -> (Vec<Kind>, State) 
         let c = chars[i];
         match state {
             State::Comment(depth) => {
+                let (open, close) = syntax.block_comment().unwrap_or(("/*", "*/"));
                 let start = i;
                 let mut depth = depth;
                 while i < n {
@@ -494,6 +514,17 @@ fn code(chars: &[char], syntax: Syntax, mut state: State) -> (Vec<Kind>, State) 
             }
             State::Fence => unreachable!("only Markdown has fences"),
             State::Normal => {}
+        }
+
+        if let Some(open) = syntax.block_comment().map(|b| b.0) {
+            if starts(chars, i, open) {
+                state = State::Comment(1);
+                comment(chars, &mut kinds, i, i + open.chars().count());
+                i += open.chars().count();
+                continue;
+            }
+        }
+        if syntax.line_comment().iter().any(|lc| starts(chars, i, lc)) {
         }
         if syntax == Syntax::Python && (starts(chars, i, "\"\"\"") || starts(chars, i, "'''")) {
             state = State::Triple(c);
