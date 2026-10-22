@@ -57,3 +57,17 @@ impl Clipboard for System {
         })
     }
 }
+
+#[derive(Default)]
+pub struct Memory(pub Option<String>);
+
+impl Clipboard for Memory {
+    fn get(&mut self) -> Option<String> {
+        self.0.clone()
+    }
+
+    fn set(&mut self, text: &str) -> bool {
+        self.0 = Some(text.to_string());
+        true
+    }
+}
