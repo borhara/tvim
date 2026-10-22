@@ -1,5 +1,6 @@
 pub mod buffer;
 pub mod clipboard;
+pub mod command;
 pub mod comment;
 pub mod complete;
 pub mod diff;
