@@ -118,4 +118,32 @@ mod tests {
         assert!(matches!(cmd("fx").act, Act::Move(Motion::Find(f)) if f.ch == 'x' && f.forward && !f.till));
     }
 
+    #[test]
+    fn operators_and_their_targets() {
+        let c = cmd("2d3w");
+        assert_eq!(c.count, Some(6));
+        assert_eq!(
+            c.act,
+            Act::Operate(Op::Delete, Target::Motion(Motion::WordForward(false)))
+        );
+        assert_eq!(c.keys, k("dw"));
+        assert_eq!(cmd("dd").act, Act::Operate(Op::Delete, Target::Lines));
+        assert_eq!(cmd("gUU").act, Act::Operate(Op::Upper, Target::Lines));
+        assert_eq!(cmd("gUgU").act, Act::Operate(Op::Upper, Target::Lines));
+        assert_eq!(
+            cmd("gUgg").act,
+            Act::Operate(Op::Upper, Target::Motion(Motion::FirstLine))
+        );
+        assert_eq!(
+            cmd("ci\"").act,
+            Act::Operate(Op::Change, Target::Object { kind: '"', inner: true })
+        );
+        assert_eq!(cmd(">>").act, Act::Operate(Op::Indent, Target::Lines));
+        assert_eq!(state("d"), Parse::More);
+        assert_eq!(state("di"), Parse::More);
+        assert_eq!(state("diz"), Parse::Invalid);
+        assert_eq!(state("dz"), Parse::Invalid);
+        assert_eq!(state("dg"), Parse::More);
+    }
+
 }
