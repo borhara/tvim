@@ -89,3 +89,33 @@ pub enum MotionParse {
     Invalid,
     Done(Motion, usize),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keys::parse as k;
+
+    fn cmd(spec: &str) -> Cmd {
+        match parse(&k(spec), false) {
+            Parse::Done(c) => c,
+            other => panic!("{spec}: {other:?}"),
+        }
+    }
+
+    fn state(spec: &str) -> Parse {
+        parse(&k(spec), false)
+    }
+
+    #[test]
+    fn motions_with_counts() {
+        let c = cmd("12w");
+        assert_eq!((c.count, c.act), (Some(12), Act::Move(Motion::WordForward(false))));
+        assert_eq!(cmd("0").act, Act::Move(Motion::LineStart));
+        assert_eq!(cmd("10j").count, Some(10));
+        assert_eq!(cmd("gg").act, Act::Move(Motion::FirstLine));
+        assert_eq!(state("g"), Parse::More);
+        assert_eq!(state("f"), Parse::More);
+        assert!(matches!(cmd("fx").act, Act::Move(Motion::Find(f)) if f.ch == 'x' && f.forward && !f.till));
+    }
+
+}
