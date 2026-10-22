@@ -7,5 +7,6 @@ pub mod object;
 pub mod regex;
 pub mod syntax;
 pub mod text;
+mod time;
 
 pub use buffer::{Buffer, Pos};
