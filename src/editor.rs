@@ -110,6 +110,8 @@ struct Snapshot {
     version: u64,
 }
 
+const MAX_UNDO: usize = 1000;
+
 pub struct Editor {
     pub(crate) buf: Buffer,
     pub(crate) cursor: Pos,
@@ -302,6 +304,29 @@ impl Editor {
         match self.mode {
             Mode::Insert | Mode::Replace => len,
             _ => len.saturating_sub(1),
+        }
+    }
+
+    pub(crate) fn touch(&mut self) {
+        if !self.changing {
+            self.undo.push(self.snapshot());
+            if self.undo.len() > MAX_UNDO {
+                self.undo.remove(0);
+            }
+            self.redo.clear();
+            self.changing = true;
+        }
+        self.versions += 1;
+        self.version = self.versions;
+    }
+
+    pub(crate) fn end_change(&mut self) {
+        if self.changing {
+            self.changing = false;
+            if self.undo.last().is_some_and(|s| s.lines == self.buf.lines()) {
+                let s = self.undo.pop().expect("just checked");
+                self.version = s.version;
+            }
         }
     }
 
