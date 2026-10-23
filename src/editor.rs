@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::Clipboard;
@@ -87,6 +88,14 @@ impl Default for Options {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FileInfo {
+    pub path: Option<PathBuf>,
+    pub crlf: bool,
+    pub final_newline: bool,
+    pub new: bool,
+}
+
 pub struct Editor {
     pub(crate) buf: Buffer,
     pub(crate) cursor: Pos,
@@ -110,6 +119,7 @@ pub struct Editor {
     insert_replay: bool,
     last_macro: Option<char>,
     macro_depth: usize,
+    pub(crate) file: FileInfo,
     pub options: Options,
     pub(crate) top: Cell<usize>,
     pub(crate) left: Cell<usize>,
@@ -136,4 +146,19 @@ impl Default for Editor {
     fn default() -> Self {
         Editor::new()
     }
+}
+
+impl Editor {
+    pub fn file(&self) -> &FileInfo {
+        &self.file
+    }
+
+    pub fn name(&self) -> String {
+        display_name(self.file.path.as_deref())
+    }
+
+}
+
+fn display_name(path: Option<&Path>) -> String {
+    path.map_or_else(|| "[No Name]".to_string(), |p| p.display().to_string())
 }
