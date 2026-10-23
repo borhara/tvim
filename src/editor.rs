@@ -330,6 +330,34 @@ impl Editor {
         }
     }
 
+    fn undo(&mut self, count: usize) {
+        for n in 0..count {
+            let Some(s) = self.undo.pop() else {
+                if n == 0 {
+                    self.info("Already at oldest change");
+                }
+                return;
+            };
+            let now = self.snapshot();
+            self.redo.push(now);
+            self.restore(s);
+        }
+    }
+
+    fn redo(&mut self, count: usize) {
+        for n in 0..count {
+            let Some(s) = self.redo.pop() else {
+                if n == 0 {
+                    self.info("Already at newest change");
+                }
+                return;
+            };
+            let now = self.snapshot();
+            self.undo.push(now);
+            self.restore(s);
+        }
+    }
+
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             lines: self.buf.lines().to_vec(),
