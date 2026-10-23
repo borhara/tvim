@@ -1,9 +1,9 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::buffer::{Buffer, Pos};
-use crate::clipboard::Clipboard;
+use crate::clipboard::{Clipboard, System};
 use crate::motion::Find;
 use crate::syntax;
 use crate::window::Node;
@@ -156,6 +156,92 @@ impl Default for Editor {
 }
 
 impl Editor {
+    pub fn new() -> Editor {
+        Editor {
+            buf: Buffer::new(),
+            cursor: Pos::default(),
+            want: 0,
+            mode: Mode::Normal,
+            pending: Vec::new(),
+            anchor: Pos::default(),
+            last_visual: None,
+            registers: HashMap::new(),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            version: 0,
+            saved: 0,
+            versions: 0,
+            changing: false,
+            cmd_history: Vec::new(),
+            search_history: Vec::new(),
+            last_search: None,
+            last_substitute: None,
+            search_backward: false,
+            search_shown: false,
+            message: None,
+            last_find: None,
+            marks: HashMap::new(),
+            dot: None,
+            building: None,
+            replaying: false,
+            insert_replay: false,
+            completion: None,
+            recording: None,
+            macros: HashMap::new(),
+            last_macro: None,
+            macro_depth: 0,
+            file: FileInfo {
+                final_newline: true,
+                ..FileInfo::default()
+            },
+            options: Options::default(),
+            top: Cell::new(0),
+            left: Cell::new(0),
+            screen: Cell::new((80, 24)),
+            anim: Default::default(),
+            zen: None,
+            effects: Vec::new(),
+            quit: false,
+            clipboard: Box::new(System),
+            explorer: None,
+            explorer_focused: false,
+            finder: None,
+            grep: None,
+            saved_lines: vec![String::new()],
+            git_menu: None,
+            git_history: Vec::new(),
+            states: RefCell::default(),
+            marks_cache: RefCell::new(None),
+            regex_cache: RefCell::new(None),
+            hits_cache: RefCell::new(None),
+            no_jumps: false,
+            current: 0,
+            buffer_id: 1,
+            next_id: 2,
+            recent: Vec::new(),
+            outline: RefCell::new(None),
+            layout: Node::Leaf(1),
+            focus: 1,
+            next_win: 2,
+            shadow: None,
+            region: Cell::new(None),
+            previews: HashMap::new(),
+        }
+    }
+
+    pub fn with_text(text: &str) -> Editor {
+        let mut e = Editor::new();
+        e.buf = Buffer::from_text(text);
+        e.saved_lines = e.buf.lines().to_vec();
+        e
+    }
+
+    pub fn open(path: &Path) -> std::io::Result<Editor> {
+        let mut e = Editor::new();
+        e.load(path)?;
+        Ok(e)
+    }
+
     pub fn message(&self) -> Option<&Message> {
         self.message.as_ref()
     }
