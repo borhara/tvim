@@ -242,8 +242,32 @@ impl Editor {
         Ok(e)
     }
 
+    pub fn buffer(&self) -> &Buffer {
+        &self.buf
+    }
+
+    pub fn text(&self) -> String {
+        self.buf.text()
+    }
+
+    pub fn cursor(&self) -> Pos {
+        self.cursor
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
     pub fn message(&self) -> Option<&Message> {
         self.message.as_ref()
+    }
+
+    pub fn is_modified(&self) -> bool {
+        self.version != self.saved
+    }
+
+    pub fn should_quit(&self) -> bool {
+        self.quit
     }
 
     pub fn file(&self) -> &FileInfo {
@@ -270,6 +294,10 @@ impl Editor {
             text: text.into(),
             error: true,
         });
+    }
+
+    pub(crate) fn set_quit(&mut self) {
+        self.quit = true;
     }
 
 }
