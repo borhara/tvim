@@ -1,3 +1,4 @@
+mod common;
 use common::text_after as t;
 
 #[test]

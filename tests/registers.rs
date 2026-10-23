@@ -1,3 +1,4 @@
+mod common;
 use common::ed;
 use tvim::keys::parse;
 
