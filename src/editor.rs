@@ -103,6 +103,13 @@ pub struct FileInfo {
     pub new: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+struct Snapshot {
+    lines: Vec<String>,
+    cursor: Pos,
+    version: u64,
+}
+
 pub struct Editor {
     pub(crate) buf: Buffer,
     pub(crate) cursor: Pos,
@@ -110,6 +117,8 @@ pub struct Editor {
     pub(crate) mode: Mode,
     pub(crate) anchor: Pos,
     last_visual: Option<(Pos, Pos, Mode)>,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
     version: u64,
     saved: u64,
     versions: u64,
@@ -294,6 +303,29 @@ impl Editor {
             Mode::Insert | Mode::Replace => len,
             _ => len.saturating_sub(1),
         }
+    }
+
+    fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            lines: self.buf.lines().to_vec(),
+            cursor: self.cursor,
+            version: self.version,
+        }
+    }
+
+    fn restore(&mut self, s: Snapshot) {
+        let changed = (0..self.buf.len().max(s.lines.len()))
+            .find(|&r| self.buf.lines().get(r) != s.lines.get(r))
+            .unwrap_or(0);
+        self.buf.replace_all(s.lines);
+        self.version = s.version;
+        let row = changed.min(self.buf.last_row());
+        self.cursor = if s.cursor.row == row {
+            s.cursor
+        } else {
+            self.first_non_blank_pos(row)
+        };
+        self.mode = Mode::Normal;
     }
 
     pub(crate) fn info(&mut self, text: impl Into<String>) {
