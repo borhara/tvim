@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
-use crate::command::{Act, Cmd};
+use crate::command::{Act, Cmd, Motion};
 use crate::motion::Find;
 use crate::syntax;
 use crate::text::{char_count, col_at, first_non_blank, vcol};
@@ -401,6 +401,7 @@ impl Editor {
         }
         let n = cmd.n();
         match cmd.act {
+            Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::G('t') => match cmd.count {
             },
             Act::Select { .. } => {}
@@ -430,6 +431,23 @@ impl Editor {
             return max;
         }
         col_at(line, self.want, self.options.tab_stop).min(max)
+    }
+
+    fn move_cursor(&mut self, m: Motion, count: Option<usize>) {
+        if jump {
+        }
+        self.cursor = to;
+        match m {
+            Motion::Up | Motion::Down => {}
+            Motion::LineEnd => self.want = usize::MAX,
+            _ => self.set_want(),
+        }
+        if !self.mode.is_visual() {
+            self.clamp();
+        }
+        if jump {
+            self.land(matches!(m, Motion::SearchNext(_)));
+        }
     }
 
     pub(crate) fn set_quit(&mut self) {
