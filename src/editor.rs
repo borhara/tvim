@@ -6,6 +6,7 @@ use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::motion::Find;
 use crate::syntax;
+use crate::text::{char_count, col_at, first_non_blank, vcol};
 use crate::window::Node;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -282,6 +283,19 @@ impl Editor {
         self.message = None;
     }
 
+    pub(crate) fn clamp(&mut self) {
+        self.cursor.row = self.cursor.row.min(self.buf.last_row());
+        let max = self.max_col(self.buf.line_len(self.cursor.row));
+        self.cursor.col = self.cursor.col.min(max);
+    }
+
+    fn max_col(&self, len: usize) -> usize {
+        match self.mode {
+            Mode::Insert | Mode::Replace => len,
+            _ => len.saturating_sub(1),
+        }
+    }
+
     pub(crate) fn info(&mut self, text: impl Into<String>) {
         self.message = Some(Message {
             text: text.into(),
@@ -296,8 +310,35 @@ impl Editor {
         });
     }
 
+    pub(crate) fn first_non_blank_pos(&self, row: usize) -> Pos {
+        Pos::new(row, first_non_blank(self.buf.line(row)))
+    }
+
+    fn clamp_pos(&self, p: Pos) -> Pos {
+        let row = p.row.min(self.buf.last_row());
+        Pos::new(row, p.col.min(self.buf.line_len(row).saturating_sub(1)))
+    }
+
+    fn set_want(&mut self) {
+        self.want = vcol(self.buf.line(self.cursor.row), self.cursor.col, self.options.tab_stop);
+    }
+
+    fn col_for_want(&self, row: usize) -> usize {
+        let line = self.buf.line(row);
+        let max = self.max_col(char_count(line));
+        if self.want == usize::MAX {
+            return max;
+        }
+        col_at(line, self.want, self.options.tab_stop).min(max)
+    }
+
     pub(crate) fn set_quit(&mut self) {
         self.quit = true;
+    }
+
+    pub(crate) fn set_cursor(&mut self, p: Pos) {
+        self.cursor = p;
+        self.set_want();
     }
 
 }
