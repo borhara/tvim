@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
+use crate::command::{Act, Cmd};
 use crate::motion::Find;
 use crate::syntax;
 use crate::text::{char_count, col_at, first_non_blank, vcol};
@@ -393,6 +394,20 @@ impl Editor {
             text: text.into(),
             error: true,
         });
+    }
+
+    fn run(&mut self, cmd: Cmd) {
+        if change {
+        }
+        let n = cmd.n();
+        match cmd.act {
+            Act::G('t') => match cmd.count {
+            },
+            Act::Select { .. } => {}
+        }
+        if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
+            self.dot = self.building.take();
+        }
     }
 
     pub(crate) fn first_non_blank_pos(&self, row: usize) -> Pos {
