@@ -1,3 +1,4 @@
+mod common;
 use common::cursor_after as at;
 
 #[test]
