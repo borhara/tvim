@@ -36,6 +36,12 @@ impl Mode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Message {
+    pub text: String,
+    pub error: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
     pub number: bool,
     pub relative_number: bool,
@@ -113,6 +119,7 @@ pub struct Editor {
     pub(crate) last_substitute: Option<(String, String)>,
     search_backward: bool,
     pub(crate) search_shown: bool,
+    pub(crate) message: Option<Message>,
     last_find: Option<Find>,
     marks: HashMap<char, Pos>,
     replaying: bool,
@@ -149,12 +156,34 @@ impl Default for Editor {
 }
 
 impl Editor {
+    pub fn message(&self) -> Option<&Message> {
+        self.message.as_ref()
+    }
+
     pub fn file(&self) -> &FileInfo {
         &self.file
     }
 
     pub fn name(&self) -> String {
         display_name(self.file.path.as_deref())
+    }
+
+    pub fn clear_message(&mut self) {
+        self.message = None;
+    }
+
+    pub(crate) fn info(&mut self, text: impl Into<String>) {
+        self.message = Some(Message {
+            text: text.into(),
+            error: false,
+        });
+    }
+
+    pub(crate) fn error(&mut self, text: impl Into<String>) {
+        self.message = Some(Message {
+            text: text.into(),
+            error: true,
+        });
     }
 
 }
