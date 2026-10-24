@@ -89,6 +89,22 @@ fn brackets_and_paragraphs() {
 }
 
 #[test]
+fn the_screen_top_middle_and_bottom() {
+    let t: String = (1..=100).map(|n| n.to_string()).collect::<Vec<_>>().join("\n");
+    let mut e = common::ed(&t);
+    e.set_screen(80, 12);
+    e.keys(&tvim::keys::parse("L"));
+    assert_eq!(e.cursor().row, 6, "short of the bottom by the scroll offset");
+    e.keys(&tvim::keys::parse("M"));
+    assert_eq!(e.cursor().row, 4);
+    e.keys(&tvim::keys::parse("50Gzt"));
+    e.scroll();
+    assert_eq!(e.top(), 46);
+    e.keys(&tvim::keys::parse("H"));
+    assert_eq!(e.cursor().row, 49);
+}
+
+#[test]
 fn brackets_on_a_very_long_line() {
     let line = format!("({})", "ab ".repeat(66_000));
     let mut e = common::ed(&line);
