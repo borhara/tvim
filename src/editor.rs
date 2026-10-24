@@ -434,6 +434,9 @@ impl Editor {
     }
 
     fn move_cursor(&mut self, m: Motion, count: Option<usize>) {
+        let Some((to, _)) = self.target(m, count, false) else {
+            return;
+        };
         if jump {
         }
         self.cursor = to;
@@ -448,6 +451,27 @@ impl Editor {
         if jump {
             self.land(matches!(m, Motion::SearchNext(_)));
         }
+    }
+
+    pub(crate) fn target(&mut self, m: Motion, count: Option<usize>, for_op: bool) -> Option<(Pos, Kind)> {
+        use Kind::*;
+        let n = count.unwrap_or(1);
+        let p = self.cursor;
+        let b = &self.buf;
+        let len = b.line_len(p.row);
+        let fnb = |row: usize| Pos::new(row, first_non_blank(b.line(row)));
+        let repeat = |step: fn(&Buffer, Pos, bool) -> Option<Pos>, big: bool| {
+            let mut at = p;
+            for _ in 0..n {
+                match step(b, at, big) {
+                    Some(q) => at = q,
+                    None => break,
+                }
+            }
+            (at != p).then_some(at)
+        };
+        Some(match m {
+        })
     }
 
     pub(crate) fn set_quit(&mut self) {
