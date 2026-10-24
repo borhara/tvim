@@ -537,6 +537,45 @@ impl Editor {
         })
     }
 
+    fn scroll_half(&mut self, down: bool, count: Option<usize>) {
+        let n = count.unwrap_or(self.text_rows() / 2).max(1);
+        let max_top = self.buf.last_row();
+        let top = self.top.get();
+        if down {
+            if self.cursor.row >= self.buf.last_row() {
+                return;
+            }
+            self.top
+                .set((top + n).min(max_top.saturating_sub(self.text_rows().saturating_sub(1)).max(top)));
+            self.cursor.row = (self.cursor.row + n).min(self.buf.last_row());
+        } else {
+            if self.cursor.row == 0 {
+                return;
+            }
+            self.top.set(top.saturating_sub(n));
+            self.cursor.row = self.cursor.row.saturating_sub(n);
+        }
+        self.cursor = self.first_non_blank_pos(self.cursor.row);
+        self.set_want();
+    }
+
+    fn scroll_page(&mut self, down: bool, n: usize) {
+        let page = self.text_rows().saturating_sub(2).max(1) * n;
+        let top = self.top.get();
+        let so = self.scroll_off();
+        if down {
+            let new = (top + page).min(self.buf.last_row());
+            self.top.set(new);
+            self.cursor.row = (new + so).min(self.buf.last_row());
+        } else {
+            let new = top.saturating_sub(page);
+            self.top.set(new);
+            self.cursor.row = (new + self.text_rows()).saturating_sub(1 + so).min(self.buf.last_row());
+        }
+        self.cursor = self.first_non_blank_pos(self.cursor.row);
+        self.set_want();
+    }
+
     pub(crate) fn load(&mut self, path: &Path) -> std::io::Result<()> {
         if path.is_dir() {
             return Ok(());
