@@ -295,6 +295,37 @@ impl Editor {
         self.message = None;
     }
 
+    pub fn set_screen(&self, width: usize, height: usize) {
+        self.screen.set((width, height));
+    }
+
+    pub fn text_rows(&self) -> usize {
+        self.screen.get().1.saturating_sub(2).max(1)
+    }
+
+    pub fn gutter(&self) -> usize {
+        self.gutter_for(self.buf.len())
+    }
+
+    pub(crate) fn gutter_for(&self, lines: usize) -> usize {
+        if self.zen() || !(self.options.number || self.options.relative_number) {
+            return 0;
+        }
+        lines.checked_ilog10().map_or(1, |d| d as usize + 1).max(3) + 4
+    }
+
+    pub fn text_cols(&self) -> usize {
+        self.screen.get().0.saturating_sub(self.gutter() + 1).max(1)
+    }
+
+    pub fn top(&self) -> usize {
+        self.top.get()
+    }
+
+    pub fn left(&self) -> usize {
+        self.left.get()
+    }
+
     pub(crate) fn clamp(&mut self) {
         self.cursor.row = self.cursor.row.min(self.buf.last_row());
         let max = self.max_col(self.buf.line_len(self.cursor.row));
