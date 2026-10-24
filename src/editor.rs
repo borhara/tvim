@@ -549,6 +549,56 @@ impl Editor {
         out
     }
 
+    pub(crate) fn write(&mut self, path: Option<&str>, force: bool, rows: Option<(usize, usize)>) -> bool {
+        let target = match path {
+            Some(p) => PathBuf::from(expand_home(p)),
+            None => match &self.file.path {
+                Some(p) => p.clone(),
+                None => {
+                    self.error("E32: No file name");
+                    return false;
+                }
+            },
+        };
+        let ours = self.file.path.as_ref() == Some(&target);
+        if !ours && !force && target.exists() {
+            self.error("E13: File exists (add ! to override)");
+            return false;
+        }
+        if ours && rows.is_some() && !force {
+            self.error("E140: Use ! to write partial buffer");
+            return false;
+        }
+        let contents = self.contents(rows);
+        let existed = target.exists();
+        if let Err(e) = std::fs::write(&target, &contents) {
+            self.error(format!("E212: Can't open file for writing: {e}"));
+            return false;
+        }
+        let new = !existed;
+        if self.file.path.is_none() {
+            self.file.path = Some(target.clone());
+        }
+        if self.file.path.as_ref() == Some(&target) && rows.is_none() {
+            self.saved = self.version;
+            self.saved_lines = self.buf.lines().to_vec();
+            *self.marks_cache.borrow_mut() = None;
+            self.file.new = false;
+        }
+        let lines = if contents.is_empty() {
+            0
+        } else {
+            rows.map_or(self.buf.len(), |(a, b)| b - a + 1)
+        };
+        let new = if new { " [New]" } else { "" };
+        self.info(format!(
+            "\"{}\"{new} {lines}L, {}B written",
+            target.display(),
+            contents.len()
+        ));
+        true
+    }
+
     fn file_info(&mut self) {
         let lines = self.buf.len();
         let pct = (self.cursor.row + 1) * 100 / lines;
@@ -573,4 +623,11 @@ impl Editor {
 
 fn display_name(path: Option<&Path>) -> String {
     path.map_or_else(|| "[No Name]".to_string(), |p| p.display().to_string())
+}
+
+pub(crate) fn expand_home(path: &str) -> String {
+    match (path.strip_prefix("~/"), std::env::var("HOME")) {
+        (Some(rest), Ok(home)) => format!("{home}/{rest}"),
+        _ => path.to_string(),
+    }
 }
