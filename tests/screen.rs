@@ -18,3 +18,13 @@ fn relative_numbers() {
     let shown = screen(e, 30, 8);
     assert_eq!(&rows(&shown)[1..4], ["    1   a", "  2   › b", "    1   c"]);
 }
+
+#[test]
+fn long_lines_scroll_sideways() {
+    let mut e = ed(&format!("{}END", "x".repeat(50)));
+    e.keys(&parse("$"));
+    let shown = screen(e, 30, 8);
+    let first = rows(&shown)[1];
+    assert!(first.starts_with("    1 › x") && first.ends_with("xxEND"), "{first:?}");
+    assert_eq!(first.chars().count(), 29, "the last column stays clear");
+}
