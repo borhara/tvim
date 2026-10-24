@@ -11,6 +11,7 @@ pub mod regex;
 pub mod syntax;
 pub mod text;
 mod time;
+pub mod ui;
 
 pub use buffer::{Buffer, Pos};
 pub use editor::{Editor, Mode};
