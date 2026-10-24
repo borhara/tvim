@@ -534,6 +534,32 @@ impl Editor {
         Ok(())
     }
 
+    pub fn contents(&self, rows: Option<(usize, usize)>) -> String {
+        let nl = if self.file.crlf { "\r\n" } else { "\n" };
+        let lines = match rows {
+            Some((a, b)) => &self.buf.lines()[a..=b],
+            None => self.buf.lines(),
+        };
+        let mut out = lines.join(nl);
+        let whole = rows.is_none();
+        // keep the file's original trailing newline, or lack of one
+        if !whole || self.file.final_newline && !self.buf.is_empty() {
+            out.push_str(nl);
+        }
+        out
+    }
+
+    fn file_info(&mut self) {
+        let lines = self.buf.len();
+        let pct = (self.cursor.row + 1) * 100 / lines;
+        let modified = if self.is_modified() { " [Modified]" } else { "" };
+        self.info(format!(
+            "\"{}\"{modified} {lines} line{} --{pct}%--",
+            self.name(),
+            if lines == 1 { "" } else { "s" }
+        ));
+    }
+
     pub(crate) fn set_quit(&mut self) {
         self.quit = true;
     }
