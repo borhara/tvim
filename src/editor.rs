@@ -474,6 +474,66 @@ impl Editor {
         })
     }
 
+    pub(crate) fn load(&mut self, path: &Path) -> std::io::Result<()> {
+        if path.is_dir() {
+            return Ok(());
+        }
+        let display = path.display().to_string();
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                let size = bytes.len();
+                let text = String::from_utf8(bytes).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{display} isn't UTF-8 text"))
+                })?;
+                let lf = text.matches('\n').count();
+                let crlf = lf > 0 && text.matches("\r\n").count() == lf;
+                let text = if crlf { text.replace("\r\n", "\n") } else { text };
+                let final_newline = text.is_empty() || text.ends_with('\n');
+                let body = text.strip_suffix('\n').unwrap_or(&text);
+                self.buf = Buffer::from_text(body);
+                self.file = FileInfo {
+                    path: Some(path.to_path_buf()),
+                    crlf,
+                    final_newline,
+                    new: false,
+                };
+                let lines = if text.is_empty() { 0 } else { self.buf.len() };
+                let mut notes = String::new();
+                if crlf {
+                    notes.push_str(" [dos]");
+                }
+                if !final_newline {
+                    notes.push_str(" [noeol]");
+                }
+                self.info(format!("\"{display}\"{notes} {lines}L, {size}B"));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                self.buf = Buffer::new();
+                self.file = FileInfo {
+                    path: Some(path.to_path_buf()),
+                    crlf: false,
+                    final_newline: true,
+                    new: true,
+                };
+                self.info(format!("\"{display}\" [New]"));
+            }
+            Err(e) => return Err(e),
+        }
+        self.cursor = Pos::default();
+        self.saved_lines = self.buf.lines().to_vec();
+        self.undo.clear();
+        self.redo.clear();
+        self.versions += 1;
+        self.version = self.versions;
+        self.saved = self.version;
+        self.top.set(0);
+        self.left.set(0);
+        self.marks.clear();
+        self.explorer_focused = false;
+        self.mode = Mode::Normal;
+        Ok(())
+    }
+
     pub(crate) fn set_quit(&mut self) {
         self.quit = true;
     }
