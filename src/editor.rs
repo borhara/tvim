@@ -326,6 +326,38 @@ impl Editor {
         self.left.get()
     }
 
+    fn scroll_off(&self) -> usize {
+        self.options.scroll_off.min(self.text_rows().saturating_sub(1) / 2)
+    }
+
+    pub fn scroll(&self) {
+        let rows = self.text_rows();
+        let so = self.scroll_off();
+        let row = self.cursor.row;
+        let mut top = self.top.get().min(self.buf.last_row());
+        if row < top + so {
+            top = row.saturating_sub(so);
+        }
+        let below = (row + so).min(self.buf.last_row());
+        if below >= top + rows {
+            top = below + 1 - rows;
+        }
+        self.top.set(top);
+
+        let cols = self.text_cols();
+        let line = self.buf.line(row);
+        let start = vcol(line, self.cursor.col, self.options.tab_stop);
+        let end = vcol(line, self.cursor.col + 1, self.options.tab_stop).max(start + 1);
+        let mut left = self.left.get();
+        if start < left {
+            left = start;
+        }
+        if end > left + cols {
+            left = end - cols;
+        }
+        self.left.set(left);
+    }
+
     pub(crate) fn clamp(&mut self) {
         self.cursor.row = self.cursor.row.min(self.buf.last_row());
         let max = self.max_col(self.buf.line_len(self.cursor.row));
