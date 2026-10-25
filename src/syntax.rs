@@ -16,6 +16,7 @@ pub enum Kind {
     Attribute,
     Punct,
     Operator,
+    Key,
     Label,
     Heading,
     Strong,
@@ -434,6 +435,7 @@ fn code(chars: &[char], syntax: Syntax, mut state: State) -> (Vec<Kind>, State) 
             {
                 let key_ok = !quoted && chars[start..at].iter().all(|c| is_word(*c) || "-. ".contains(*c));
                 if key_ok && at > start && !(syntax == Syntax::Yaml && chars[start] == '#') {
+                    fill(&mut kinds, start, at, Kind::Key);
                     fill(&mut kinds, at, at + 1, Kind::Punct);
                     i = at + 1;
                 }
@@ -558,6 +560,7 @@ fn code(chars: &[char], syntax: Syntax, mut state: State) -> (Vec<Kind>, State) 
                 if let Some(end) = end {
                     let after = (end + 1..n).find(|&j| !chars[j].is_whitespace());
                     if after.is_some_and(|a| chars[a] == ':') {
+                        fill(&mut kinds, i - 1, end + 1, Kind::Key);
                         i = end + 1;
                         state = State::Normal;
                     }
