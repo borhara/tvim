@@ -47,6 +47,21 @@ fn whole_lines() {
 }
 
 #[test]
+fn to_line_ends() {
+    assert_eq!(after("hello world", "wD"), ("hello ".into(), (0, 5)));
+    assert_eq!(t("hello world", "wd$"), "hello ");
+    assert_eq!(t("hello world", "wCthere<Esc>"), "hello there");
+    assert_eq!(t("hello world", "wd0"), "world");
+    assert_eq!(t("   hello", "$d^"), "   o");
+}
+
+#[test]
+fn exclusive_motions_ending_at_a_line_start() {
+    assert_eq!(t("a\nb\n\nc", "d}"), "\nc", "from the line's start, whole lines");
+    assert_eq!(t("xa\nb\n\nc", "ld}"), "x\n\nc", "from inside, up to the line's end");
+}
+
+#[test]
 fn text_objects() {
     assert_eq!(t("foo bar baz", "wdiw"), "foo  baz");
     assert_eq!(t("foo bar baz", "wdaw"), "foo baz");
