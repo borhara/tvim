@@ -31,6 +31,22 @@ fn change_words_keep_the_space_after() {
 }
 
 #[test]
+fn whole_lines() {
+    let src = "a\nb\nc\nd";
+    assert_eq!(after(src, "dd"), ("b\nc\nd".into(), (0, 0)));
+    assert_eq!(t(src, "2dd"), "c\nd");
+    assert_eq!(t(src, "jdj"), "a\nd");
+    assert_eq!(t(src, "jjdk"), "a\nd");
+    assert_eq!(t(src, "jdG"), "a");
+    assert_eq!(t(src, "jjdgg"), "d");
+    assert_eq!(t(src, "Gdd"), "a\nb\nc");
+    assert_eq!(t(src, "9dd"), src, "more lines than there are does nothing");
+    assert_eq!(t("only", "dd"), "");
+    assert_eq!(t("  x\ny", "ccz<Esc>"), "  z\ny", "cc keeps the indent");
+    assert_eq!(t("a\nb", "Sz<Esc>"), "z\nb");
+}
+
+#[test]
 fn text_objects() {
     assert_eq!(t("foo bar baz", "wdiw"), "foo  baz");
     assert_eq!(t("foo bar baz", "wdaw"), "foo baz");
@@ -50,4 +66,10 @@ fn text_objects() {
     assert_eq!(t("a\nb\n\nc", "dap"), "c");
     assert_eq!(t("a\nb\n\nc", "dip"), "\nc");
     assert_eq!(t("<a href>", "ldi<"), "<>");
+}
+
+#[test]
+fn changing_every_line_leaves_one() {
+    assert_eq!(t("abc", "ccx<Esc>"), "x");
+    assert_eq!(t("a\nb", "cGx<Esc>"), "x");
 }
