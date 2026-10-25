@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion};
-use crate::motion::Find;
+use crate::motion::{self, Find};
 use crate::syntax;
 use crate::text::{char_count, col_at, first_non_blank, vcol};
 use crate::window::Node;
@@ -568,6 +568,38 @@ impl Editor {
         };
         Some(match m {
         })
+    }
+
+    fn range_to(&self, to: Pos, kind: Kind) -> Range {
+        let from = self.cursor;
+        let (a, b) = if to < from { (to, from) } else { (from, to) };
+        match kind {
+            Kind::Linewise => Range::lines(a.row, b.row),
+            Kind::Inclusive => Range {
+                start: a,
+                end: Pos::new(b.row, (b.col + 1).min(self.buf.line_len(b.row))),
+                linewise: false,
+            },
+            Kind::Exclusive => {
+                // vim's exclusive motion rules, see :h exclusive
+                if b.col == 0 && b.row > a.row {
+                    if a.col <= first_non_blank(self.buf.line(a.row)) {
+                        return Range::lines(a.row, b.row - 1);
+                    }
+                    let row = b.row - 1;
+                    return Range {
+                        start: a,
+                        end: Pos::new(row, self.buf.line_len(row)),
+                        linewise: false,
+                    };
+                }
+                Range {
+                    start: a,
+                    end: b,
+                    linewise: false,
+                }
+            }
+        }
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
