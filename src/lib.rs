@@ -5,6 +5,7 @@ pub mod comment;
 pub mod complete;
 pub mod diff;
 pub mod editor;
+pub mod keys;
 pub mod motion;
 pub mod object;
 pub mod regex;
