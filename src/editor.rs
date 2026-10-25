@@ -10,7 +10,7 @@ use crate::command::{Act, Cmd, Motion, Op, Target};
 use crate::motion::{self, Find};
 use crate::object::object;
 use crate::syntax;
-use crate::text::{char_count, col_at, first_non_blank, vcol};
+use crate::text::{char_count, col_at, first_non_blank, indent, vcol};
 use crate::window::Node;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -671,6 +671,115 @@ impl Editor {
             linewise: false,
         };
         self.apply(Op::Change, range, register, 1);
+    }
+
+    pub(crate) fn apply(&mut self, op: Op, r: Range, register: Option<char>, count: usize) {
+        match op {
+            Op::Yank => {
+                let lines = r.end.row - r.start.row + 1;
+                if r.linewise {
+                    if lines > 2 {
+                        self.info(format!("{lines} lines yanked"));
+                    }
+                    self.cursor.row = r.start.row.min(self.cursor.row);
+                } else {
+                    self.cursor = r.start;
+                }
+            }
+            Op::Delete => {
+                if r.linewise {
+                    self.touch();
+                    self.buf.delete_lines(r.start.row, r.end.row);
+                    let row = r.start.row.min(self.buf.last_row());
+                    self.cursor = self.first_non_blank_pos(row);
+                    let gone = r.end.row - r.start.row + 1;
+                    if gone > 2 {
+                        self.info(format!("{gone} fewer lines"));
+                    }
+                } else {
+                    if r.start >= r.end {
+                        return;
+                    }
+                    let text = self.buf.slice(r.start, r.end);
+                    self.touch();
+                    self.buf.delete(r.start, r.end);
+                    self.cursor = r.start;
+                }
+                self.set_want();
+            }
+            Op::Change => {
+                if r.linewise {
+                    self.touch();
+                    let keep = if self.options.auto_indent {
+                        indent(self.buf.line(r.start.row)).to_string()
+                    } else {
+                        String::new()
+                    };
+                    self.cursor = Pos::new(r.start.row, char_count(&keep));
+                    self.buf.replace_lines(r.start.row, r.end.row, vec![keep]);
+                } else {
+                    let text = self.buf.slice(r.start, r.end);
+                    self.touch();
+                    self.buf.delete(r.start, r.end);
+                    self.cursor = r.start;
+                }
+            }
+            Op::Indent | Op::Dedent => {
+                self.touch();
+                let times = count.max(1);
+                for row in r.start.row..=r.last_row() {
+                    let line = self.buf.line(row).to_string();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let width = vcol(&line, first_non_blank(&line), self.options.tab_stop);
+                    let sw = self.options.shift_width.max(1);
+                    let new = if op == Op::Indent {
+                        width + sw * times
+                    } else {
+                        width.saturating_sub(sw * times)
+                    };
+                    let rest = line.trim_start_matches([' ', '\t']);
+                }
+                self.cursor = self.first_non_blank_pos(r.start.row);
+                let lines = r.end.row - r.start.row + 1;
+                if lines > 2 {
+                    let sign = if op == Op::Indent { '>' } else { '<' };
+                    self.info(format!(
+                        "{lines} lines {sign}ed {times} time{}",
+                        if times == 1 { "" } else { "s" }
+                    ));
+                }
+            }
+            Op::Lower | Op::Upper | Op::ToggleCase => {
+                self.touch();
+                let text = self.buf.slice(from, to);
+                let changed: String = text
+                    .chars()
+                    .map(|c| match op {
+                    })
+                    .collect();
+                self.buf.delete(from, to);
+                self.buf.insert(from, &changed);
+                self.cursor = from;
+            }
+            Op::Comment => {
+                let name = self
+                    .file
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.file_name()?.to_str())
+                    .unwrap_or("");
+                let (open, close) = crate::comment::markers(name);
+                let last = r.last_row().min(self.buf.last_row());
+                let lines = crate::comment::toggle(&self.buf.lines()[r.start.row..=last], open, close);
+                self.touch();
+                for (row, line) in (r.start.row..).zip(lines) {
+                    self.buf.set_line(row, line);
+                }
+                self.cursor = self.first_non_blank_pos(r.start.row);
+            }
+        }
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
