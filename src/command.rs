@@ -430,4 +430,34 @@ mod tests {
         assert_eq!(state("dg"), Parse::More);
     }
 
+    #[test]
+    fn registers_and_plain_commands() {
+        let c = cmd("\"a3yy");
+        assert_eq!((c.register, c.count), (Some('a'), Some(3)));
+        assert_eq!(c.keys, k("yy"));
+        assert_eq!(state("\""), Parse::More);
+        assert_eq!(state("\"!"), Parse::Invalid);
+        assert_eq!(cmd("x").act, Act::Key(Key::Char('x')));
+        assert_eq!(cmd("rx").act, Act::With('r', 'x'));
+        assert_eq!(cmd("r<CR>").act, Act::With('r', '\n'));
+        assert_eq!(cmd("ZZ").act, Act::With('Z', 'Z'));
+        assert_eq!(cmd("zz").act, Act::Z(Key::Char('z')));
+        assert_eq!(cmd("gv").act, Act::G('v'));
+        assert_eq!(cmd("<C-r>").act, Act::Key(Key::Ctrl('r')));
+        assert_eq!(state("Q"), Parse::Invalid);
+    }
+
+    #[test]
+    fn visual_mode_operators_need_no_target() {
+        let v = |s: &str| match parse(&k(s), true) {
+            Parse::Done(c) => c.act,
+            other => panic!("{s}: {other:?}"),
+        };
+        assert_eq!(v("d"), Act::Operate(Op::Delete, Target::Lines));
+        assert_eq!(v("U"), Act::Operate(Op::Upper, Target::Lines));
+        assert_eq!(v("iw"), Act::Select { kind: 'w', inner: true });
+        assert_eq!(v("j"), Act::Move(Motion::Down));
+        assert_eq!(v("o"), Act::Key(Key::Char('o')));
+        assert_eq!(v("rx"), Act::With('r', 'x'));
+    }
 }
