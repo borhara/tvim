@@ -111,6 +111,39 @@ struct Snapshot {
     version: u64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Exclusive,
+    Inclusive,
+    Linewise,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Range {
+    pub start: Pos,
+    pub end: Pos,
+    pub linewise: bool,
+}
+
+impl Range {
+    pub fn lines(first: usize, last: usize) -> Self {
+        Range {
+            start: Pos::new(first, 0),
+            end: Pos::new(last, 0),
+            linewise: true,
+        }
+    }
+
+    // a charwise range ending at column 0 takes nothing from that line
+    pub fn last_row(&self) -> usize {
+        if !self.linewise && self.end.col == 0 && self.end.row > self.start.row {
+            self.end.row - 1
+        } else {
+            self.end.row
+        }
+    }
+}
+
 const MAX_UNDO: usize = 1000;
 
 pub struct Editor {
