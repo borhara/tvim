@@ -83,6 +83,7 @@ impl Syntax {
             Syntax::Go => "go",
             Syntax::C => "c",
             Syntax::Java => "java",
+            Syntax::Shell => "shell",
             Syntax::Lua => "lua",
             Syntax::Toml => "toml",
             Syntax::Yaml => "yaml",
@@ -527,6 +528,11 @@ fn code(chars: &[char], syntax: Syntax, mut state: State) -> (Vec<Kind>, State) 
             }
         }
         if syntax.line_comment().iter().any(|lc| starts(chars, i, lc)) {
+            // # mid-word isn't a comment in shell
+            if syntax != Syntax::Shell || i == 0 || chars[i - 1].is_whitespace() {
+                comment(chars, &mut kinds, i, n);
+                break;
+            }
         }
         if syntax == Syntax::Python && (starts(chars, i, "\"\"\"") || starts(chars, i, "'''")) {
             state = State::Triple(c);
@@ -887,6 +893,24 @@ mod tests {
         assert_eq!(s, State::Str('`'));
         let (_, s) = highlight("x = \"unclosed", Syntax::Python, State::Normal);
         assert_eq!(s, State::Normal, "a Python string doesn't run on");
+    }
+
+    #[test]
+    fn config_files() {
+        assert_eq!(kind_of("name = \"tvim\"", Syntax::Toml, "name"), Key);
+        assert_eq!(kind_of("[dependencies]", Syntax::Toml, "dependencies"), Type);
+        assert_eq!(kind_of("  image: nginx:1.2", Syntax::Yaml, "image"), Key);
+        assert_eq!(kind_of("- run: make", Syntax::Yaml, "run"), Key);
+        assert_eq!(kind_of("{\"a\": true}", Syntax::Json, "\"a\""), Key);
+        assert_eq!(kind_of("{\"a\": true}", Syntax::Json, "true"), Constant);
+        assert_eq!(kind_of("{\"a\": \"b\"}", Syntax::Json, "\"b\""), Str);
+    }
+
+    #[test]
+    fn shell() {
+        assert_eq!(kind_of("echo $HOME # hi", Syntax::Shell, "echo"), Function);
+        assert_eq!(kind_of("echo $HOME # hi", Syntax::Shell, "$HOME"), Constant);
+        assert_eq!(kind_of("echo a#b", Syntax::Shell, "a#b"), Plain);
     }
 
 }
