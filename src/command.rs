@@ -96,6 +96,75 @@ pub enum MotionParse {
     Done(Motion, usize),
 }
 
+pub fn motion(keys: &[Key]) -> MotionParse {
+    use Motion::*;
+    let Some(&key) = keys.first() else {
+        return MotionParse::More;
+    };
+    let one = |m| MotionParse::Done(m, 1);
+    let with_char = |make: &dyn Fn(char) -> Motion| match keys.get(1) {
+        None => MotionParse::More,
+        Some(Key::Char(c)) => MotionParse::Done(make(*c), 2),
+        Some(Key::Tab) => MotionParse::Done(make('\t'), 2),
+        _ => MotionParse::Invalid,
+    };
+    match key {
+        Key::Char('h') | Key::Left | Key::Backspace | Key::Ctrl('h') => one(Left),
+        Key::Char('l') | Key::Right | Key::Char(' ') => one(Right),
+        Key::Char('j') | Key::Down | Key::Ctrl('j') | Key::Ctrl('n') => one(Down),
+        Key::Char('k') | Key::Up => one(Up),
+        Key::Char('0') | Key::Home => one(LineStart),
+        Key::Char('^') => one(FirstNonBlank),
+        Key::Char('$') | Key::End => one(LineEnd),
+        Key::Char('w') => one(WordForward(false)),
+        Key::Char('W') => one(WordForward(true)),
+        Key::Char('b') => one(WordBack(false)),
+        Key::Char('B') => one(WordBack(true)),
+        Key::Char('e') => one(WordEnd(false)),
+        Key::Char('E') => one(WordEnd(true)),
+        Key::Char('G') => one(LastLine),
+        Key::Char('%') => one(Bracket),
+        Key::Char('}') => one(ParagraphForward),
+        Key::Char('{') => one(ParagraphBack),
+        Key::Char('H') => one(ScreenTop),
+        Key::Char('M') => one(ScreenMiddle),
+        Key::Char('L') => one(ScreenBottom),
+        Key::Enter | Key::Char('+') | Key::Ctrl('m') => one(NextLine),
+        Key::Char('-') => one(PrevLine),
+        Key::Char('_') => one(CountLine),
+        Key::Char('|') => one(Column),
+        Key::Char('n') => one(SearchNext(false)),
+        Key::Char('N') => one(SearchNext(true)),
+        Key::Char(';') => one(RepeatFind(false)),
+        Key::Char(',') => one(RepeatFind(true)),
+        Key::Char(c @ ('f' | 'F' | 't' | 'T')) => with_char(&|ch| {
+            Find(crate::motion::Find {
+                forward: c.is_ascii_lowercase(),
+                till: c.eq_ignore_ascii_case(&'t'),
+                ch,
+            })
+        }),
+        Key::Char(c @ (']' | '[')) => match keys.get(1) {
+            None => MotionParse::More,
+            Some(Key::Char('c')) => MotionParse::Done(Hunk(c == ']'), 2),
+            _ => MotionParse::Invalid,
+        },
+        Key::Char('\'') => with_char(&|c| Mark(c, false)),
+        Key::Char('`') => with_char(&|c| Mark(c, true)),
+        Key::Char('g') => match keys.get(1) {
+            None => MotionParse::More,
+            Some(Key::Char('g')) => MotionParse::Done(FirstLine, 2),
+            Some(Key::Char('e')) => MotionParse::Done(WordEndBack(false), 2),
+            Some(Key::Char('E')) => MotionParse::Done(WordEndBack(true), 2),
+            Some(Key::Char('_')) => MotionParse::Done(LastNonBlank, 2),
+            Some(Key::Char('0') | Key::Home) => MotionParse::Done(LineStart, 2),
+            Some(Key::Char('$') | Key::End) => MotionParse::Done(LineEnd, 2),
+            _ => MotionParse::Invalid,
+        },
+        _ => MotionParse::Invalid,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

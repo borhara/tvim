@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use tinsel::app;
 use tvim::editor::Editor;
 
 const USAGE: &str = "\
@@ -80,6 +81,8 @@ fn go_to(editor: &mut Editor, start: &str) {
     let last = editor.buffer().last_row();
     if let Some(text) = start.strip_prefix('/') {
         let mut keys = tvim::keys::parse("G$/");
+        keys.extend(text.chars().map(tinsel::app::Key::Char));
+        keys.push(tinsel::app::Key::Enter);
         editor.keys(&keys);
         return;
     }
