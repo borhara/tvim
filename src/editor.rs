@@ -630,6 +630,7 @@ impl Editor {
                     (Op::Change, Motion::WordForward(big))
                         if self.buf.char_at(self.cursor).is_some_and(|c| !c.is_whitespace()) =>
                     {
+                        return self.change_word(big, n, register);
                     }
                     _ => m,
                 };
@@ -642,6 +643,31 @@ impl Editor {
         // 3>> is three lines, not three shifts
         let times = if matches!(op, Op::Indent | Op::Dedent) { 1 } else { n };
         self.apply(op, range, register, times);
+    }
+
+    fn change_word(&mut self, big: bool, n: usize, register: Option<char>) {
+        let p = self.cursor;
+        let at_end = |e: &Self, q: Pos| {
+            let c = motion::class_at(&e.buf, q, big);
+            let next = motion::class_at(&e.buf, Pos::new(q.row, q.col + 1), big);
+            next != c || next.is_none()
+        };
+        let mut end = p;
+        for i in 0..n {
+            if i == 0 && at_end(self, end) {
+                continue;
+            }
+            match motion::word_end(&self.buf, end, big) {
+                Some(q) => end = q,
+                None => break,
+            }
+        }
+        let range = Range {
+            start: p,
+            end: Pos::new(end.row, (end.col + 1).min(self.buf.line_len(end.row))),
+            linewise: false,
+        };
+        self.apply(Op::Change, range, register, 1);
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
