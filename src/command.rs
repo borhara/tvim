@@ -91,6 +91,162 @@ pub enum Parse {
     Done(Cmd),
 }
 
+pub fn parse(keys: &[Key], visual: bool) -> Parse {
+    let mut i = 0;
+    let mut register = None;
+    if keys.first() == Some(&Key::Char('"')) {
+        match keys.get(1) {
+            None => return Parse::More,
+            Some(Key::Char(c)) if is_register(*c) => register = Some(*c),
+            _ => return Parse::Invalid,
+        }
+        i = 2;
+    }
+    let (count1, used) = count(&keys[i..]);
+    i += used;
+    let start = i;
+    let Some(&key) = keys.get(i) else { return Parse::More };
+    let done = |act: Act, end: usize, count: Option<usize>| {
+        let typed: Vec<Key> = keys[start..end].to_vec();
+        Parse::Done(Cmd {
+            register,
+            count,
+            act,
+            keys: typed,
+        })
+    };
+
+    let op = match operator(&keys[i..], visual) {
+        Some(Ok(found)) => Some(found),
+        Some(Err(())) => return Parse::More,
+        None => None,
+    };
+    if let Some((op, op_len)) = op {
+        if visual {
+            return done(Act::Operate(op, Target::Lines), i + op_len, count1);
+        }
+        let op_keys = &keys[i..i + op_len];
+        i += op_len;
+        let (count2, used) = count(&keys[i..]);
+        let count2_at = i;
+        i += used;
+        let total = match (count1, count2) {
+            (None, None) => None,
+            (a, b) => Some(a.unwrap_or(1) * b.unwrap_or(1)),
+        };
+        let finish = |act: Act, end: usize| {
+            let mut typed: Vec<Key> = keys[start..count2_at].to_vec();
+            typed.extend_from_slice(&keys[count2_at + used..end]);
+            Parse::Done(Cmd {
+                register,
+                count: total,
+                act,
+                keys: typed,
+            })
+        };
+        let Some(&next) = keys.get(i) else { return Parse::More };
+        let last = *op_keys.last().unwrap_or(&next);
+        if next == last {
+            return finish(Act::Operate(op, Target::Lines), i + 1);
+        }
+        if op_len == 2 && next == Key::Char('g') {
+            match keys.get(i + 1) {
+                None => return Parse::More,
+                Some(&k) if k == last => return finish(Act::Operate(op, Target::Lines), i + 2),
+                _ => {}
+            }
+        }
+        if let Some(p) = text_object(&keys[i..], |kind, inner| {
+            finish(Act::Operate(op, Target::Object { kind, inner }), i + 2)
+        }) {
+            return p;
+        }
+        return match motion(&keys[i..]) {
+            MotionParse::More => Parse::More,
+            MotionParse::Invalid => Parse::Invalid,
+            MotionParse::Done(m, len) => finish(Act::Operate(op, Target::Motion(m)), i + len),
+        };
+    }
+
+    if visual {
+        if let Some(p) = text_object(&keys[i..], |kind, inner| done(Act::Select { kind, inner }, i + 2, count1)) {
+            return p;
+        }
+    }
+
+    if key == Key::Char(' ') && !visual {
+        return match keys.get(i + 1) {
+            None => Parse::More,
+            Some(Key::Char(c)) if "fgb/zmGr".contains(*c) => done(Act::Leader(*c), i + 2, count1),
+            Some(Key::Char('h')) => match keys.get(i + 2) {
+                None => Parse::More,
+                Some(Key::Char('r')) => done(Act::Hunk('r'), i + 3, count1),
+                _ => Parse::Invalid,
+            },
+            _ => Parse::Invalid,
+        };
+    }
+
+    if key == Key::Ctrl('w') && !visual {
+        let (count2, used) = count(&keys[i + 1..]);
+        return match keys.get(i + 1 + used) {
+            None => Parse::More,
+            Some(&k) => done(Act::Window(k), i + 2 + used, count2.or(count1)),
+        };
+    }
+
+    match key {
+        Key::Char('g') => match keys.get(i + 1) {
+            None => return Parse::More,
+            Some(Key::Char(c @ ('v' | 'J' | 'i' | 'p' | 'P' | 't' | 'T'))) => return done(Act::G(*c), i + 2, count1),
+            _ => {}
+        },
+        Key::Char('z') => {
+            return match keys.get(i + 1) {
+                None => Parse::More,
+                Some(&k @ (Key::Char('z' | 't' | 'b' | '.' | '-') | Key::Enter)) => done(Act::Z(k), i + 2, count1),
+                _ => Parse::Invalid,
+            };
+        }
+        Key::Char('Z') => {
+            return match keys.get(i + 1) {
+                None => Parse::More,
+                Some(Key::Char(c @ ('Z' | 'Q'))) => done(Act::With('Z', *c), i + 2, count1),
+                _ => Parse::Invalid,
+            };
+        }
+        Key::Char(c) if "rmq@".contains(c) => {
+            return match keys.get(i + 1) {
+                None => Parse::More,
+                Some(Key::Char(k)) => done(Act::With(c, *k), i + 2, count1),
+                Some(Key::Enter) if c == 'r' => done(Act::With(c, '\n'), i + 2, count1),
+                Some(Key::Tab) if c == 'r' => done(Act::With(c, '\t'), i + 2, count1),
+                _ => Parse::Invalid,
+            };
+        }
+        _ => {}
+    }
+
+    match motion(&keys[i..]) {
+        MotionParse::More => return Parse::More,
+        MotionParse::Done(m, len) => return done(Act::Move(m), i + len, count1),
+        MotionParse::Invalid => {}
+    }
+
+    let simple = if visual { VISUAL_KEYS } else { NORMAL_KEYS };
+    let ctrl = if visual { "acx" } else { "rglaxzcpoi" };
+    match key {
+        Key::Char(c) if simple.contains(c) => done(Act::Key(key), i + 1, count1),
+        Key::Ctrl(c) if "dufbey".contains(c) || ctrl.contains(c) => done(Act::Key(key), i + 1, count1),
+        Key::Delete | Key::PageUp | Key::PageDown => done(Act::Key(key), i + 1, count1),
+        Key::Tab if !visual => done(Act::Key(key), i + 1, count1),
+        _ => Parse::Invalid,
+    }
+}
+
+const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&";
+const VISUAL_KEYS: &str = "xXsSDCYpPJ~uUoORvV:IA";
+
 pub fn is_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
 }
