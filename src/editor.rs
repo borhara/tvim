@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
-use crate::command::{Act, Cmd, Motion};
+use crate::command::{Act, Cmd, Motion, Op, Target};
 use crate::motion::{self, Find};
+use crate::object::object;
 use crate::syntax;
 use crate::text::{char_count, col_at, first_non_blank, vcol};
 use crate::window::Node;
@@ -498,6 +499,7 @@ impl Editor {
         let n = cmd.n();
         match cmd.act {
             Act::Move(m) => self.move_cursor(m, cmd.count),
+            Act::Operate(op, target) => self.operate(op, target, cmd.count, cmd.register),
             Act::G('t') => match cmd.count {
             },
             Act::Select { .. } => {}
@@ -600,6 +602,46 @@ impl Editor {
                 }
             }
         }
+    }
+
+    fn operate(&mut self, op: Op, target: Target, count: Option<usize>, register: Option<char>) {
+        let n = count.unwrap_or(1);
+        let range = match target {
+            Target::Lines => {
+                let last = self.cursor.row + n - 1;
+                if last > self.buf.last_row() && n > 1 && matches!(op, Op::Delete | Op::Change | Op::Yank) {
+                    return;
+                }
+                Range::lines(self.cursor.row, last.min(self.buf.last_row()))
+            }
+            Target::Object { kind, inner } => {
+                let Some(span) = object(&self.buf, self.cursor, kind, inner, n) else {
+                    return;
+                };
+                Range {
+                    start: span.start,
+                    end: span.end,
+                    linewise: span.linewise,
+                }
+            }
+            Target::Motion(m) => {
+                // cw acts like ce, see :h cw
+                let m = match (op, m) {
+                    (Op::Change, Motion::WordForward(big))
+                        if self.buf.char_at(self.cursor).is_some_and(|c| !c.is_whitespace()) =>
+                    {
+                    }
+                    _ => m,
+                };
+                let Some((to, kind)) = self.target(m, count, true) else {
+                    return;
+                };
+                self.range_to(to, kind)
+            }
+        };
+        // 3>> is three lines, not three shifts
+        let times = if matches!(op, Op::Indent | Op::Dedent) { 1 } else { n };
+        self.apply(op, range, register, times);
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
