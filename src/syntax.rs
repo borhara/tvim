@@ -913,4 +913,30 @@ mod tests {
         assert_eq!(kind_of("echo a#b", Syntax::Shell, "a#b"), Plain);
     }
 
+    #[test]
+    fn markdown() {
+        let m = Syntax::Markdown;
+        assert_eq!(kind_of("## Title", m, "Title"), Heading);
+        assert_eq!(kind_of("- item with `code`", m, "-"), ListMark);
+        assert_eq!(kind_of("- item with `code`", m, "`code`"), Code);
+        assert_eq!(kind_of("some **bold** text", m, "**bold**"), Strong);
+        assert_eq!(kind_of("some *soft* text", m, "*soft*"), Emphasis);
+        assert_eq!(kind_of("see [docs](http://x.y)", m, "[docs]"), Link);
+        assert_eq!(kind_of("> quoted", m, "> quoted"), Quote);
+        let (_, s) = highlight("```rust", m, State::Normal);
+        assert_eq!(s, State::Fence);
+        let (k, s) = highlight("let x = 1;", m, s);
+        assert_eq!((k[0], s), (Code, State::Fence));
+        let (_, s) = highlight("```", m, s);
+        assert_eq!(s, State::Normal);
+    }
+
+    #[test]
+    fn languages_from_names() {
+        assert_eq!(Syntax::detect("main.rs"), Some(Syntax::Rust));
+        assert_eq!(Syntax::detect("App.TSX"), Some(Syntax::JavaScript));
+        assert_eq!(Syntax::detect("README.md"), Some(Syntax::Markdown));
+        assert_eq!(Syntax::detect("Makefile"), Some(Syntax::Shell));
+        assert_eq!(Syntax::detect("notes.txt"), None);
+    }
 }
