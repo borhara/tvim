@@ -1,3 +1,5 @@
+use tinsel::app::Key;
+
 use crate::motion::Find;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,11 +59,14 @@ pub enum Target {
 pub enum Act {
     Move(Motion),
     Operate(Op, Target),
+    Key(Key),
     With(char, char),
     G(char),
+    Z(Key),
     Select { kind: char, inner: bool },
     Leader(char),
     Hunk(char),
+    Window(Key),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +74,7 @@ pub struct Cmd {
     pub register: Option<char>,
     pub count: Option<usize>,
     pub act: Act,
+    pub keys: Vec<Key>,
 }
 
 impl Cmd {

@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use tinsel::app::Key;
+
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Target};
@@ -152,6 +154,7 @@ pub struct Editor {
     pub(crate) cursor: Pos,
     pub(crate) want: usize,
     pub(crate) mode: Mode,
+    pub(crate) pending: Vec<Key>,
     pub(crate) anchor: Pos,
     last_visual: Option<(Pos, Pos, Mode)>,
     undo: Vec<Snapshot>,
