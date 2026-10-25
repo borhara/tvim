@@ -81,3 +81,35 @@ pub fn show(key: Key) -> String {
         other => format!("<{other:?}>"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_plain_and_named_keys() {
+        assert_eq!(
+            parse("dw<Esc><C-r><cr>a<b<lt>"),
+            [
+                Key::Char('d'),
+                Key::Char('w'),
+                Key::Esc,
+                Key::Ctrl('r'),
+                Key::Enter,
+                Key::Char('a'),
+                Key::Char('<'),
+                Key::Char('b'),
+                Key::Char('<'),
+            ]
+        );
+        assert_eq!(parse("<C-ab>").len(), 6);
+        assert_eq!(parse("é"), [Key::Char('é')]);
+    }
+
+    #[test]
+    fn shows_keys() {
+        assert_eq!(show(Key::Char('d')), "d");
+        assert_eq!(show(Key::Ctrl('w')), "^W");
+        assert_eq!(show(Key::Up), "<Up>");
+    }
+}
