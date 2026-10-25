@@ -6,7 +6,7 @@ use tinsel::app::Key;
 
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
-use crate::command::{Act, Cmd, Motion, Op, Target};
+use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::motion::{self, Find};
 use crate::object::object;
 use crate::syntax;
@@ -320,6 +320,10 @@ impl Editor {
         self.message.as_ref()
     }
 
+    pub fn pending(&self) -> &[Key] {
+        &self.pending
+    }
+
     pub fn is_modified(&self) -> bool {
         self.version != self.saved
     }
@@ -431,6 +435,7 @@ impl Editor {
             }
         }
         match self.mode {
+            Mode::Normal | Mode::Visual | Mode::VisualLine => self.normal(input),
         }
         if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::VisualLine) && self.pending.is_empty() {
             self.end_change();
@@ -545,6 +550,45 @@ impl Editor {
             text: text.into(),
             error: true,
         });
+    }
+
+    fn normal(&mut self, input: Input) {
+        let key = match input {
+            Input::Paste(text) => {
+                self.pending.clear();
+                if !self.mode.is_visual() {
+                }
+                return;
+            }
+            Input::Key(k) => k,
+        };
+        if self.pending.is_empty() && !matches!(key, Key::Char(':' | '/' | '?')) {
+            self.message = None;
+        }
+        if key == Key::Char('q') && self.pending.is_empty() && self.recording.is_some() {
+            return;
+        }
+        if matches!(key, Key::Esc | Key::Ctrl('c')) {
+            let had = !self.pending.is_empty();
+            self.pending.clear();
+            if self.mode.is_visual() {
+            } else if key == Key::Ctrl('c') && !had {
+                self.info("Type  :qa!  and press Enter to abandon all changes and exit tvim");
+            }
+            return;
+        }
+        self.pending.push(key);
+        match parse(&self.pending, self.mode.is_visual()) {
+            Parse::More => {}
+            Parse::Invalid => self.pending.clear(),
+            Parse::Done(cmd) => {
+                self.pending.clear();
+                if self.mode.is_visual() {
+                } else {
+                    self.run(cmd);
+                }
+            }
+        }
     }
 
     fn run(&mut self, cmd: Cmd) {
