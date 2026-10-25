@@ -1,6 +1,7 @@
 use tinsel::app::Key;
 
 use crate::motion::Find;
+use crate::object::is_object;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Motion {
@@ -94,6 +95,15 @@ pub fn is_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
 }
 
+fn text_object(keys: &[Key], make: impl FnOnce(char, bool) -> Parse) -> Option<Parse> {
+    let Some(Key::Char(c @ ('i' | 'a'))) = keys.first() else { return None };
+    Some(match keys.get(1) {
+        None => Parse::More,
+        Some(Key::Char(k)) if is_object(*k) => make(*k, *c == 'i'),
+        _ => Parse::Invalid,
+    })
+}
+
 fn count(keys: &[Key]) -> (Option<usize>, usize) {
     let mut n: Option<usize> = None;
     let mut used = 0;
@@ -108,6 +118,29 @@ fn count(keys: &[Key]) -> (Option<usize>, usize) {
         }
     }
     (n, used)
+}
+
+fn operator(keys: &[Key], visual: bool) -> Option<Result<(Op, usize), ()>> {
+    let op = |o| Some(Ok((o, 1)));
+    match keys.first()? {
+        Key::Char('d') => op(Op::Delete),
+        Key::Char('c') => op(Op::Change),
+        Key::Char('y') => op(Op::Yank),
+        Key::Char('>') => op(Op::Indent),
+        Key::Char('<') => op(Op::Dedent),
+        Key::Char('u') if visual => op(Op::Lower),
+        Key::Char('U') if visual => op(Op::Upper),
+        Key::Char('~') if visual => op(Op::ToggleCase),
+        Key::Char('g') => match keys.get(1) {
+            None => Some(Err(())),
+            Some(Key::Char('u')) => Some(Ok((Op::Lower, 2))),
+            Some(Key::Char('U')) => Some(Ok((Op::Upper, 2))),
+            Some(Key::Char('~')) => Some(Ok((Op::ToggleCase, 2))),
+            Some(Key::Char('c')) => Some(Ok((Op::Comment, 2))),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 pub enum MotionParse {
