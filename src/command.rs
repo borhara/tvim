@@ -90,6 +90,26 @@ pub enum Parse {
     Done(Cmd),
 }
 
+pub fn is_register(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
+}
+
+fn count(keys: &[Key]) -> (Option<usize>, usize) {
+    let mut n: Option<usize> = None;
+    let mut used = 0;
+    for k in keys {
+        match k {
+            Key::Char(c @ '0'..='9') if n.is_some() || *c != '0' => {
+                let d = *c as usize - '0' as usize;
+                n = Some(n.unwrap_or(0).saturating_mul(10).saturating_add(d).min(999_999));
+                used += 1;
+            }
+            _ => break,
+        }
+    }
+    (n, used)
+}
+
 pub enum MotionParse {
     More,
     Invalid,
