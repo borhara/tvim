@@ -413,6 +413,39 @@ impl Editor {
         self.input(Input::Key(key));
     }
 
+    fn input(&mut self, input: Input) {
+        if self.git_menu.is_some() {
+        }
+        if self.finder.is_some() {
+        }
+        if self.grep.is_some() {
+        }
+        if self.mode == Mode::Normal && self.previews.contains_key(&self.focus) {
+            if let Input::Key(k) = input {
+            }
+            return;
+        }
+        if let Some((_, keys)) = &mut self.recording {
+            if !self.replaying && self.macro_depth == 0 && !self.insert_replay {
+                keys.push(input.clone());
+            }
+        }
+        match self.mode {
+        }
+        if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::VisualLine) && self.pending.is_empty() {
+            self.end_change();
+        }
+        self.clamp();
+        // a preview sent to another buffer by :e is an ordinary window now
+        if self
+            .previews
+            .get(&self.focus)
+            .is_some_and(|p| p.buffer != self.buffer_id)
+        {
+            self.previews.remove(&self.focus);
+        }
+    }
+
     pub(crate) fn clamp(&mut self) {
         self.cursor.row = self.cursor.row.min(self.buf.last_row());
         let max = self.max_col(self.buf.line_len(self.cursor.row));
