@@ -46,3 +46,38 @@ fn named(name: &str) -> Option<Key> {
         }
     })
 }
+
+pub(crate) fn notation(k: Key) -> String {
+    match k {
+        Key::Char('<') => "<lt>".into(),
+        Key::Char(c) => c.to_string(),
+        Key::Ctrl(c) => format!("<C-{c}>"),
+        Key::Enter => "<CR>".into(),
+        Key::Esc => "<Esc>".into(),
+        Key::Tab => "<Tab>".into(),
+        Key::BackTab => "<S-Tab>".into(),
+        Key::Backspace => "<BS>".into(),
+        Key::Delete => "<Del>".into(),
+        Key::Up => "<Up>".into(),
+        Key::Down => "<Down>".into(),
+        Key::Left => "<Left>".into(),
+        Key::Right => "<Right>".into(),
+        Key::Home => "<Home>".into(),
+        Key::End => "<End>".into(),
+        Key::PageUp => "<PageUp>".into(),
+        Key::PageDown => "<PageDown>".into(),
+        Key::F(n) => format!("<F{n}>"),
+    }
+}
+
+pub fn show(key: Key) -> String {
+    match key {
+        Key::Char(' ') => "␣".into(),
+        Key::Char(c) => c.to_string(),
+        Key::Ctrl(c) => format!("^{}", c.to_ascii_uppercase()),
+        Key::Enter => "⏎".into(),
+        Key::Esc => "^[".into(),
+        Key::Tab => "⇥".into(),
+        other => format!("<{other:?}>"),
+    }
+}
