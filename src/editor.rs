@@ -41,6 +41,12 @@ impl Mode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Input {
+    Key(Key),
+    Paste(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub text: String,
     pub error: bool,
@@ -174,6 +180,8 @@ pub struct Editor {
     marks: HashMap<char, Pos>,
     replaying: bool,
     insert_replay: bool,
+    recording: Option<(char, Vec<Input>)>,
+    macros: HashMap<char, Vec<Input>>,
     last_macro: Option<char>,
     macro_depth: usize,
     pub(crate) file: FileInfo,
@@ -393,6 +401,16 @@ impl Editor {
             left = end - cols;
         }
         self.left.set(left);
+    }
+
+    pub fn keys(&mut self, keys: &[Key]) {
+        for &k in keys {
+            self.key(k);
+        }
+    }
+
+    pub fn key(&mut self, key: Key) {
+        self.input(Input::Key(key));
     }
 
     pub(crate) fn clamp(&mut self) {
