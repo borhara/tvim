@@ -1,7 +1,68 @@
 use std::io::Write;
 
-use tinsel::app;
+use tinsel::app::{self, App, Event, Flow, Frame, Rect};
 use tinsel::{Rgb, mix, palette};
+
+use crate::editor::Editor;
+
+const HINT_DELAY: f32 = 0.4;
+
+pub struct Tvim {
+    pub editor: Editor,
+    pending_since: Option<f32>,
+}
+
+impl Tvim {
+    pub fn new(editor: Editor) -> Tvim {
+        Tvim {
+            editor,
+            pending_since: None,
+        }
+    }
+
+    fn settle(&mut self) {
+        self.pending_since = match (self.editor.pending().is_empty(), self.pending_since) {
+            (true, _) => None,
+            (false, None) => Some(app::time()),
+            (false, since) => since,
+        };
+        let written = self
+            .editor
+            .message()
+            .filter(|m| !m.error && m.text.ends_with(" written"));
+        if let Some(m) = written {
+            self.editor.clear_message();
+        }
+    }
+}
+
+impl App for Tvim {
+    fn view(&self, frame: &mut Frame) {
+        let hints = self.pending_since.is_some_and(|t| frame.time() - t >= HINT_DELAY);
+        let area = frame.area();
+        if area.height > 4 {
+            let room = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height - 2);
+        }
+    }
+
+    fn event(&mut self, event: &Event) -> Flow {
+        match event {
+            Event::Key(k) => self.editor.key(*k),
+            Event::Wake | Event::Tick => {
+                self.editor.tick();
+                return Flow::Continue;
+            }
+            _ => return Flow::Continue,
+        }
+        self.settle();
+        if self.editor.should_quit() {
+            Flow::Quit
+        } else {
+            Flow::Continue
+        }
+    }
+
+}
 
 // dark colours; tinsel flips them on light terminals
 struct Colors {
