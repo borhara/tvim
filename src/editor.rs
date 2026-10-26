@@ -601,6 +601,7 @@ impl Editor {
             Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
             Act::G('t') => match cmd.count {
             },
+            Act::Z(k) => self.normal_z(k, cmd.count),
             Act::Select { .. } => {}
         }
         if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
@@ -653,9 +654,29 @@ impl Editor {
             Key::Ctrl('u') => self.scroll_half(false, count),
             Key::Ctrl('f') | Key::PageDown => self.scroll_page(true, n),
             Key::Ctrl('b') | Key::PageUp => self.scroll_page(false, n),
+            Key::Ctrl('e') => self.scroll_lines(n as isize),
+            Key::Ctrl('y') => self.scroll_lines(-(n as isize)),
             Key::Ctrl('g') => self.file_info(),
             Key::Ctrl('l') => self.message = None,
             _ => {}
+        }
+    }
+
+    fn normal_z(&mut self, key: Key, count: Option<usize>) {
+        if let Some(n) = count {
+            self.cursor.row = (n - 1).min(self.buf.last_row());
+        }
+        let rows = self.text_rows();
+        let so = self.scroll_off();
+        let row = self.cursor.row;
+        let top = match key {
+            Key::Char('z' | '.') => row.saturating_sub(rows / 2),
+            Key::Char('t') | Key::Enter => row.saturating_sub(so),
+            _ => (row + so + 1).saturating_sub(rows),
+        };
+        self.top.set(top);
+        if matches!(key, Key::Enter | Key::Char('.' | '-')) {
+            self.cursor = self.first_non_blank_pos(row);
         }
     }
 
@@ -966,6 +987,28 @@ impl Editor {
         }
         self.cursor = self.first_non_blank_pos(self.cursor.row);
         self.set_want();
+    }
+
+    fn scroll_lines(&mut self, by: isize) {
+        let top = self.top.get();
+        let new = if by > 0 {
+            (top + by as usize).min(self.buf.last_row())
+        } else {
+            top.saturating_sub((-by) as usize)
+        };
+        self.top.set(new);
+        let so = self.scroll_off();
+        let rows = self.text_rows();
+        let low = if new == 0 { 0 } else { new + so };
+        let high = (new + rows).saturating_sub(1 + so).max(low);
+        let row = self
+            .cursor
+            .row
+            .clamp(low.min(self.buf.last_row()), high.min(self.buf.last_row()));
+        if row != self.cursor.row {
+            self.cursor.row = row;
+            self.cursor.col = self.col_for_want(row);
+        }
     }
 
     pub(crate) fn load(&mut self, path: &Path) -> std::io::Result<()> {
