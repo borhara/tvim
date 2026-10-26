@@ -159,6 +159,26 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
 }
 
+fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool, scrollbar: bool) -> Rect {
+    // set_screen reserves a scrollbar column and two status rows
+    e.set_screen(area.width, area.height + 2);
+    e.scroll();
+    e.anim.follow(e, frame.time());
+    let (gutter, body) = split_gutter(area, e.gutter());
+    body
+}
+
+fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
+    let gutter = Rect::new(area.x, area.y, gutter.min(area.width), area.height);
+    let body = Rect::new(
+        gutter.x + gutter.width,
+        area.y,
+        area.width.saturating_sub(gutter.width + 1),
+        area.height,
+    );
+    (gutter, body)
+}
+
 fn display_path(path: &Path) -> String {
     let cwd = std::env::current_dir().ok();
     if let Some(rel) = cwd.as_deref().and_then(|d| path.strip_prefix(d).ok()) {
