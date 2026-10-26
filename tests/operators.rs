@@ -96,6 +96,17 @@ fn text_objects() {
 }
 
 #[test]
+fn indenting() {
+    assert_eq!(t("a\nb", ">>"), "    a\nb");
+    assert_eq!(t("a\nb", ">j"), "    a\n    b");
+    assert_eq!(t("a\nb", "2>>"), "    a\n    b");
+    assert_eq!(t("        a", "<<"), "    a");
+    assert_eq!(t("  a", "<<"), "a");
+    assert_eq!(t("a\n\nb", ">2j"), "    a\n\n    b", "empty lines stay empty");
+    assert_eq!(after("  a", ">>").1, (0, 6));
+}
+
+#[test]
 fn changing_every_line_leaves_one() {
     assert_eq!(t("abc", "ccx<Esc>"), "x");
     assert_eq!(t("a\nb", "cGx<Esc>"), "x");
