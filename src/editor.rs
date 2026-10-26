@@ -598,12 +598,64 @@ impl Editor {
         match cmd.act {
             Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::Operate(op, target) => self.operate(op, target, cmd.count, cmd.register),
+            Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
             Act::G('t') => match cmd.count {
             },
             Act::Select { .. } => {}
         }
         if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
             self.dot = self.building.take();
+        }
+    }
+
+    fn normal_key(&mut self, key: Key, count: Option<usize>, register: Option<char>) {
+        let n = count.unwrap_or(1);
+        let op = |e: &mut Self, op: Op, m: Motion| e.operate(op, Target::Motion(m), count, register);
+        match key {
+            Key::Char('x') | Key::Delete => {
+                if self.buf.line_len(self.cursor.row) > 0 {
+                    op(self, Op::Delete, Motion::Right)
+                }
+            }
+            Key::Char('X') => op(self, Op::Delete, Motion::Left),
+            Key::Char('s') => {
+                if self.buf.line_len(self.cursor.row) == 0 {
+                } else {
+                    op(self, Op::Change, Motion::Right)
+                }
+            }
+            Key::Char('S') => self.operate(Op::Change, Target::Lines, count, register),
+            Key::Char('D') => op(self, Op::Delete, Motion::LineEnd),
+            Key::Char('C') => op(self, Op::Change, Motion::LineEnd),
+            Key::Char('Y') => op(self, Op::Yank, Motion::LineEnd),
+            Key::Char('p') => self.put(register, n, false),
+            Key::Char('P') => self.put(register, n, true),
+            Key::Char('J') => self.join(self.cursor.row, n.max(2), true),
+            Key::Char('u' | 'U') => self.undo(n),
+            Key::Ctrl('r') => self.redo(n),
+            Key::Char('.') => self.repeat(count),
+            Key::Char('a') => {
+                if self.buf.line_len(self.cursor.row) > 0 {
+                    self.cursor.col += 1;
+                }
+            }
+            Key::Char('I') => {
+                self.cursor = self.first_non_blank_pos(self.cursor.row);
+            }
+            Key::Char('A') => {
+                self.cursor.col = self.buf.line_len(self.cursor.row);
+            }
+            Key::Char('R') => {
+                self.mode = Mode::Replace;
+            }
+            Key::Char('&') => self.ex("s"),
+            Key::Ctrl('d') => self.scroll_half(true, count),
+            Key::Ctrl('u') => self.scroll_half(false, count),
+            Key::Ctrl('f') | Key::PageDown => self.scroll_page(true, n),
+            Key::Ctrl('b') | Key::PageUp => self.scroll_page(false, n),
+            Key::Ctrl('g') => self.file_info(),
+            Key::Ctrl('l') => self.message = None,
+            _ => {}
         }
     }
 
