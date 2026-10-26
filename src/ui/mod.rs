@@ -4,7 +4,7 @@ use std::path::Path;
 use tinsel::app::{self, App, Event, Flow, Frame, Rect};
 use tinsel::{Rgb, mix, palette};
 
-use crate::editor::Editor;
+use crate::editor::{Editor, Mode};
 
 const HINT_DELAY: f32 = 0.4;
 
@@ -40,6 +40,7 @@ impl Tvim {
 impl App for Tvim {
     fn view(&self, frame: &mut Frame) {
         let hints = self.pending_since.is_some_and(|t| frame.time() - t >= HINT_DELAY);
+        draw_with(&self.editor, frame, hints);
         let area = frame.area();
         if area.height > 4 {
             let room = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height - 2);
@@ -121,6 +122,42 @@ fn colors() -> Colors {
 }
 
 const ORANGE: Rgb = Rgb(240, 140, 70);
+
+struct Drawn {
+    body: Rect,
+    text: Rect,
+    panes: Rect,
+    typing_at: Option<(usize, usize)>,
+}
+
+pub fn draw(e: &Editor, frame: &mut Frame) {
+    draw_with(e, frame, true);
+}
+
+fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
+    let area = frame.area();
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let c = colors();
+    let since_zen = e.anim.zen(e.zen(), frame.time());
+    let d = if e.zen() {
+        zen::draw(e, frame, &c)
+    } else {
+        sky::draw(e, frame, &c)
+    };
+    let mut typing_at = d.typing_at;
+    if e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30 {
+    }
+    if let Some(f) = e.finder() {
+        typing_at = overlays::finder(f, frame, d.panes, &c);
+    }
+        || e.finder().is_some()
+        || matches!(e.mode(), Mode::Command | Mode::Search)
+    if let Some((x, y, shape)) = cursor {
+        frame.set_cursor(x, y, shape);
+    }
+}
 
 fn display_path(path: &Path) -> String {
     let cwd = std::env::current_dir().ok();
