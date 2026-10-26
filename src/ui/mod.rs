@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::Path;
 
 use tinsel::app::{self, App, Event, Flow, Frame, Rect};
 use tinsel::{Rgb, mix, palette};
@@ -62,6 +63,24 @@ impl App for Tvim {
         }
     }
 
+    fn title(&self) -> Option<String> {
+        let name = file_name(self.editor.file().path.as_deref(), "[No Name]");
+        let modified = if self.editor.is_modified() { " ●" } else { "" };
+        Some(format!("{name}{modified} · tvim"))
+    }
+
+    fn ctrl_c_quits(&self) -> bool {
+        false
+    }
+
+    fn mouse(&self) -> bool {
+        true
+    }
+}
+
+fn file_name(path: Option<&Path>, or: &str) -> String {
+    path.and_then(Path::file_name)
+        .map_or_else(|| or.to_string(), |n| n.to_string_lossy().into_owned())
 }
 
 // dark colours; tinsel flips them on light terminals
@@ -102,3 +121,16 @@ fn colors() -> Colors {
 }
 
 const ORANGE: Rgb = Rgb(240, 140, 70);
+
+fn display_path(path: &Path) -> String {
+    let cwd = std::env::current_dir().ok();
+    if let Some(rel) = cwd.as_deref().and_then(|d| path.strip_prefix(d).ok()) {
+        return rel.display().to_string();
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        if let Ok(rel) = path.strip_prefix(&home) {
+            return format!("~/{}", rel.display());
+        }
+    }
+    path.display().to_string()
+}
