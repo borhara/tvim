@@ -844,6 +844,7 @@ impl Editor {
     pub(crate) fn apply(&mut self, op: Op, r: Range, register: Option<char>, count: usize) {
         match op {
             Op::Yank => {
+                let text = self.range_text(r);
                 let lines = r.end.row - r.start.row + 1;
                 if r.linewise {
                     if lines > 2 {
@@ -856,6 +857,7 @@ impl Editor {
             }
             Op::Delete => {
                 if r.linewise {
+                    let text = self.range_text(r);
                     self.touch();
                     self.buf.delete_lines(r.start.row, r.end.row);
                     let row = r.start.row.min(self.buf.last_row());
@@ -877,6 +879,7 @@ impl Editor {
             }
             Op::Change => {
                 if r.linewise {
+                    let text = self.range_text(r);
                     self.touch();
                     let keep = if self.options.auto_indent {
                         indent(self.buf.line(r.start.row)).to_string()
@@ -908,6 +911,7 @@ impl Editor {
                         width.saturating_sub(sw * times)
                     };
                     let rest = line.trim_start_matches([' ', '\t']);
+                    self.buf.set_line(row, format!("{}{rest}", self.make_indent(new)));
                 }
                 self.cursor = self.first_non_blank_pos(r.start.row);
                 let lines = r.end.row - r.start.row + 1;
@@ -921,6 +925,7 @@ impl Editor {
             }
             Op::Lower | Op::Upper | Op::ToggleCase => {
                 self.touch();
+                let (from, to) = self.char_span(r);
                 let text = self.buf.slice(from, to);
                 let changed: String = text
                     .chars()
@@ -947,6 +952,31 @@ impl Editor {
                 }
                 self.cursor = self.first_non_blank_pos(r.start.row);
             }
+        }
+    }
+
+    fn char_span(&self, r: Range) -> (Pos, Pos) {
+        if r.linewise {
+            (Pos::new(r.start.row, 0), Pos::new(r.end.row, self.buf.line_len(r.end.row)))
+        } else {
+            (r.start, r.end)
+        }
+    }
+
+    fn range_text(&self, r: Range) -> String {
+        if r.linewise {
+            self.buf.lines()[r.start.row..=r.end.row.min(self.buf.last_row())].join("\n")
+        } else {
+            self.buf.slice(r.start, r.end)
+        }
+    }
+
+    fn make_indent(&self, width: usize) -> String {
+        if self.options.expand_tab {
+            " ".repeat(width)
+        } else {
+            let ts = self.options.tab_stop.max(1);
+            format!("{}{}", "\t".repeat(width / ts), " ".repeat(width % ts))
         }
     }
 
