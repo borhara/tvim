@@ -1,8 +1,8 @@
 use std::io::Write;
 use std::path::Path;
 
-use tinsel::app::{self, App, Event, Flow, Frame, Rect};
-use tinsel::{Rgb, mix, palette};
+use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
+use tinsel::{ColorMode, Rgb, color_mode, mix, paint, paint_bg, palette};
 
 use crate::editor::{Editor, Mode};
 
@@ -123,6 +123,8 @@ fn colors() -> Colors {
 
 const ORANGE: Rgb = Rgb(240, 140, 70);
 
+const LOGO: [&str; 2] = ["▀█▀ █ █ █ █▀▄▀█ ✶", " █  ▀▄▀ █ █ ▀ █  "];
+
 struct Drawn {
     body: Rect,
     text: Rect,
@@ -179,6 +181,67 @@ fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
     (gutter, body)
 }
 
+fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
+    if color_mode() != ColorMode::None {
+        sparkles(frame, area, e.anim.clock(), 0.012);
+    }
+    let menu = [
+        ("i", "start writing"),
+        ("tab", "browse files"),
+        ("space f", "find a file"),
+        ("space r", "recent files"),
+        ("space g", "search in files"),
+        (":e file", "open a file"),
+        (":q", "leave"),
+    ];
+    let key_width = menu.iter().map(|(k, _)| k.len()).max().unwrap_or(0) + 2;
+    let menu_width = key_width + 2 + menu.iter().map(|(_, d)| d.len()).max().unwrap_or(0);
+    let tagline = "a vim for your terminal, with a little sparkle";
+    let version = format!("v{}  ·  drawn with tinsel", env!("CARGO_PKG_VERSION"));
+    let height = LOGO.len() + 2 + 2 + 2 + 1 + menu.len();
+    if area.height < height || area.width < tagline.len() + 4 {
+        return;
+    }
+    let mut y = area.y + (area.height - height) / 2;
+    let block_width = menu_width.max(tagline.len()) + 8;
+    let x = area.x + area.width.saturating_sub(block_width) / 2;
+    let clear = Rect::new(x, y.saturating_sub(1), block_width, height + 2).intersect(area);
+    frame.clear(clear);
+    let line = |frame: &mut Frame, y: usize, width: usize, text: &str| {
+        let x = area.x + area.width.saturating_sub(width) / 2;
+        frame.print(Rect::new(x, y, width, 1), 0, text);
+    };
+    for (i, l) in LOGO.iter().enumerate() {
+        line(
+            frame,
+            y,
+            tinsel::text::width(l),
+            &tinsel::gradient(l, &tinsel::RAMP, i as f32 * 0.15),
+        );
+        y += 1;
+    }
+    y += 1;
+    line(frame, y, tagline.len(), &paint(palette::SOFT, tagline));
+    y += 3;
+    for (key, what) in menu {
+        let keys = paint_bg(
+            palette::ROSE,
+            mix(c.app, palette::ROSE, 0.16),
+            &format!(" {key:<w$}", w = key_width - 1),
+        );
+        let text = format!("{keys}  {}", paint(palette::SOFT, what));
+        line(frame, y, menu_width, &text);
+        y += 1;
+    }
+    y += 2;
+    line(
+        frame,
+        y,
+        tinsel::text::width(&version),
+        &paint(palette::MUTED, &version),
+    );
+}
+
 fn display_path(path: &Path) -> String {
     let cwd = std::env::current_dir().ok();
     if let Some(rel) = cwd.as_deref().and_then(|d| path.strip_prefix(d).ok()) {
@@ -190,4 +253,16 @@ fn display_path(path: &Path) -> String {
         }
     }
     path.display().to_string()
+}
+
+// on tvim's clock so it rests while unfocused
+fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let mut sky = Frame::new(area.width, area.height).at(clock);
+    sky.render(sky.area(), Sparkles::new().density(density));
+    for (i, line) in sky.snapshot().lines().iter().enumerate() {
+        frame.print(Rect::new(area.x, area.y + i, area.width, 1), 0, line);
+    }
 }
