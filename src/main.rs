@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use tinsel::app;
 use tvim::editor::Editor;
+use tvim::ui::Tvim;
 
 const USAGE: &str = "\
 tvim: a vim-like editor for the terminal
@@ -74,6 +75,18 @@ fn main() -> ExitCode {
         go_to(&mut editor, &start);
     }
     if let Some(problem) = problem {
+    }
+
+    match app::run(Tvim::new(editor)) {
+        Ok(mut tvim) => {
+            if let Some(dir) = &state {
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            tinsel::error(&format!("tvim stopped: {e}"));
+            ExitCode::FAILURE
+        }
     }
 }
 
