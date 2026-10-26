@@ -56,6 +56,18 @@ fn to_line_ends() {
 }
 
 #[test]
+fn single_characters() {
+    assert_eq!(after("abc", "x"), ("bc".into(), (0, 0)));
+    assert_eq!(after("abc", "$x"), ("ab".into(), (0, 1)));
+    assert_eq!(t("abcdef", "3x"), "def");
+    assert_eq!(t("abcdef", "9x"), "");
+    assert_eq!(t("abc", "$X"), "ac");
+    assert_eq!(t("abc", "X"), "abc");
+    assert_eq!(t("abc", "sz<Esc>"), "zbc");
+    assert_eq!(t("", "x"), "");
+}
+
+#[test]
 fn exclusive_motions_ending_at_a_line_start() {
     assert_eq!(t("a\nb\n\nc", "d}"), "\nc", "from the line's start, whole lines");
     assert_eq!(t("xa\nb\n\nc", "ld}"), "x\n\nc", "from inside, up to the line's end");
