@@ -632,6 +632,7 @@ impl Editor {
             Key::Char('p') => self.put(register, n, false),
             Key::Char('P') => self.put(register, n, true),
             Key::Char('J') => self.join(self.cursor.row, n.max(2), true),
+            Key::Char('~') => self.toggle_case_chars(n),
             Key::Char('u' | 'U') => self.undo(n),
             Key::Ctrl('r') => self.redo(n),
             Key::Char('.') => self.repeat(count),
@@ -930,6 +931,9 @@ impl Editor {
                 let changed: String = text
                     .chars()
                     .map(|c| match op {
+                        Op::Lower => single(c.to_lowercase()).unwrap_or(c),
+                        Op::Upper => single(c.to_uppercase()).unwrap_or(c),
+                        _ => toggle(c),
                     })
                     .collect();
                 self.buf.delete(from, to);
@@ -978,6 +982,21 @@ impl Editor {
             let ts = self.options.tab_stop.max(1);
             format!("{}{}", "\t".repeat(width / ts), " ".repeat(width % ts))
         }
+    }
+
+    fn toggle_case_chars(&mut self, n: usize) {
+        let len = self.buf.line_len(self.cursor.row);
+        if len == 0 {
+            return;
+        }
+        let end = (self.cursor.col + n).min(len);
+        let r = Range {
+            start: self.cursor,
+            end: Pos::new(self.cursor.row, end),
+            linewise: false,
+        };
+        self.apply(Op::ToggleCase, r, None, 1);
+        self.cursor.col = end.min(len - 1);
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
@@ -1186,6 +1205,21 @@ impl Editor {
         self.set_want();
     }
 
+}
+
+fn toggle(c: char) -> char {
+    if c.is_lowercase() {
+        single(c.to_uppercase()).unwrap_or(c)
+    } else if c.is_uppercase() {
+        single(c.to_lowercase()).unwrap_or(c)
+    } else {
+        c
+    }
+}
+
+fn single(mut chars: impl Iterator<Item = char>) -> Option<char> {
+    let c = chars.next()?;
+    chars.next().is_none().then_some(c)
 }
 
 fn display_name(path: Option<&Path>) -> String {
