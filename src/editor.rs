@@ -601,6 +601,7 @@ impl Editor {
             Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
             Act::G('t') => match cmd.count {
             },
+            Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
             Act::Select { .. } => {}
         }
@@ -661,6 +662,34 @@ impl Editor {
             Key::Ctrl('y') => self.scroll_lines(-(n as isize)),
             Key::Ctrl('g') => self.file_info(),
             Key::Ctrl('l') => self.message = None,
+            _ => {}
+        }
+    }
+
+    fn normal_g(&mut self, c: char, n: usize, register: Option<char>) {
+        match c {
+            'v' => {
+                if let Some((anchor, cursor, mode)) = self.last_visual {
+                    self.anchor = self.clamp_pos(anchor);
+                    self.cursor = self.clamp_pos(cursor);
+                    self.mode = mode;
+                }
+            }
+            'J' => self.join(self.cursor.row, n.max(2), false),
+            'p' | 'P' => {
+                self.cursor = if r.linewise {
+                    Pos::new((end.row + 1).min(self.buf.last_row()), 0)
+                } else {
+                    end
+                };
+                self.set_want();
+            }
+            'i' => {
+                if let Some(&p) = self.marks.get(&'^') {
+                    let row = p.row.min(self.buf.last_row());
+                    self.cursor = Pos::new(row, p.col.min(self.buf.line_len(row)));
+                }
+            }
             _ => {}
         }
     }
