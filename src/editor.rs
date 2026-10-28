@@ -651,6 +651,8 @@ impl Editor {
                 self.mode = Mode::Replace;
             }
             Key::Char('&') => self.ex("s"),
+            Key::Ctrl('a') => self.increment(n as i64),
+            Key::Ctrl('x') => self.increment(-(n as i64)),
             Key::Ctrl('d') => self.scroll_half(true, count),
             Key::Ctrl('u') => self.scroll_half(false, count),
             Key::Ctrl('f') | Key::PageDown => self.scroll_page(true, n),
@@ -1040,6 +1042,42 @@ impl Editor {
             self.buf.insert(p, &text);
             self.cursor.col = p.col + n - 1;
         }
+    }
+
+    fn increment(&mut self, by: i64) {
+        let line: Vec<char> = self.buf.line(self.cursor.row).chars().collect();
+        let mut i = self.cursor.col.min(line.len());
+        while i > 0 && i < line.len() && line[i].is_ascii_digit() && line[i - 1].is_ascii_digit() {
+            i -= 1;
+        }
+        let Some(start) = (i..line.len()).find(|&j| line[j].is_ascii_digit()) else {
+            return;
+        };
+        let mut end = start;
+        while end < line.len() && line[end].is_ascii_digit() {
+            end += 1;
+        }
+        let negative = start > 0 && line[start - 1] == '-';
+        let from = if negative { start - 1 } else { start };
+        let digits: String = line[start..end].iter().collect();
+        let Ok(value) = digits.parse::<i64>() else { return };
+        let value = if negative { -value } else { value };
+        let new = value.saturating_add(by);
+        let text = if digits.len() > 1 && digits.starts_with('0') {
+            let width = digits.len();
+            if new < 0 {
+                format!("-{:0width$}", -new)
+            } else {
+                format!("{new:0width$}")
+            }
+        } else {
+            new.to_string()
+        };
+        self.touch();
+        let row = self.cursor.row;
+        self.buf.delete(Pos::new(row, from), Pos::new(row, end));
+        self.buf.insert(Pos::new(row, from), &text);
+        self.cursor = Pos::new(row, from + char_count(&text) - 1);
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
