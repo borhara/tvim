@@ -40,3 +40,14 @@ fn opening_a_line_inside_a_block_indents_it() {
     assert_eq!(t("fn x() {\n}", "jOa;<Esc>"), "fn x() {\n    a;\n}");
     assert_eq!(t("  x", "oy<Esc>"), "  x\n  y");
 }
+
+#[test]
+fn an_indent_nothing_follows_goes_away() {
+    assert_eq!(t("    a", "o<Esc>"), "    a\n");
+    assert_eq!(t("    a", "A<CR><CR>b<Esc>"), "    a\n\n    b");
+}
+
+#[test]
+fn closing_brackets_line_up_with_their_opener() {
+    assert_eq!(t("if x {", "A<CR>y<CR>}<Esc>"), "if x {\n    y\n}");
+}
