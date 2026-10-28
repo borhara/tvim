@@ -1169,6 +1169,29 @@ impl Editor {
         self.cursor = Pos::new(row, char_count(&ind));
     }
 
+    fn type_char(&mut self, c: char) {
+        self.touch();
+        self.insert.auto_indent = None;
+        let p = self.cursor;
+        if self.mode == Mode::Replace && p.col < self.buf.line_len(p.row) {
+            let old = self.buf.char_at(p);
+            self.buf.delete(p, Pos::new(p.row, p.col + 1));
+            self.insert.replaced.push(old);
+        } else if self.mode == Mode::Replace {
+            self.insert.replaced.push(None);
+        }
+        let mut s = [0u8; 4];
+        self.cursor = self.buf.insert(p, c.encode_utf8(&mut s));
+        if matches!(c, '}' | ']' | ')') && self.options.auto_indent && self.mode == Mode::Insert {
+        }
+    }
+
+    fn type_str(&mut self, s: &str) {
+        for c in s.chars() {
+            self.type_char(c);
+        }
+    }
+
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
         let n = count.unwrap_or(self.text_rows() / 2).max(1);
         let max_top = self.buf.last_row();
