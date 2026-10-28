@@ -162,6 +162,17 @@ fn joining() {
 }
 
 #[test]
+fn replacing_characters() {
+    assert_eq!(after("abc", "rx"), ("xbc".into(), (0, 0)));
+    assert_eq!(after("abcd", "3rx"), ("xxxd".into(), (0, 2)));
+    assert_eq!(t("abc", "5rx"), "abc");
+    assert_eq!(after("ab cd", "fcr<CR>"), ("ab \nd".into(), (1, 0)));
+    assert_eq!(t("abcd", "Rxy<Esc>"), "xycd");
+    assert_eq!(t("ab", "Rxyz<Esc>"), "xyz");
+    assert_eq!(t("abcd", "Rxy<BS><BS><Esc>"), "abcd");
+}
+
+#[test]
 fn changing_every_line_leaves_one() {
     assert_eq!(t("abc", "ccx<Esc>"), "x");
     assert_eq!(t("a\nb", "cGx<Esc>"), "x");
