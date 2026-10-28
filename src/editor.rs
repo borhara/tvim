@@ -984,6 +984,31 @@ impl Editor {
         }
     }
 
+    fn join(&mut self, row: usize, lines: usize, spaces: bool) {
+        if row >= self.buf.last_row() {
+            return;
+        }
+        self.touch();
+        let last = (row + lines - 1).min(self.buf.last_row());
+        let mut col = 0;
+        for _ in row..last {
+            let next = self.buf.delete_lines(row + 1, row + 1).remove(0);
+            let mut line = self.buf.line(row).to_string();
+            let next = if spaces { next.trim_start().to_string() } else { next };
+            if spaces {
+                if !next.is_empty() && !next.starts_with(')') && !line.ends_with([' ', '\t']) && !line.is_empty() {
+                    line.push(' ');
+                }
+                col = char_count(&line).saturating_sub(usize::from(!next.is_empty() && line.ends_with(' ')));
+            } else {
+                col = char_count(&line);
+            }
+            line.push_str(&next);
+            self.buf.set_line(row, line);
+        }
+        self.cursor = Pos::new(row, col);
+    }
+
     fn toggle_case_chars(&mut self, n: usize) {
         let len = self.buf.line_len(self.cursor.row);
         if len == 0 {
