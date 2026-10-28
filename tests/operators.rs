@@ -150,6 +150,18 @@ fn y_to_end_of_line_like_neovim() {
 }
 
 #[test]
+fn joining() {
+    assert_eq!(after("a\n   b\nc", "J"), ("a b\nc".into(), (0, 1)));
+    assert_eq!(t("a\nb\nc", "3J"), "a b c");
+    assert_eq!(t("a\nb\nc", "VjjJ"), "a b c");
+    assert_eq!(t("a \nb", "J"), "a b");
+    assert_eq!(t("a\n)", "J"), "a)");
+    assert_eq!(t("a\n", "J"), "a");
+    assert_eq!(t("a\n  b", "gJ"), "a  b");
+    assert_eq!(t("a", "J"), "a");
+}
+
+#[test]
 fn changing_every_line_leaves_one() {
     assert_eq!(t("abc", "ccx<Esc>"), "x");
     assert_eq!(t("a\nb", "cGx<Esc>"), "x");
