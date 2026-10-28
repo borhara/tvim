@@ -107,6 +107,21 @@ fn indenting() {
 }
 
 #[test]
+fn case() {
+    assert_eq!(t("hello world", "gUiw"), "HELLO world");
+    assert_eq!(t("Hello World", "guu"), "hello world");
+    assert_eq!(t("Hello World", "g~~"), "hELLO wORLD");
+    assert_eq!(t("Hello World", "g~w"), "hELLO World");
+    assert_eq!(after("abc", "~~"), ("ABc".into(), (0, 2)));
+    assert_eq!(t("abc", "5~"), "ABC");
+    assert_eq!(
+        t("Straße", "gUU"),
+        "STRAßE",
+        "a letter with no one-letter capital stays"
+    );
+}
+
+#[test]
 fn changing_every_line_leaves_one() {
     assert_eq!(t("abc", "ccx<Esc>"), "x");
     assert_eq!(t("a\nb", "cGx<Esc>"), "x");
