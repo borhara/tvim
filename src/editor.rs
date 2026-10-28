@@ -120,6 +120,16 @@ struct Snapshot {
     version: u64,
 }
 
+#[derive(Clone, Debug, Default)]
+struct InsertSession {
+    count: usize,
+    open: Option<bool>,
+    typed: Vec<Input>,
+    replaced: Vec<Option<char>>,
+    auto_indent: Option<usize>,
+    register_next: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Exclusive,
@@ -180,6 +190,7 @@ pub struct Editor {
     marks: HashMap<char, Pos>,
     replaying: bool,
     insert_replay: bool,
+    insert: InsertSession,
     recording: Option<(char, Vec<Input>)>,
     macros: HashMap<char, Vec<Input>>,
     last_macro: Option<char>,
@@ -243,6 +254,7 @@ impl Editor {
             building: None,
             replaying: false,
             insert_replay: false,
+            insert: InsertSession::default(),
             completion: None,
             recording: None,
             macros: HashMap::new(),
@@ -622,6 +634,7 @@ impl Editor {
             Key::Char('X') => op(self, Op::Delete, Motion::Left),
             Key::Char('s') => {
                 if self.buf.line_len(self.cursor.row) == 0 {
+                    self.begin_insert(1, None);
                 } else {
                     op(self, Op::Change, Motion::Right)
                 }
@@ -637,18 +650,23 @@ impl Editor {
             Key::Char('u' | 'U') => self.undo(n),
             Key::Ctrl('r') => self.redo(n),
             Key::Char('.') => self.repeat(count),
+            Key::Char('i') => self.begin_insert(n, None),
             Key::Char('a') => {
                 if self.buf.line_len(self.cursor.row) > 0 {
                     self.cursor.col += 1;
                 }
+                self.begin_insert(n, None);
             }
             Key::Char('I') => {
                 self.cursor = self.first_non_blank_pos(self.cursor.row);
+                self.begin_insert(n, None);
             }
             Key::Char('A') => {
                 self.cursor.col = self.buf.line_len(self.cursor.row);
+                self.begin_insert(n, None);
             }
             Key::Char('R') => {
+                self.begin_insert(n, None);
                 self.mode = Mode::Replace;
             }
             Key::Char('&') => self.ex("s"),
@@ -689,6 +707,7 @@ impl Editor {
                     let row = p.row.min(self.buf.last_row());
                     self.cursor = Pos::new(row, p.col.min(self.buf.line_len(row)));
                 }
+                self.begin_insert(n, None);
             }
             _ => {}
         }
@@ -926,6 +945,7 @@ impl Editor {
                     self.buf.delete(r.start, r.end);
                     self.cursor = r.start;
                 }
+                self.begin_insert(1, None);
             }
             Op::Indent | Op::Dedent => {
                 self.touch();
@@ -1107,6 +1127,16 @@ impl Editor {
         self.buf.delete(Pos::new(row, from), Pos::new(row, end));
         self.buf.insert(Pos::new(row, from), &text);
         self.cursor = Pos::new(row, from + char_count(&text) - 1);
+    }
+
+    fn begin_insert(&mut self, count: usize, open: Option<bool>) {
+        self.set_want();
+        self.mode = Mode::Insert;
+        self.insert = InsertSession {
+            count,
+            open,
+            ..InsertSession::default()
+        };
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
