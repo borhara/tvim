@@ -1024,6 +1024,24 @@ impl Editor {
         self.cursor.col = end.min(len - 1);
     }
 
+    fn replace_chars(&mut self, ch: char, n: usize) {
+        let p = self.cursor;
+        let len = self.buf.line_len(p.row);
+        if p.col + n > len {
+            return;
+        }
+        self.touch();
+        self.buf.delete(p, Pos::new(p.row, p.col + n));
+        if ch == '\n' {
+            self.buf.insert(p, "\n");
+            self.cursor = Pos::new(p.row + 1, 0);
+        } else {
+            let text: String = std::iter::repeat_n(ch, n).collect();
+            self.buf.insert(p, &text);
+            self.cursor.col = p.col + n - 1;
+        }
+    }
+
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
         let n = count.unwrap_or(self.text_rows() / 2).max(1);
         let max_top = self.buf.last_row();
