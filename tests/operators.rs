@@ -122,6 +122,34 @@ fn case() {
 }
 
 #[test]
+fn yank_and_put() {
+    assert_eq!(after("a\nb", "yyp"), ("a\na\nb".into(), (1, 0)));
+    assert_eq!(after("a\nb", "jyyP"), ("a\nb\nb".into(), (1, 0)));
+    assert_eq!(t("a\nb", "yy3p"), "a\na\na\na\nb");
+    assert_eq!(after("one two", "ywP"), ("one one two".into(), (0, 3)));
+    assert_eq!(after("one two", "yw$p"), ("one twoone ".into(), (0, 10)));
+    assert_eq!(after("ab", "ylp"), ("aab".into(), (0, 1)));
+    assert_eq!(t("ab", "yl3p"), "aaaab");
+    assert_eq!(after("one\ntwo", "vjy$p"), ("oneone\nt\ntwo".into(), (0, 3)));
+    assert_eq!(t("a\nb\nc", "ddp"), "b\na\nc", "swap two lines");
+    assert_eq!(t("ab", "xp"), "ba", "swap two characters");
+    assert_eq!(t("", "p"), "");
+    assert_eq!(after("hello", "yiwgP").1, (0, 5));
+    assert_eq!(after("a\nb", "yygp").1, (2, 0));
+    assert_eq!(
+        after("hello world", "wyy").1,
+        (0, 6),
+        "yanking lines leaves the cursor be"
+    );
+    assert_eq!(after("hello world", "wyb").1, (0, 0), "yanking back goes to the start");
+}
+
+#[test]
+fn y_to_end_of_line_like_neovim() {
+    assert_eq!(t("hello world", "wY$p"), "hello worldworld");
+}
+
+#[test]
 fn changing_every_line_leaves_one() {
     assert_eq!(t("abc", "ccx<Esc>"), "x");
     assert_eq!(t("a\nb", "cGx<Esc>"), "x");
