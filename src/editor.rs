@@ -665,6 +665,8 @@ impl Editor {
                 self.cursor.col = self.buf.line_len(self.cursor.row);
                 self.begin_insert(n, None);
             }
+            Key::Char('o') => self.open_line(false, n),
+            Key::Char('O') => self.open_line(true, n),
             Key::Char('R') => {
                 self.begin_insert(n, None);
                 self.mode = Mode::Replace;
@@ -1137,6 +1139,34 @@ impl Editor {
             open,
             ..InsertSession::default()
         };
+    }
+
+    fn open_line(&mut self, above: bool, count: usize) {
+        self.touch();
+        self.open_one(above);
+        self.begin_insert(count, Some(above));
+        self.insert.auto_indent = Some(self.cursor.row);
+    }
+
+    fn open_one(&mut self, above: bool) {
+        let line = self.buf.line(self.cursor.row).to_string();
+        let mut ind = if self.options.auto_indent {
+            indent(&line).to_string()
+        } else {
+            String::new()
+        };
+        let deeper = if above {
+            line.trim_start().starts_with(['}', ']', ')'])
+        } else {
+            line.trim_end().ends_with(['{', '[', '('])
+        };
+        if self.options.auto_indent && deeper {
+            let width = vcol(&ind, char_count(&ind), self.options.tab_stop);
+            ind = self.make_indent(width + self.options.shift_width);
+        }
+        let row = if above { self.cursor.row } else { self.cursor.row + 1 };
+        self.buf.insert_lines(row, vec![ind.clone()]);
+        self.cursor = Pos::new(row, char_count(&ind));
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
