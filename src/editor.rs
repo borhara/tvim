@@ -448,6 +448,7 @@ impl Editor {
         }
         match self.mode {
             Mode::Normal | Mode::Visual | Mode::VisualLine => self.normal(input),
+            Mode::Insert | Mode::Replace => self.insert_input(input),
         }
         if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::VisualLine) && self.pending.is_empty() {
             self.end_change();
@@ -1167,6 +1168,103 @@ impl Editor {
         let row = if above { self.cursor.row } else { self.cursor.row + 1 };
         self.buf.insert_lines(row, vec![ind.clone()]);
         self.cursor = Pos::new(row, char_count(&ind));
+    }
+
+    fn insert_input(&mut self, input: Input) {
+        if let Some(b) = self.building.as_mut() {
+            b.inputs.push(input.clone());
+        }
+        if !matches!(input, Input::Key(Key::Esc | Key::Ctrl('c'))) {
+            self.insert.typed.push(input.clone());
+        }
+        let key = match input {
+            Input::Paste(text) => {
+                self.touch();
+                self.insert.auto_indent = None;
+                self.cursor = self.buf.insert(self.cursor, &text);
+                return;
+            }
+            Input::Key(k) => k,
+        };
+        if self.insert.register_next {
+            self.insert.register_next = false;
+            if let Key::Char(c) = key {
+            }
+            return;
+        }
+        match key {
+            Key::Tab => {
+                if self.options.expand_tab {
+                    let v = vcol(self.buf.line(self.cursor.row), self.cursor.col, self.options.tab_stop);
+                    let sw = self.options.shift_width.max(1);
+                    let spaces = " ".repeat(sw - v % sw);
+                    self.type_str(&spaces);
+                } else {
+                    self.type_char('\t');
+                }
+            }
+            Key::Delete => {
+                let p = self.cursor;
+                let len = self.buf.line_len(p.row);
+                if p.col < len {
+                    self.touch();
+                    self.buf.delete(p, Pos::new(p.row, p.col + 1));
+                } else if p.row < self.buf.last_row() {
+                    self.touch();
+                    self.buf.delete(p, Pos::new(p.row + 1, 0));
+                }
+            }
+            Key::Ctrl('u') => {
+                let p = self.cursor;
+                if p.col == 0 {
+                }
+                let fnb = first_non_blank(self.buf.line(p.row));
+                let from = if p.col > fnb { fnb } else { 0 };
+                self.touch();
+                self.buf.delete(Pos::new(p.row, from), p);
+                self.cursor.col = from;
+            }
+            Key::Ctrl('r') => self.insert.register_next = true,
+            Key::Ctrl('t') | Key::Ctrl('d') => {
+                let row = self.cursor.row;
+                let before = self.buf.line_len(row);
+                let r = Range::lines(row, row);
+                let col = self.cursor.col;
+                let op = if key == Key::Ctrl('t') { Op::Indent } else { Op::Dedent };
+                if self.buf.line(row).is_empty() && op == Op::Indent {
+                    self.touch();
+                    let ind = self.make_indent(self.options.shift_width);
+                    self.buf.set_line(row, ind);
+                } else {
+                    self.apply(op, r, None, 1);
+                }
+                let after = self.buf.line_len(row);
+                self.cursor = Pos::new(row, (col + after).saturating_sub(before));
+            }
+            Key::Left => self.cursor.col = self.cursor.col.saturating_sub(1),
+            Key::Right => self.cursor.col += 1,
+            Key::Up => {
+                if self.cursor.row > 0 {
+                    self.cursor.row -= 1;
+                    self.cursor.col = self.col_for_want(self.cursor.row);
+                }
+                return;
+            }
+            Key::Down => {
+                if self.cursor.row < self.buf.last_row() {
+                    self.cursor.row += 1;
+                    self.cursor.col = self.col_for_want(self.cursor.row);
+                }
+                return;
+            }
+            Key::Home => self.cursor.col = 0,
+            Key::End => self.cursor.col = self.buf.line_len(self.cursor.row),
+            Key::PageUp => self.scroll_page(false, 1),
+            Key::PageDown => self.scroll_page(true, 1),
+            _ => {}
+        }
+        self.clamp();
+        self.set_want();
     }
 
     fn type_char(&mut self, c: char) {
