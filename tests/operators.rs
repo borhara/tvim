@@ -173,6 +173,18 @@ fn replacing_characters() {
 }
 
 #[test]
+fn numbers() {
+    assert_eq!(after("x 41 y", "<C-a>"), ("x 42 y".into(), (0, 3)));
+    assert_eq!(t("x 41 y", "5<C-x>"), "x 36 y");
+    assert_eq!(t("x 1 y", "2<C-x>"), "x -1 y");
+    assert_eq!(t("x -1", "3<C-a>"), "x 2");
+    assert_eq!(t("v007", "<C-a>"), "v008");
+    assert_eq!(t("123", "ll<C-a>"), "124");
+    assert_eq!(t("no number", "<C-a>"), "no number");
+    assert_eq!(t("1\n1\n1", "VG<C-a>"), "2\n2\n2");
+}
+
+#[test]
 fn changing_every_line_leaves_one() {
     assert_eq!(t("abc", "ccx<Esc>"), "x");
     assert_eq!(t("a\nb", "cGx<Esc>"), "x");
