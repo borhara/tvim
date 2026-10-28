@@ -22,3 +22,24 @@ fn undo_says_when_theres_nothing_left() {
     e.keys(&parse("<C-r>"));
     assert_eq!(e.message().unwrap().text, "Already at newest change");
 }
+
+#[test]
+fn undoing_back_to_the_saved_text_isnt_a_change() {
+    let mut e = ed("a");
+    assert!(!e.is_modified());
+    e.keys(&parse("x"));
+    assert!(e.is_modified());
+    e.keys(&parse("u"));
+    assert!(!e.is_modified());
+    e.keys(&parse("<C-r>"));
+    assert!(e.is_modified());
+}
+
+#[test]
+fn moving_isnt_a_change() {
+    let mut e = ed("a b");
+    e.keys(&parse("wbiu<Esc>u"));
+    assert_eq!(e.text(), "a b");
+    e.keys(&parse("u"));
+    assert_eq!(e.message().unwrap().text, "Already at oldest change");
+}
