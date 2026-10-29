@@ -1287,6 +1287,7 @@ impl Editor {
         let mut s = [0u8; 4];
         self.cursor = self.buf.insert(p, c.encode_utf8(&mut s));
         if matches!(c, '}' | ']' | ')') && self.options.auto_indent && self.mode == Mode::Insert {
+            self.outdent_closer(c);
         }
     }
 
@@ -1317,6 +1318,25 @@ impl Editor {
         }
         self.type_char(c);
         self.buf.insert(self.cursor, &close.to_string());
+    }
+
+    fn outdent_closer(&mut self, c: char) {
+        let row = self.cursor.row;
+        if self.buf.line(row).trim() != c.encode_utf8(&mut [0; 4]) {
+            return;
+        }
+        let open = match c {
+            '}' => '{',
+            ']' => '[',
+            _ => '(',
+        };
+        let at = Pos::new(row, self.cursor.col - 1);
+        let Some(o) = motion::find_open(&self.buf, at, open, c) else {
+            return;
+        };
+        let ind = indent(self.buf.line(o.row)).to_string();
+        self.buf.set_line(row, format!("{ind}{c}"));
+        self.cursor.col = char_count(&ind) + 1;
     }
 
     fn type_str(&mut self, s: &str) {
