@@ -76,3 +76,20 @@ fn tabs_and_backspace() {
     e.keys(&parse("i<Tab>a<Esc>"));
     assert_eq!(e.text(), "\ta");
 }
+
+#[test]
+fn deleting_words_and_lines_while_typing() {
+    assert_eq!(t("foo bar", "A<C-w><Esc>"), "foo ");
+    assert_eq!(t("foo bar  ", "A<C-w><Esc>"), "foo ");
+    assert_eq!(t("foo.bar", "A<C-w><C-w><Esc>"), "foo");
+    assert_eq!(t("  foo bar", "A<C-u><Esc>"), "  ");
+    assert_eq!(t("a\nb", "jI<C-w><Esc>"), "ab");
+}
+
+#[test]
+fn moving_while_typing() {
+    assert_eq!(t("ac", "a<Right>b<Esc>"), "acb");
+    assert_eq!(t("abc", "A<Left><Left>x<Esc>"), "axbc");
+    assert_eq!(t("ab\ncd", "A<Down>x<Esc>"), "ab\ncdx");
+    assert_eq!(t("abc", "A<Home>x<Esc>"), "xabc");
+}
