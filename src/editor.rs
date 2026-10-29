@@ -1203,6 +1203,7 @@ impl Editor {
                     self.type_char('\t');
                 }
             }
+            Key::Enter | Key::Ctrl('j') | Key::Ctrl('m') => self.newline(),
             Key::Delete => {
                 let p = self.cursor;
                 let len = self.buf.line_len(p.row);
@@ -1288,6 +1289,61 @@ impl Editor {
         for c in s.chars() {
             self.type_char(c);
         }
+    }
+
+    fn newline(&mut self) {
+        self.touch();
+        // clear an unused autoindent but carry it to the next line
+        let kept = self.clear_unused_indent();
+        let p = self.cursor;
+        let left: String = self.buf.line(p.row).chars().take(p.col).collect();
+        let mut ind = match kept {
+            Some(k) => k,
+            None if self.options.auto_indent => indent(&left).to_string(),
+            None => String::new(),
+        };
+        if self.options.auto_indent && left.trim_end().ends_with(['{', '[', '(', ':']) {
+            ind = self.make_indent(vcol(&ind, char_count(&ind), self.options.tab_stop) + self.options.shift_width);
+        }
+        if self.mode == Mode::Replace {
+            self.insert.replaced.clear();
+        }
+        let keep = char_count(left.trim_end_matches([' ', '\t']));
+        if keep < p.col && !left.trim().is_empty() {
+            self.buf.delete(Pos::new(p.row, keep), p);
+            self.cursor.col = keep;
+        }
+        let end = self.buf.insert(self.cursor, &format!("\n{ind}"));
+        let rest = self.buf.line(end.row).to_string();
+        let tail = &rest[crate::text::byte_at(&rest, end.col)..];
+        let trimmed = tail.trim_start_matches([' ', '\t']);
+        let closer = trimmed.starts_with(['}', ']', ')']);
+        if trimmed.len() != tail.len() {
+            let head: String = rest.chars().take(end.col).collect();
+            self.buf.set_line(end.row, format!("{head}{trimmed}"));
+        }
+        self.cursor = end;
+        self.insert.auto_indent = Some(end.row);
+        if closer && self.options.auto_indent && left.trim_end().ends_with(['{', '[', '(']) {
+            let outer = indent(&left).to_string();
+            let line = self.buf.line(end.row).to_string();
+            let head: String = line.chars().take(end.col).collect();
+            let tail: String = line.chars().skip(end.col).collect();
+            self.buf.set_line(end.row, head);
+            self.buf.insert_lines(end.row + 1, vec![format!("{outer}{tail}")]);
+        }
+    }
+
+    fn clear_unused_indent(&mut self) -> Option<String> {
+        let row = self.cursor.row;
+        let line = self.buf.line(row);
+        if self.insert.auto_indent != Some(row) || !line.trim().is_empty() || line.is_empty() {
+            return None;
+        }
+        let line = line.to_string();
+        self.buf.set_line(row, String::new());
+        self.cursor.col = 0;
+        Some(line)
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
