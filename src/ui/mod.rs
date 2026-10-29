@@ -4,7 +4,7 @@ use std::path::Path;
 use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
 use tinsel::{ColorMode, Rgb, color_mode, mix, paint, paint_bg, palette};
 
-use crate::editor::{Editor, Mode};
+use crate::editor::{Editor, Mode, Range};
 use crate::text::vcol;
 
 const HINT_DELAY: f32 = 0.4;
@@ -253,6 +253,23 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
         tinsel::text::width(&version),
         &paint(palette::MUTED, &version),
     );
+}
+
+fn selected_cols(sel: &Range, row: usize, len: usize) -> Option<(usize, usize)> {
+    if row < sel.start.row || row > sel.end.row {
+        return None;
+    }
+    if sel.end.row == row && sel.end.col == 0 && row > sel.start.row && !sel.linewise {
+        return None;
+    }
+    let (from, to) = if sel.linewise {
+        (0, len + 1)
+    } else {
+        let from = if row == sel.start.row { sel.start.col } else { 0 };
+        let to = if row == sel.end.row { sel.end.col } else { len + 1 };
+        (from, to)
+    };
+    Some((from, to.max(from + usize::from(len == 0))))
 }
 
 fn display_path(path: &Path) -> String {
