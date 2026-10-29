@@ -1,5 +1,6 @@
 mod common;
-use common::{after, text_after as t};
+use common::{after, ed, text_after as t};
+use tvim::keys::parse;
 
 #[test]
 fn ways_in() {
@@ -50,4 +51,28 @@ fn an_indent_nothing_follows_goes_away() {
 #[test]
 fn closing_brackets_line_up_with_their_opener() {
     assert_eq!(t("if x {", "A<CR>y<CR>}<Esc>"), "if x {\n    y\n}");
+}
+
+#[test]
+fn tabs_and_backspace() {
+    assert_eq!(t("", "i<Tab>a<Esc>"), "    a");
+    assert_eq!(t("ab", "a<Tab><Esc>"), "a   b");
+    assert_eq!(
+        t("", "i<Tab><Tab><BS>a<Esc>"),
+        "    a",
+        "backspace takes a whole indent step"
+    );
+    assert_eq!(t("abc", "A<BS><BS><Esc>"), "a");
+    assert_eq!(
+        t("a\nb", "jI<BS><Esc>"),
+        "ab",
+        "at a line's start it joins the line above"
+    );
+    assert_eq!(t("ab", "i<BS><Esc>"), "ab");
+    assert_eq!(t("ab", "i<Del><Esc>"), "b");
+    assert_eq!(t("a\nb", "A<Del><Esc>"), "ab");
+    let mut e = ed("");
+    e.ex("set noet");
+    e.keys(&parse("i<Tab>a<Esc>"));
+    assert_eq!(e.text(), "\ta");
 }
