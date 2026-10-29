@@ -34,3 +34,15 @@ fn backspace_takes_an_empty_pair() {
     assert_eq!(t("", "i(x<BS><BS><Esc>"), "");
     assert_eq!(t("a)", "A<Left><BS><Esc>"), ")");
 }
+
+#[test]
+fn enter_between_brackets_opens_a_middle_line() {
+    assert_eq!(t("fn f() ", "A{<CR>x<Esc>"), "fn f() {\n    x\n}");
+    assert_eq!(t("f", "A(<CR>a<Esc>"), "f(\n    a\n)");
+    assert_eq!(t("", "i[<CR><Esc>"), "[\n\n]");
+}
+
+#[test]
+fn replace_mode_doesnt_pair() {
+    assert_eq!(t("abc", "R(<Esc>"), "(bc");
+}
