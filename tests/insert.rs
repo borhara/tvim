@@ -93,3 +93,17 @@ fn moving_while_typing() {
     assert_eq!(t("ab\ncd", "A<Down>x<Esc>"), "ab\ncdx");
     assert_eq!(t("abc", "A<Home>x<Esc>"), "xabc");
 }
+
+#[test]
+fn indenting_while_typing() {
+    assert_eq!(t("a", "A<C-t><Esc>"), "    a");
+    assert_eq!(t("        a", "A<C-d><Esc>"), "    a");
+    assert_eq!(t("", "i<C-t>x<Esc>"), "    x");
+}
+
+#[test]
+fn registers_while_typing() {
+    assert_eq!(t("word", "yiwA <C-r>\"<Esc>"), "word word");
+    assert_eq!(t("a", "yyA<C-r>\"<Esc>"), "aa\n");
+    assert_eq!(t("x", "\"qyiwo<C-r>q!<Esc>"), "x\nx!");
+}
