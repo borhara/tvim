@@ -10,7 +10,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::motion::{self, Find};
 use crate::object::object;
 use crate::syntax;
-use crate::text::{char_count, col_at, first_non_blank, indent, vcol};
+use crate::text::{char_count, class, col_at, first_non_blank, indent, vcol};
 use crate::window::Node;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1216,6 +1216,7 @@ impl Editor {
                     self.buf.delete(p, Pos::new(p.row + 1, 0));
                 }
             }
+            Key::Ctrl('w') => self.delete_word_before(),
             Key::Ctrl('u') => {
                 let p = self.cursor;
                 if p.col == 0 {
@@ -1403,6 +1404,27 @@ impl Editor {
         };
         self.buf.delete(Pos::new(p.row, from), p);
         self.cursor.col = from;
+    }
+
+    fn delete_word_before(&mut self) {
+        let p = self.cursor;
+        if p.col == 0 {
+            return self.backspace();
+        }
+        let chars: Vec<char> = self.buf.line(p.row).chars().collect();
+        let mut i = p.col;
+        while i > 0 && chars[i - 1].is_whitespace() {
+            i -= 1;
+        }
+        if i > 0 {
+            let k = class(chars[i - 1], false);
+            while i > 0 && class(chars[i - 1], false) == k {
+                i -= 1;
+            }
+        }
+        self.touch();
+        self.buf.delete(Pos::new(p.row, i), p);
+        self.cursor.col = i;
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
