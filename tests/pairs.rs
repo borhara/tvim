@@ -1,5 +1,6 @@
 mod common;
-use common::{after, text_after as t};
+use common::{after, ed, text_after as t};
+use tvim::keys::parse;
 
 #[test]
 fn openers_bring_their_closers() {
@@ -43,6 +44,22 @@ fn enter_between_brackets_opens_a_middle_line() {
 }
 
 #[test]
+fn it_can_be_turned_off() {
+    let mut e = ed("");
+    e.ex("set noautopairs");
+    e.keys(&parse("i(\"<Esc>"));
+    assert_eq!(e.text(), "(\"");
+    e.ex("set ap?");
+    assert_eq!(e.message().unwrap().text, "noautopairs");
+}
+
+#[test]
 fn replace_mode_doesnt_pair() {
     assert_eq!(t("abc", "R(<Esc>"), "(bc");
+}
+
+#[test]
+fn undo_and_repeat() {
+    assert_eq!(t("a", "A(x<Esc>u"), "a");
+    assert_eq!(t("a\nb", "A(x<Esc>j."), "a(x)\nb(x)");
 }
