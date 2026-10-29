@@ -5,6 +5,7 @@ use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
 use tinsel::{ColorMode, Rgb, color_mode, mix, paint, paint_bg, palette};
 
 use crate::editor::{Editor, Mode};
+use crate::text::vcol;
 
 const HINT_DELAY: f32 = 0.4;
 
@@ -159,6 +160,18 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if let Some((x, y, shape)) = cursor {
         frame.set_cursor(x, y, shape);
     }
+}
+
+// the terminal draws a bar at a cell's left edge and guides sit mid-cell, so on a guide the
+// guide itself becomes the cursor
+fn bar_on_guide(e: &Editor) -> Option<usize> {
+    if e.mode() != Mode::Insert || !e.options.indent_guides || color_mode() == ColorMode::None {
+        return None;
+    }
+    let p = e.cursor();
+    let buf = e.buffer();
+    let ts = e.options.tab_stop;
+    let col = vcol(buf.line(p.row), p.col, ts);
 }
 
 fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool, scrollbar: bool) -> Rect {
