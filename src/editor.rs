@@ -10,7 +10,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::motion::{self, Find};
 use crate::object::object;
 use crate::syntax;
-use crate::text::{char_count, class, col_at, first_non_blank, indent, vcol};
+use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::Node;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1194,6 +1194,7 @@ impl Editor {
         }
         match key {
             Key::Esc | Key::Ctrl('c') => self.leave_insert(),
+            Key::Char(c) => self.type_paired(c),
             Key::Tab => {
                 if self.options.expand_tab {
                     let v = vcol(self.buf.line(self.cursor.row), self.cursor.col, self.options.tab_stop);
@@ -1287,6 +1288,35 @@ impl Editor {
         self.cursor = self.buf.insert(p, c.encode_utf8(&mut s));
         if matches!(c, '}' | ']' | ')') && self.options.auto_indent && self.mode == Mode::Insert {
         }
+    }
+
+    fn type_paired(&mut self, c: char) {
+        if !self.options.auto_pairs || self.mode != Mode::Insert {
+            return self.type_char(c);
+        }
+        let p = self.cursor;
+        let next = self.buf.char_at(p);
+        let prev = p
+            .col
+            .checked_sub(1)
+            .and_then(|col| self.buf.char_at(Pos::new(p.row, col)));
+        let quote = matches!(c, '"' | '\'' | '`');
+        if (quote || matches!(c, ')' | ']' | '}')) && next == Some(c) {
+            self.cursor.col += 1;
+            return;
+        }
+        let close = match c {
+            '(' => ')',
+            '[' => ']',
+            '{' => '}',
+            _ if quote => c,
+            _ => return self.type_char(c),
+        };
+        if next.is_some_and(is_word) || quote && prev.is_some_and(is_word) {
+            return self.type_char(c);
+        }
+        self.type_char(c);
+        self.buf.insert(self.cursor, &close.to_string());
     }
 
     fn type_str(&mut self, s: &str) {
