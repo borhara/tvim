@@ -44,3 +44,11 @@ fn the_other_end() {
     assert_eq!(after("abcdef", "lvlloh").1, (0, 0));
     assert_eq!(t("abcdef", "lllvlohd"), "abf");
 }
+
+#[test]
+fn text_objects_grow_the_selection() {
+    assert_eq!(t("say (hi there) now", "fhvi(d"), "say () now");
+    assert_eq!(t("say (hi there) now", "fhva(d"), "say  now");
+    assert_eq!(t("one two three", "wviwd"), "one  three");
+    assert_eq!(t("a\nb\n\nc", "vipd"), "\nc");
+}
