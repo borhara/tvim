@@ -23,3 +23,14 @@ fn mixed_lines_get_commented_and_all_commented_get_uncommented() {
     assert_eq!(after("mix.py", "# a\nb", "gcj"), "# # a\n# b");
     assert_eq!(after("all.py", "# a\n\n  # b", "gc2j"), "a\n\n  b");
 }
+
+#[test]
+fn visual_mode() {
+    assert_eq!(after("v.rs", "a\nb\nc", "Vjgc"), "// a\n// b\nc");
+    assert_eq!(after("v2.rs", "a\nb\nc", "vjgc"), "// a\n// b\nc");
+    assert_eq!(
+        after("v3.rs", "a\nb\nc\nd", "Vjgcjj."),
+        "// a\n// b\n// c\n// d",
+        "dot does as many lines"
+    );
+}
