@@ -352,6 +352,10 @@ impl Editor {
         display_name(self.file.path.as_deref())
     }
 
+    pub fn selection(&self) -> Option<Range> {
+        self.mode.is_visual().then(|| self.visual_range())
+    }
+
     pub fn clear_message(&mut self) {
         self.message = None;
     }
@@ -585,6 +589,7 @@ impl Editor {
             let had = !self.pending.is_empty();
             self.pending.clear();
             if self.mode.is_visual() {
+                self.leave_visual();
             } else if key == Key::Ctrl('c') && !had {
                 self.info("Type  :qa!  and press Enter to abandon all changes and exit tvim");
             }
@@ -672,6 +677,8 @@ impl Editor {
                 self.begin_insert(n, None);
                 self.mode = Mode::Replace;
             }
+            Key::Char('v') => self.enter_visual(Mode::Visual),
+            Key::Char('V') => self.enter_visual(Mode::VisualLine),
             Key::Char('&') => self.ex("s"),
             Key::Ctrl('a') => self.increment(n as i64),
             Key::Ctrl('x') => self.increment(-(n as i64)),
@@ -1507,6 +1514,52 @@ impl Editor {
             self.dot = Some(b);
         }
         self.end_change();
+    }
+
+    fn enter_visual(&mut self, mode: Mode) {
+        self.anchor = self.cursor;
+        self.mode = mode;
+    }
+
+    fn leave_visual(&mut self) {
+        let r = self.visual_range();
+        self.last_visual = Some((self.anchor, self.cursor, self.mode));
+        self.marks.insert('<', r.start);
+        let last = r.last_row();
+        self.marks.insert(
+            '>',
+            if r.linewise {
+                Pos::new(last, 0)
+            } else if last < r.end.row {
+                Pos::new(last, self.buf.line_len(last).saturating_sub(1))
+            } else {
+                Pos::new(last, r.end.col.saturating_sub(1))
+            },
+        );
+        self.mode = Mode::Normal;
+        self.clamp();
+    }
+
+    pub(crate) fn visual_range(&self) -> Range {
+        let (a, b) = if self.cursor < self.anchor {
+            (self.cursor, self.anchor)
+        } else {
+            (self.anchor, self.cursor)
+        };
+        if self.mode == Mode::VisualLine {
+            return Range::lines(a.row, b.row);
+        }
+        let len = self.buf.line_len(b.row);
+        let end = if len == 0 && b.row < self.buf.last_row() {
+            Pos::new(b.row + 1, 0)
+        } else {
+            Pos::new(b.row, (b.col + 1).min(len))
+        };
+        Range {
+            start: a,
+            end,
+            linewise: false,
+        }
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
