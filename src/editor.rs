@@ -1204,6 +1204,7 @@ impl Editor {
                 }
             }
             Key::Enter | Key::Ctrl('j') | Key::Ctrl('m') => self.newline(),
+            Key::Backspace | Key::Ctrl('h') => self.backspace(),
             Key::Delete => {
                 let p = self.cursor;
                 let len = self.buf.line_len(p.row);
@@ -1218,6 +1219,7 @@ impl Editor {
             Key::Ctrl('u') => {
                 let p = self.cursor;
                 if p.col == 0 {
+                    return self.backspace();
                 }
                 let fnb = first_non_blank(self.buf.line(p.row));
                 let from = if p.col > fnb { fnb } else { 0 };
@@ -1344,6 +1346,63 @@ impl Editor {
         self.buf.set_line(row, String::new());
         self.cursor.col = 0;
         Some(line)
+    }
+
+    fn backspace(&mut self) {
+        let p = self.cursor;
+        if self.mode == Mode::Replace {
+            if p.col == 0 {
+                return;
+            }
+            let back = Pos::new(p.row, p.col - 1);
+            if let Some(old) = self.insert.replaced.pop() {
+                self.touch();
+                self.buf.delete(back, p);
+                if let Some(c) = old {
+                    self.buf.insert(back, &c.to_string());
+                }
+            }
+            self.cursor = back;
+            return;
+        }
+        if p.col == 0 {
+            if p.row == 0 {
+                return;
+            }
+            self.touch();
+            let len = self.buf.line_len(p.row - 1);
+            self.buf.delete(Pos::new(p.row - 1, len), p);
+            self.cursor = Pos::new(p.row - 1, len);
+            return;
+        }
+        self.touch();
+        let pair = |a, b| {
+            matches!(
+                (a, b),
+                ('(', ')') | ('[', ']') | ('{', '}') | ('"', '"') | ('\'', '\'') | ('`', '`')
+            )
+        };
+        if let (true, Some(a), Some(b)) = (
+            self.options.auto_pairs,
+            self.buf.char_at(Pos::new(p.row, p.col - 1)),
+            self.buf.char_at(p),
+        ) {
+            if pair(a, b) {
+                self.buf.delete(Pos::new(p.row, p.col - 1), Pos::new(p.row, p.col + 1));
+                self.cursor.col -= 1;
+                return;
+            }
+        }
+        let mut before = self.buf.line(p.row).chars().take(p.col);
+        let blank = before.next() == Some(' ') && before.all(|c| c == ' ');
+        let from = if self.options.expand_tab && blank {
+            let sw = self.options.shift_width.max(1);
+            p.col - (if p.col % sw == 0 { sw } else { p.col % sw })
+        } else {
+            p.col - 1
+        };
+        self.buf.delete(Pos::new(p.row, from), p);
+        self.cursor.col = from;
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
