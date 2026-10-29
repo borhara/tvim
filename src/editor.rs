@@ -8,7 +8,7 @@ use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::motion::{self, Find};
-use crate::object::object;
+use crate::object::{Span, object};
 use crate::syntax;
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::Node;
@@ -602,6 +602,7 @@ impl Editor {
             Parse::Done(cmd) => {
                 self.pending.clear();
                 if self.mode.is_visual() {
+                    self.run_visual(cmd);
                 } else {
                     self.run(cmd);
                 }
@@ -1559,6 +1560,71 @@ impl Editor {
             start: a,
             end,
             linewise: false,
+        }
+    }
+
+    fn run_visual(&mut self, cmd: Cmd) {
+        let n = cmd.n();
+        match cmd.act {
+            Act::Move(m) => self.move_cursor(m, cmd.count),
+            Act::Select { kind, inner } => {
+                let Some(Span { start, end, linewise }) = object(&self.buf, self.cursor, kind, inner, n) else {
+                    return;
+                };
+                if linewise {
+                    self.mode = Mode::VisualLine;
+                    self.anchor = start;
+                    self.cursor = Pos::new(end.row, 0);
+                } else if start < end {
+                    self.anchor = start;
+                    self.cursor = if end.col == 0 && end.row > start.row {
+                        Pos::new(end.row - 1, self.buf.line_len(end.row - 1))
+                    } else {
+                        Pos::new(end.row, end.col - 1)
+                    };
+                }
+            }
+            Act::Operate(op, _) => {
+                let r = self.visual_range();
+                self.leave_visual();
+                self.apply(op, r, cmd.register, n);
+                if op == Op::Yank {
+                    self.cursor = r.start;
+                }
+                // repeats as gcc over as many lines
+                if op == Op::Comment && !self.replaying {
+                }
+            }
+            Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {
+                let r = self.visual_range();
+                self.leave_visual();
+                for row in r.start.row..=r.last_row() {
+                    self.cursor = Pos::new(
+                        row,
+                        if row == r.start.row && !r.linewise {
+                            r.start.col
+                        } else {
+                            0
+                        },
+                    );
+                    self.increment(if c == 'a' { n as i64 } else { -(n as i64) });
+                }
+                self.cursor = r.start;
+            }
+            Act::With('r', ch) => {
+                let r = self.visual_range();
+                self.leave_visual();
+                self.touch();
+                let (from, to) = self.char_span(r);
+                let text = self.buf.slice(from, to);
+                let new: String = text.chars().map(|c| if c == '\n' { c } else { ch }).collect();
+                self.buf.delete(from, to);
+                self.buf.insert(from, &new);
+                self.cursor = from;
+            }
+            Act::G(c) => self.normal_g(c, n, cmd.register),
+            Act::Z(k) => self.normal_z(k, cmd.count),
+            _ => {}
         }
     }
 
