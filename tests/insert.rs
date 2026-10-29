@@ -107,3 +107,13 @@ fn registers_while_typing() {
     assert_eq!(t("a", "yyA<C-r>\"<Esc>"), "aa\n");
     assert_eq!(t("x", "\"qyiwo<C-r>q!<Esc>"), "x\nx!");
 }
+
+#[test]
+fn ctrl_c_leaves_insert_mode() {
+    let (text, at) = after("", "ihi<C-c>");
+    assert_eq!((text.as_str(), at), ("hi", (0, 1)));
+    let mut e = ed("");
+    e.keys(&parse("<C-c>"));
+    assert!(e.message().unwrap().text.contains(":qa!"));
+    assert!(!e.should_quit());
+}
