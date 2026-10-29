@@ -1193,6 +1193,7 @@ impl Editor {
             return;
         }
         match key {
+            Key::Esc | Key::Ctrl('c') => self.leave_insert(),
             Key::Tab => {
                 if self.options.expand_tab {
                     let v = vcol(self.buf.line(self.cursor.row), self.cursor.col, self.options.tab_stop);
@@ -1425,6 +1426,37 @@ impl Editor {
         self.touch();
         self.buf.delete(Pos::new(p.row, i), p);
         self.cursor.col = i;
+    }
+
+    fn leave_insert(&mut self) {
+        self.completion = None;
+        let count = self.insert.count;
+        if count > 1 && !self.insert_replay {
+            let typed = std::mem::take(&mut self.insert.typed);
+            let open = self.insert.open;
+            let building = self.building.take();
+            self.insert_replay = true;
+            for _ in 1..count {
+                if open.is_some() {
+                    self.open_one(false);
+                }
+                for i in &typed {
+                    self.insert_input(i.clone());
+                }
+            }
+            self.insert_replay = false;
+            self.building = building;
+        }
+        self.clear_unused_indent();
+        self.marks.insert('^', self.cursor);
+        self.mode = Mode::Normal;
+        self.cursor.col = self.cursor.col.saturating_sub(1);
+        self.clamp();
+        self.set_want();
+        if let Some(b) = self.building.take() {
+            self.dot = Some(b);
+        }
+        self.end_change();
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
