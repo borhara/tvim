@@ -54,6 +54,28 @@ fn text_objects_grow_the_selection() {
 }
 
 #[test]
+fn case_and_replacing() {
+    assert_eq!(t("hello world", "veU"), "HELLO world");
+    assert_eq!(t("HELLO world", "Vu"), "hello world");
+    assert_eq!(t("Hello", "v$~"), "hELLO");
+    assert_eq!(t("hello\nworld", "vjrx"), "xxxxx\nxorld");
+}
+
+#[test]
+fn putting_over_a_selection() {
+    assert_eq!(after("one two", "yiwwviwp"), ("one one".into(), (0, 6)));
+    let mut e = ed("one two");
+    e.keys(&parse("yiwwviwp"));
+    assert_eq!(e.register('"').unwrap().text, "two", "p leaves what it replaced");
+    let mut e = ed("one two");
+    e.keys(&parse("yiwwviwP"));
+    assert_eq!(e.register('"').unwrap().text, "one", "P leaves the registers be");
+    assert_eq!(t("a\nb\nc", "yyjVp"), "a\na\nc");
+    assert_eq!(t("a\nb", "yyjVp"), "a\na");
+    assert_eq!(t("x\nab", "yyjlvp"), "x\na\nx\n");
+}
+
+#[test]
 fn a_selection_ending_on_an_empty_line_stops_there() {
     assert_eq!(t("a\n\nb\nc", "vj:d<CR>"), "b\nc");
     assert_eq!(t("a\n\nb\nc", "jvD"), "a\nb\nc");
