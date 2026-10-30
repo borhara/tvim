@@ -1595,6 +1595,7 @@ impl Editor {
                 if op == Op::Comment && !self.replaying {
                 }
             }
+            Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
             Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {
                 let r = self.visual_range();
                 self.leave_visual();
@@ -1624,6 +1625,96 @@ impl Editor {
             }
             Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
+            _ => {}
+        }
+    }
+
+    fn visual_key(&mut self, c: char, register: Option<char>, n: usize) {
+        let r = self.visual_range();
+        let lines = Range::lines(r.start.row, r.last_row());
+        match c {
+            'v' | 'V' => {
+                let want = if c == 'v' { Mode::Visual } else { Mode::VisualLine };
+                if self.mode == want {
+                    self.leave_visual();
+                } else {
+                    self.mode = want;
+                }
+            }
+            'o' | 'O' => std::mem::swap(&mut self.anchor, &mut self.cursor),
+            'x' => {
+                self.leave_visual();
+                self.apply(Op::Delete, r, register, n);
+            }
+            'X' | 'D' => {
+                self.leave_visual();
+                self.apply(Op::Delete, lines, register, n);
+            }
+            'Y' => {
+                self.leave_visual();
+                self.apply(Op::Yank, lines, register, n);
+            }
+            's' => {
+                self.leave_visual();
+                self.apply(Op::Change, r, register, n);
+            }
+            'S' | 'R' | 'C' => {
+                self.leave_visual();
+                self.apply(Op::Change, lines, register, n);
+            }
+            'J' => {
+                self.leave_visual();
+                self.join(r.start.row, (r.last_row() - r.start.row + 1).max(2), true);
+            }
+            'p' | 'P' => {
+                self.leave_visual();
+                // p puts the replaced text in "; P leaves registers alone
+                self.apply(Op::Delete, r, if c == 'P' { Some('_') } else { None }, 1);
+                let text = if reg.linewise {
+                    vec![reg.text.as_str(); n].join("\n")
+                } else {
+                    reg.text.repeat(n)
+                };
+                if r.linewise {
+                    let row = r.start.row;
+                    let lines: Vec<String> = text.split('\n').map(str::to_string).collect();
+                    let emptied = self.buf.is_empty();
+                    self.buf.insert_lines(row.min(self.buf.len()), lines);
+                    if emptied {
+                        let last = self.buf.last_row();
+                        self.buf.delete_lines(last, last);
+                    }
+                    self.cursor = self.first_non_blank_pos(row.min(self.buf.last_row()));
+                } else if reg.linewise {
+                    let at = r.start;
+                    self.buf.insert(at, &format!("\n{text}\n"));
+                    self.cursor = Pos::new(at.row + 1, 0);
+                } else {
+                    let end = self.buf.insert(r.start, &text);
+                    self.cursor = Pos::new(end.row, end.col.saturating_sub(1));
+                }
+            }
+            ':' => {
+                self.leave_visual();
+            }
+            'I' => {
+                self.leave_visual();
+                self.cursor = if r.linewise {
+                    self.first_non_blank_pos(r.start.row)
+                } else {
+                    r.start
+                };
+                self.begin_insert(1, None);
+            }
+            'A' => {
+                self.leave_visual();
+                self.cursor = if r.linewise || r.last_row() < r.end.row {
+                    Pos::new(r.last_row(), self.buf.line_len(r.last_row()))
+                } else {
+                    r.end
+                };
+                self.begin_insert(1, None);
+            }
             _ => {}
         }
     }
