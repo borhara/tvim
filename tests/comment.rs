@@ -76,3 +76,11 @@ fn visual_mode() {
         "dot does as many lines"
     );
 }
+
+#[test]
+fn undo_and_repeat() {
+    assert_eq!(after("u.rs", "a\nb\nc", "3gccu"), "a\nb\nc", "one undo for the lot");
+    assert_eq!(after("r.rs", "a\nb\nc", "gccj."), "// a\n// b\nc");
+    assert_eq!(after("r2.rs", "a\nb\nc\nd", "gcjjj."), "// a\n// b\n// c\n// d");
+    assert_eq!(after("r3.rs", "a", "gcc."), "a", "repeating toggles back");
+}
