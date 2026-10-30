@@ -43,3 +43,28 @@ fn moving_isnt_a_change() {
     e.keys(&parse("u"));
     assert_eq!(e.message().unwrap().text, "Already at oldest change");
 }
+
+#[test]
+fn dot_repeats_the_last_change() {
+    assert_eq!(t("a b c d", "dw."), "c d");
+    assert_eq!(t("a b c d e f", "d2w."), "e f");
+    assert_eq!(t("a b c d e f", "dw3."), "e f", "a count replaces the old one");
+    assert_eq!(t("one two", "ciwX<Esc>w."), "X X");
+    assert_eq!(t("a\nb", "A;<Esc>j."), "a;\nb;");
+    assert_eq!(t("a\nb\nc", "dd."), "c");
+    assert_eq!(t("abc", "x.."), "");
+    assert_eq!(t("a\nb", ">>j."), "    a\n    b");
+    assert_eq!(t("x", "oy<Esc>."), "x\ny\ny");
+    assert_eq!(t("abc", "rx$."), "xbx");
+    assert_eq!(t("a b", "yw$."), "a b", "yanking isn't a change");
+    assert_eq!(t("1", "<C-a>.."), "4");
+    assert_eq!(t("x", "3ia<Esc>."), "aaaaaax");
+    assert_eq!(t("a b c", "dwu."), "b c");
+}
+
+#[test]
+fn dot_keeps_the_register() {
+    let mut e = ed("a\nb\nc");
+    e.keys(&parse("\"Add."));
+    assert_eq!(e.register('a').unwrap().text, "a\nb");
+}
