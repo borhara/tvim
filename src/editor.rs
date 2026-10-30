@@ -319,6 +319,10 @@ impl Editor {
         Ok(e)
     }
 
+    pub fn set_clipboard(&mut self, clipboard: Box<dyn Clipboard>) {
+        self.clipboard = clipboard;
+    }
+
     pub fn buffer(&self) -> &Buffer {
         &self.buf
     }
@@ -620,6 +624,30 @@ impl Editor {
         self.registers.insert('"', r);
     }
 
+    fn fetch(&mut self, register: Option<char>) -> Option<Register> {
+        match register.unwrap_or('"') {
+            c @ ('+' | '*') => {
+                let Some(text) = self.clipboard.get() else {
+                    self.error(format!("E353: Nothing in register {c}"));
+                    return None;
+                };
+                let linewise = text.ends_with('\n');
+                Some(Register {
+                    text: text.strip_suffix('\n').unwrap_or(&text).to_string(),
+                    linewise,
+                })
+            }
+            '/' => self.last_search.clone().map(|text| Register { text, linewise: false }),
+            c => {
+                let r = self.registers.get(&c.to_ascii_lowercase()).cloned();
+                if r.is_none() {
+                    self.error(format!("E353: Nothing in register {c}"));
+                }
+                r
+            }
+        }
+    }
+
     fn normal(&mut self, input: Input) {
         let key = match input {
             Input::Paste(text) => {
@@ -757,6 +785,7 @@ impl Editor {
             }
             'J' => self.join(self.cursor.row, n.max(2), false),
             'p' | 'P' => {
+                let Some(r) = self.fetch(register) else { return };
                 let end = self.put_register(&r, n, c == 'P');
                 self.cursor = if r.linewise {
                     Pos::new((end.row + 1).min(self.buf.last_row()), 0)
@@ -1104,6 +1133,7 @@ impl Editor {
     }
 
     fn put(&mut self, register: Option<char>, count: usize, before: bool) {
+        let Some(r) = self.fetch(register) else { return };
         let end = self.put_register(&r, count, before);
         if !r.linewise && !r.text.contains('\n') {
             self.cursor = Pos::new(end.row, end.col.saturating_sub(1));
@@ -1287,6 +1317,14 @@ impl Editor {
         if self.insert.register_next {
             self.insert.register_next = false;
             if let Key::Char(c) = key {
+                if let Some(r) = self.fetch(Some(c)) {
+                    let mut text = r.text;
+                    if r.linewise {
+                        text.push('\n');
+                    }
+                    self.touch();
+                    self.cursor = self.buf.insert(self.cursor, &text);
+                }
             }
             return;
         }
@@ -1757,6 +1795,7 @@ impl Editor {
                 self.join(r.start.row, (r.last_row() - r.start.row + 1).max(2), true);
             }
             'p' | 'P' => {
+                let Some(reg) = self.fetch(register) else { return };
                 self.leave_visual();
                 // p puts the replaced text in "; P leaves registers alone
                 self.apply(Op::Delete, r, if c == 'P' { Some('_') } else { None }, 1);
