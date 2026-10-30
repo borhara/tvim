@@ -144,6 +144,16 @@ struct InsertSession {
     register_next: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct CmdLine {
+    pub text: String,
+    pub cursor: usize,
+    pub prompt: char,
+    browse: Option<usize>,
+    origin: Pos,
+    origin_top: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Exclusive,
@@ -194,6 +204,7 @@ pub struct Editor {
     saved: u64,
     versions: u64,
     changing: bool,
+    pub(crate) cmd: CmdLine,
     cmd_history: Vec<String>,
     search_history: Vec<String>,
     pub(crate) last_search: Option<String>,
@@ -258,6 +269,7 @@ impl Editor {
             saved: 0,
             versions: 0,
             changing: false,
+            cmd: CmdLine::default(),
             cmd_history: Vec::new(),
             search_history: Vec::new(),
             last_search: None,
@@ -351,6 +363,10 @@ impl Editor {
 
     pub fn message(&self) -> Option<&Message> {
         self.message.as_ref()
+    }
+
+    pub fn cmdline(&self) -> &CmdLine {
+        &self.cmd
     }
 
     pub fn pending(&self) -> &[Key] {
@@ -791,6 +807,9 @@ impl Editor {
             }
             Key::Char('v') => self.enter_visual(Mode::Visual),
             Key::Char('V') => self.enter_visual(Mode::VisualLine),
+            Key::Char(':') => self.begin_cmdline(':', String::new()),
+            Key::Char('/') => self.begin_cmdline('/', String::new()),
+            Key::Char('?') => self.begin_cmdline('?', String::new()),
             Key::Char('&') => self.ex("s"),
             Key::Ctrl('a') => self.increment(n as i64),
             Key::Ctrl('x') => self.increment(-(n as i64)),
@@ -1984,6 +2003,7 @@ impl Editor {
             }
             ':' => {
                 self.leave_visual();
+                self.begin_cmdline(':', "'<,'>".to_string());
             }
             'I' => {
                 self.leave_visual();
@@ -2005,6 +2025,20 @@ impl Editor {
             }
             _ => {}
         }
+    }
+
+    pub(crate) fn begin_cmdline(&mut self, prompt: char, text: String) {
+        self.message = None;
+        self.cmd = CmdLine {
+            cursor: char_count(&text),
+            text,
+            prompt,
+            browse: None,
+            origin: self.cursor,
+            origin_top: self.top.get(),
+            completing: None,
+        };
+        self.mode = if prompt == ':' { Mode::Command } else { Mode::Search };
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
