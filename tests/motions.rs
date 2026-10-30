@@ -105,6 +105,15 @@ fn the_screen_top_middle_and_bottom() {
 }
 
 #[test]
+fn marks_and_jumps() {
+    let t = "one\ntwo\nthree\nfour";
+    assert_eq!(at(t, "jlmaG'a"), (1, 0));
+    assert_eq!(at(t, "jlmaG`a"), (1, 1));
+    assert_eq!(at(t, "jG''"), (1, 0));
+    assert_eq!(at(t, "'z"), (0, 0));
+}
+
+#[test]
 fn brackets_on_a_very_long_line() {
     let line = format!("({})", "ab ".repeat(66_000));
     let mut e = common::ed(&line);
