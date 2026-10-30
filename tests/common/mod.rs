@@ -1,3 +1,15 @@
+#![allow(dead_code)]
+
+use tvim::clipboard::Memory;
+use tvim::{Editor, Pos, keys};
+
+pub fn ed(text: &str) -> Editor {
+    let mut e = Editor::with_text(text);
+    e.set_clipboard(Box::new(Memory::default()));
+    e.set_screen(80, 24);
+    e
+}
+
 pub fn after(text: &str, spec: &str) -> (String, (usize, usize)) {
     let mut e = ed(text);
     e.keys(&keys::parse(spec));
