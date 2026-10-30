@@ -819,6 +819,7 @@ impl Editor {
                     self.recording = Some((ch, Vec::new()));
                 }
             }
+            '@' => self.play_macro(ch, n),
             'Z' if ch == 'Z' => self.ex("x"),
             'Z' => self.ex("q!"),
             _ => {}
@@ -1336,6 +1337,49 @@ impl Editor {
                 d.count = count;
             }
         }
+    }
+
+    fn play_macro(&mut self, name: char, n: usize) {
+        let name = if name == '@' {
+            match self.last_macro {
+                Some(m) => m,
+                None => {
+                    self.error("E748: No previously used register");
+                    return;
+                }
+            }
+        } else {
+            name
+        };
+        if name == ':' {
+            self.last_macro = Some(name);
+            if let Some(last) = self.cmd_history.last().cloned() {
+                for _ in 0..n {
+                    self.ex(&last);
+                }
+            }
+            return;
+        }
+        let Some(inputs) = self.macros.get(&name.to_ascii_lowercase()).cloned().or_else(|| {
+            self.registers
+                .get(&name.to_ascii_lowercase())
+                .map(|r| crate::keys::parse(&r.text).into_iter().map(Input::Key).collect())
+        }) else {
+            return;
+        };
+        if self.macro_depth > 20 {
+            self.error("E169: Command too recursive");
+            return;
+        }
+        self.last_macro = Some(name);
+        self.macro_depth += 1;
+        self.end_change();
+        for _ in 0..n {
+            for i in &inputs {
+                self.input(i.clone());
+            }
+        }
+        self.macro_depth -= 1;
     }
 
     fn stop_recording(&mut self) {
