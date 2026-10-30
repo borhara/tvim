@@ -68,3 +68,26 @@ fn dot_keeps_the_register() {
     e.keys(&parse("\"Add."));
     assert_eq!(e.register('a').unwrap().text, "a\nb");
 }
+
+#[test]
+fn macros() {
+    assert_eq!(t("1\n2\n3", "qaA!<Esc>jq@a"), "1!\n2!\n3");
+    assert_eq!(t("1\n2\n3\n4", "qaA!<Esc>jq2@a"), "1!\n2!\n3!\n4");
+    assert_eq!(t("1\n2\n3", "qaA!<Esc>jq@a@@"), "1!\n2!\n3!");
+    assert_eq!(t("a b c", "qqdwq@q"), "c");
+    let mut e = ed("x");
+    e.keys(&parse("qaiy<Esc>q"));
+    assert_eq!(e.register('a').unwrap().text, "iy<Esc>");
+    assert_eq!(e.recording(), None);
+    e.keys(&parse("qb"));
+    assert_eq!(e.recording(), Some('b'));
+}
+
+#[test]
+fn a_macro_that_calls_itself_stops() {
+    let mut e = ed("a");
+    e.keys(&parse("qaq"));
+    e.keys(&parse("qa@aq"));
+    e.keys(&parse("@a"));
+    assert!(!e.should_quit());
+}
