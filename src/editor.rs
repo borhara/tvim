@@ -7,6 +7,7 @@ use tinsel::app::Key;
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
+use crate::diff::Hunk;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::syntax;
@@ -127,6 +128,13 @@ struct Snapshot {
 }
 
 #[derive(Clone, Debug, Default)]
+struct Dot {
+    count: Option<usize>,
+    register: Option<char>,
+    inputs: Vec<Input>,
+}
+
+#[derive(Clone, Debug, Default)]
 struct InsertSession {
     count: usize,
     open: Option<bool>,
@@ -195,6 +203,8 @@ pub struct Editor {
     pub(crate) message: Option<Message>,
     last_find: Option<Find>,
     marks: HashMap<char, Pos>,
+    dot: Option<Dot>,
+    building: Option<Dot>,
     replaying: bool,
     insert_replay: bool,
     insert: InsertSession,
@@ -689,8 +699,24 @@ impl Editor {
         }
     }
 
+    fn is_change(cmd: &Cmd) -> bool {
+        match cmd.act {
+            Act::Operate(op, _) => op != Op::Yank,
+            Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
+            Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
+            Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') | Act::Hunk('r') => true,
+            _ => false,
+        }
+    }
+
     fn run(&mut self, cmd: Cmd) {
+        let change = Self::is_change(&cmd) && !self.replaying;
         if change {
+            self.building = Some(Dot {
+                count: cmd.count,
+                register: cmd.register,
+                inputs: cmd.keys.iter().map(|&k| Input::Key(k)).collect(),
+            });
         }
         let n = cmd.n();
         match cmd.act {
@@ -1260,6 +1286,33 @@ impl Editor {
         self.cursor = Pos::new(row, from + char_count(&text) - 1);
     }
 
+    fn repeat(&mut self, count: Option<usize>) {
+        let Some(dot) = self.dot.clone() else { return };
+        let mut inputs = Vec::new();
+        if let Some(r) = dot.register {
+            inputs.push(Input::Key(Key::Char('"')));
+            inputs.push(Input::Key(Key::Char(r)));
+        }
+        if let Some(n) = count.or(dot.count) {
+            inputs.extend(n.to_string().chars().map(|c| Input::Key(Key::Char(c))));
+        }
+        inputs.extend(dot.inputs.iter().cloned());
+        self.replaying = true;
+        self.end_change();
+        for i in inputs {
+            self.input(i);
+        }
+        if matches!(self.mode, Mode::Insert | Mode::Replace) {
+            self.input(Input::Key(Key::Esc));
+        }
+        self.replaying = false;
+        if let Some(d) = self.dot.as_mut() {
+            if count.is_some() {
+                d.count = count;
+            }
+        }
+    }
+
     fn begin_insert(&mut self, count: usize, open: Option<bool>) {
         self.set_want();
         self.mode = Mode::Insert;
@@ -1721,6 +1774,11 @@ impl Editor {
                 }
                 // repeats as gcc over as many lines
                 if op == Op::Comment && !self.replaying {
+                    self.dot = Some(Dot {
+                        count: Some(r.last_row() - r.start.row + 1),
+                        register: None,
+                        inputs: crate::keys::parse("gcc").into_iter().map(Input::Key).collect(),
+                    });
                 }
             }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
