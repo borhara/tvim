@@ -76,6 +76,20 @@ fn putting_over_a_selection() {
 }
 
 #[test]
+fn insert_at_the_ends_of_a_selection() {
+    assert_eq!(t("  ab\ncd", "VjIx<Esc>"), "  xab\ncd");
+    assert_eq!(t("ab\ncd", "VjAx<Esc>"), "ab\ncdx");
+}
+
+#[test]
+fn yanking_goes_to_the_start() {
+    assert_eq!(after("hello world", "$vby").1, (0, 6));
+    let mut e = ed("hello");
+    e.keys(&parse("vly"));
+    assert_eq!(e.register('0').unwrap().text, "he");
+}
+
+#[test]
 fn a_selection_ending_on_an_empty_line_stops_there() {
     assert_eq!(t("a\n\nb\nc", "vj:d<CR>"), "b\nc");
     assert_eq!(t("a\n\nb\nc", "jvD"), "a\nb\nc");
