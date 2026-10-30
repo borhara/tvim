@@ -52,3 +52,14 @@ fn text_objects_grow_the_selection() {
     assert_eq!(t("one two three", "wviwd"), "one  three");
     assert_eq!(t("a\nb\n\nc", "vipd"), "\nc");
 }
+
+#[test]
+fn a_selection_ending_on_an_empty_line_stops_there() {
+    assert_eq!(t("a\n\nb\nc", "vj:d<CR>"), "b\nc");
+    assert_eq!(t("a\n\nb\nc", "jvD"), "a\nb\nc");
+}
+
+#[test]
+fn putting_over_a_selection_repeats_whole_lines() {
+    assert_eq!(t("a\nb\nz", "yjGV2p"), "a\nb\na\nb\na\nb");
+}
