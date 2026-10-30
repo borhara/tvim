@@ -91,3 +91,13 @@ fn a_macro_that_calls_itself_stops() {
     e.keys(&parse("@a"));
     assert!(!e.should_quit());
 }
+
+#[test]
+fn a_register_written_after_recording_is_what_plays() {
+    assert_eq!(t("x\nhello", "qajqk\"ayyj@a"), "x\nello");
+}
+
+#[test]
+fn a_capital_register_adds_to_a_macro() {
+    assert_eq!(t("abcdef", "qaxqqAxq@a"), "ef");
+}
