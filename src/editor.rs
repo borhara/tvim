@@ -46,6 +46,12 @@ pub enum Input {
     Paste(String),
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Register {
+    pub text: String,
+    pub linewise: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub text: String,
@@ -173,6 +179,7 @@ pub struct Editor {
     pub(crate) pending: Vec<Key>,
     pub(crate) anchor: Pos,
     last_visual: Option<(Pos, Pos, Mode)>,
+    registers: HashMap<char, Register>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     version: u64,
@@ -346,6 +353,10 @@ impl Editor {
 
     pub fn file(&self) -> &FileInfo {
         &self.file
+    }
+
+    pub fn register(&self, name: char) -> Option<&Register> {
+        self.registers.get(&name.to_ascii_lowercase())
     }
 
     pub fn name(&self) -> String {
@@ -567,6 +578,46 @@ impl Editor {
             text: text.into(),
             error: true,
         });
+    }
+
+    fn store(&mut self, register: Option<char>, text: String, linewise: bool, yank: bool) {
+        let r = Register { text, linewise };
+        // @ plays the new text, not an older recording
+        if let Some(c) = register.filter(char::is_ascii_alphabetic) {
+            self.macros.remove(&c.to_ascii_lowercase());
+        }
+        match register {
+            Some('_') => return,
+            Some(c @ ('+' | '*')) => {
+                let mut t = r.text.clone();
+                if linewise {
+                    t.push('\n');
+                }
+                if !self.clipboard.set(&t) {
+                    self.error(format!("E354: No clipboard to copy to (register {c})"));
+                }
+            }
+            Some(c) if c.is_ascii_uppercase() => {
+                let entry = self.registers.entry(c.to_ascii_lowercase()).or_default();
+                if entry.linewise || linewise && !entry.text.is_empty() {
+                    entry.text.push('\n');
+                }
+                entry.text.push_str(&r.text);
+                entry.linewise |= linewise;
+                let all = entry.clone();
+                self.registers.insert('"', all);
+                return;
+            }
+            Some(c) if c.is_ascii_lowercase() => {
+                self.registers.insert(c, r.clone());
+            }
+            _ => {}
+        }
+        self.registers.insert(if yank { '0' } else { '1' }, r.clone());
+        if !yank && !linewise && !r.text.contains('\n') {
+            self.registers.insert('-', r.clone());
+        }
+        self.registers.insert('"', r);
     }
 
     fn normal(&mut self, input: Input) {
@@ -908,6 +959,7 @@ impl Editor {
             Op::Yank => {
                 let text = self.range_text(r);
                 let lines = r.end.row - r.start.row + 1;
+                self.store(register, text, r.linewise, true);
                 if r.linewise {
                     if lines > 2 {
                         self.info(format!("{lines} lines yanked"));
@@ -920,6 +972,7 @@ impl Editor {
             Op::Delete => {
                 if r.linewise {
                     let text = self.range_text(r);
+                    self.store(register, text, true, false);
                     self.touch();
                     self.buf.delete_lines(r.start.row, r.end.row);
                     let row = r.start.row.min(self.buf.last_row());
@@ -933,6 +986,7 @@ impl Editor {
                         return;
                     }
                     let text = self.buf.slice(r.start, r.end);
+                    self.store(register, text, false, false);
                     self.touch();
                     self.buf.delete(r.start, r.end);
                     self.cursor = r.start;
@@ -942,6 +996,7 @@ impl Editor {
             Op::Change => {
                 if r.linewise {
                     let text = self.range_text(r);
+                    self.store(register, text, true, false);
                     self.touch();
                     let keep = if self.options.auto_indent {
                         indent(self.buf.line(r.start.row)).to_string()
@@ -952,6 +1007,7 @@ impl Editor {
                     self.buf.replace_lines(r.start.row, r.end.row, vec![keep]);
                 } else {
                     let text = self.buf.slice(r.start, r.end);
+                    self.store(register, text, false, false);
                     self.touch();
                     self.buf.delete(r.start, r.end);
                     self.cursor = r.start;
