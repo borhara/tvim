@@ -723,6 +723,7 @@ impl Editor {
             Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::Operate(op, target) => self.operate(op, target, cmd.count, cmd.register),
             Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
+            Act::With(c, ch) => self.normal_with(c, ch, n),
             Act::G('t') => match cmd.count {
             },
             Act::G(c) => self.normal_g(c, n, cmd.register),
@@ -796,6 +797,25 @@ impl Editor {
             Key::Ctrl('y') => self.scroll_lines(-(n as isize)),
             Key::Ctrl('g') => self.file_info(),
             Key::Ctrl('l') => self.message = None,
+            _ => {}
+        }
+    }
+
+    fn normal_with(&mut self, c: char, ch: char, n: usize) {
+        match c {
+            'r' => self.replace_chars(ch, n),
+            'm' => {
+                if ch.is_ascii_lowercase() || ch == '\'' || ch == '`' {
+                    self.marks.insert(if ch == '`' { '\'' } else { ch }, self.cursor);
+                }
+            }
+            'q' => {
+                if ch.is_ascii_alphanumeric() || ch == '"' {
+                    self.recording = Some((ch, Vec::new()));
+                }
+            }
+            'Z' if ch == 'Z' => self.ex("x"),
+            'Z' => self.ex("q!"),
             _ => {}
         }
     }
@@ -1809,6 +1829,7 @@ impl Editor {
                 self.buf.insert(from, &new);
                 self.cursor = from;
             }
+            Act::With(c, ch) => self.normal_with(c, ch, n),
             Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
             _ => {}
