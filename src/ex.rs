@@ -3,6 +3,7 @@ use crate::editor::Editor;
 
 impl Editor {
     fn show_registers(&mut self) {
+        let all = self.registers_list();
         if all.is_empty() {
             return self.info("No registers set");
         }

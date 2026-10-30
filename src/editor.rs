@@ -2208,9 +2208,32 @@ impl Editor {
         self.quit = true;
     }
 
+    pub(crate) fn marks(&self) -> &HashMap<char, Pos> {
+        &self.marks
+    }
+
     pub(crate) fn set_cursor(&mut self, p: Pos) {
         self.cursor = p;
         self.set_want();
+    }
+
+    pub(crate) fn registers_list(&self) -> Vec<(char, Register)> {
+        let mut all: Vec<(char, Register)> = self
+            .registers
+            .iter()
+            .filter(|(k, _)| !k.is_control())
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
+        all.sort_by_key(|(k, _)| {
+            let rank = match k {
+                '"' => 0,
+                c if c.is_ascii_digit() => 1,
+                '-' => 2,
+                _ => 3,
+            };
+            (rank, *k)
+        });
+        all
     }
 
 }
