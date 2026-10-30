@@ -757,6 +757,7 @@ impl Editor {
             }
             'J' => self.join(self.cursor.row, n.max(2), false),
             'p' | 'P' => {
+                let end = self.put_register(&r, n, c == 'P');
                 self.cursor = if r.linewise {
                     Pos::new((end.row + 1).min(self.buf.last_row()), 0)
                 } else {
@@ -1100,6 +1101,39 @@ impl Editor {
             let ts = self.options.tab_stop.max(1);
             format!("{}{}", "\t".repeat(width / ts), " ".repeat(width % ts))
         }
+    }
+
+    fn put(&mut self, register: Option<char>, count: usize, before: bool) {
+        let end = self.put_register(&r, count, before);
+        if !r.linewise && !r.text.contains('\n') {
+            self.cursor = Pos::new(end.row, end.col.saturating_sub(1));
+        }
+        self.set_want();
+    }
+
+    fn put_register(&mut self, r: &Register, count: usize, before: bool) -> Pos {
+        self.touch();
+        if r.linewise {
+            let mut lines = Vec::new();
+            for _ in 0..count {
+                lines.extend(r.text.split('\n').map(str::to_string));
+            }
+            let added = lines.len();
+            let at = if before { self.cursor.row } else { self.cursor.row + 1 };
+            self.buf.insert_lines(at, lines);
+            self.cursor = self.first_non_blank_pos(at);
+            return Pos::new(at + added - 1, 0);
+        }
+        let text = r.text.repeat(count);
+        let len = self.buf.line_len(self.cursor.row);
+        let at = if before || len == 0 {
+            self.cursor
+        } else {
+            Pos::new(self.cursor.row, (self.cursor.col + 1).min(len))
+        };
+        let end = self.buf.insert(at, &text);
+        self.cursor = at;
+        end
     }
 
     fn join(&mut self, row: usize, lines: usize, spaces: bool) {
