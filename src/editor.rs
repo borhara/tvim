@@ -365,6 +365,10 @@ impl Editor {
         self.quit
     }
 
+    pub fn recording(&self) -> Option<char> {
+        self.recording.as_ref().map(|r| r.0)
+    }
+
     pub fn file(&self) -> &FileInfo {
         &self.file
     }
@@ -672,6 +676,7 @@ impl Editor {
             self.message = None;
         }
         if key == Key::Char('q') && self.pending.is_empty() && self.recording.is_some() {
+            self.stop_recording();
             return;
         }
         if matches!(key, Key::Esc | Key::Ctrl('c')) {
@@ -1330,6 +1335,37 @@ impl Editor {
             if count.is_some() {
                 d.count = count;
             }
+        }
+    }
+
+    fn stop_recording(&mut self) {
+        if let Some((name, mut keys)) = self.recording.take() {
+            // drop the q that ended the recording
+            keys.pop();
+            let text: String = keys
+                .iter()
+                .map(|i| match i {
+                    Input::Key(k) => crate::keys::notation(*k),
+                    Input::Paste(t) => t.clone(),
+                })
+                .collect();
+            // qA adds to what a already holds
+            let (mut text, mut keys) = (text, keys);
+            if name.is_ascii_uppercase() {
+                let lower = name.to_ascii_lowercase();
+                let old = self.registers.get(&lower).map_or(String::new(), |r| r.text.clone());
+                let mut old_keys = self.macros.get(&lower).cloned().unwrap_or_else(|| {
+                    crate::keys::parse(&old).into_iter().map(Input::Key).collect()
+                });
+                old_keys.append(&mut keys);
+                keys = old_keys;
+                text = old + &text;
+            }
+            let name = name.to_ascii_lowercase();
+            if name.is_ascii_alphabetic() {
+                self.registers.insert(name, Register { text, linewise: false });
+            }
+            self.macros.insert(name, keys);
         }
     }
 
