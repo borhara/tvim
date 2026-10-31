@@ -49,3 +49,26 @@ fn substitute_reports() {
 fn substitute_is_one_change() {
     assert_eq!(t("a\na\na", ":%s/a/b/<CR>u"), "a\na\na");
 }
+
+#[test]
+fn substitute_with_regular_expressions() {
+    assert_eq!(t("hello world", r":s/(\w+) (\w+)/\2 \1/<CR>"), "world hello");
+    assert_eq!(t("a\nb", ":%s/^/# /<CR>"), "# a\n# b");
+    assert_eq!(t("a\nb", ":%s/$/;/<CR>"), "a;\nb;");
+    assert_eq!(t("aa b aaa", ":s/a+/X/g<CR>"), "X b X");
+    assert_eq!(t("a1b2", r":s/\d/<&>/g<CR>"), "a<1>b<2>");
+    assert_eq!(t("a1b2", r":s/\d/<\0>/<CR>"), "a<1>b2");
+    assert_eq!(t("abc", ":s/x*/-/g<CR>"), "-a-b-c-");
+    assert_eq!(t("k=v", r":s/=/\n/<CR>"), "k\nv");
+    assert_eq!(t("Aa", r":s/a\C/x/gi<CR>"), "Ax", "\\C beats the i flag");
+    assert_eq!(t("one.two", r":s/\./ /<CR>"), "one two");
+    assert_eq!(t("(x)", r":s/\((\w)\)/[\1]/<CR>"), "[x]");
+}
+
+#[test]
+fn substitute_with_a_bad_pattern() {
+    let mut e = ed("a[b");
+    e.ex("s/[b/x/");
+    assert_eq!(e.text(), "a[b");
+    assert!(e.message().unwrap().text.starts_with("E383"));
+}
