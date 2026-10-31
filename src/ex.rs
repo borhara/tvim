@@ -470,3 +470,28 @@ fn expand_replacement(rep: &str, line: &[char], groups: &[Option<Span>]) -> Stri
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_on_unescaped_delimiters() {
+        assert_eq!(split_unescaped("a\\/b/c/g", '/'), ["a/b", "c", "g"]);
+        assert_eq!(split_unescaped("a\\nb#c", '#'), ["a\\nb", "c"]);
+        assert_eq!(split_unescaped("x", '/'), ["x"]);
+    }
+
+    #[test]
+    fn replacements() {
+        let line: Vec<char> = "hi there".chars().collect();
+        let whole = [Some((0, 2))];
+        assert_eq!(expand_replacement("<&>", &line, &whole), "<hi>");
+        assert_eq!(expand_replacement("\\&\\n\\\\", &line, &whole), "&\n\\");
+        let groups = [Some((0, 8)), Some((3, 8)), None];
+        assert_eq!(
+            expand_replacement("\\1 \\0|\\2|\\9", &line, &groups),
+            "there hi there||"
+        );
+    }
+}
