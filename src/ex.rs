@@ -104,6 +104,7 @@ impl Editor {
             self.edit(non_empty(arg), force);
         } else if is("read", 1) {
             let at = if zero { 0 } else { range.map_or(self.cursor.row, |r| r.1) + 1 };
+            self.read_file(arg, at);
         } else if name == "s" || is("substitute", 2) {
             self.substitute(
                 range.unwrap_or(current),
@@ -230,6 +231,31 @@ impl Editor {
         };
         if let Err(e) = self.load(&target) {
             self.error(format!("\"{}\" {e}", target.display()));
+        }
+    }
+
+    fn read_file(&mut self, path: &str, at: usize) {
+        if path.is_empty() {
+            return self.error("E32: No file name");
+        }
+        let path = expand_home(path);
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                let text = text.replace("\r\n", "\n");
+                let lines: Vec<String> = text
+                    .strip_suffix('\n')
+                    .unwrap_or(&text)
+                    .split('\n')
+                    .map(str::to_string)
+                    .collect();
+                let n = lines.len();
+                self.touch();
+                let at = at.min(self.buf.len());
+                self.buf.insert_lines(at, lines);
+                self.set_cursor(self.first_non_blank_pos(at));
+                self.info(format!("\"{path}\" {n}L, {}B", text.len()));
+            }
+            Err(e) => self.error(format!("E484: Can't open file {path}: {e}")),
         }
     }
 
