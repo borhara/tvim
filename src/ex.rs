@@ -296,6 +296,7 @@ impl Editor {
         };
         let mut re = match Regex::new(&pat) {
             Ok(re) => re,
+            Err(e) => return self.bad_pattern(&pat, &e),
         };
         self.last_substitute = Some((pat.clone(), rep.clone()));
         self.last_search = Some(pat.clone());

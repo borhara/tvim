@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use tinsel::app::Key;
 
@@ -10,6 +11,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::Hunk;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
+use crate::regex::Regex;
 use crate::syntax;
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::Node;
@@ -193,6 +195,8 @@ impl Range {
     }
 }
 
+type RegexCache = (String, (bool, bool), Rc<Regex>);
+
 const MAX_UNDO: usize = 1000;
 const MAX_HISTORY: usize = 100;
 
@@ -242,6 +246,7 @@ pub struct Editor {
     explorer_focused: bool,
     saved_lines: Vec<String>,
     git_history: Vec<String>,
+    regex_cache: RefCell<Option<RegexCache>>,
     pub(crate) no_jumps: bool,
     current: usize,
     pub(crate) buffer_id: usize,
@@ -2192,6 +2197,29 @@ impl Editor {
             }
         }
         self.clamp();
+    }
+
+    pub(crate) fn regex(&self, pat: &str) -> Result<Rc<Regex>, String> {
+        let case = (self.options.ignore_case, self.options.smart_case);
+        let mut cache = self.regex_cache.borrow_mut();
+        if let Some((p, c, re)) = cache.as_ref() {
+            if p == pat && *c == case {
+                return Ok(re.clone());
+            }
+        }
+        let mut re = Regex::new(pat)?;
+        re.set_case(case.0, case.1);
+        let re = Rc::new(re);
+        *cache = Some((pat.to_string(), case, re.clone()));
+        Ok(re)
+    }
+
+    pub(crate) fn bad_pattern(&mut self, pat: &str, e: &str) {
+        self.error(format!("E383: Invalid search string: {pat} ({e})"));
+    }
+
+    pub fn matches_in(&self, line: &str, pat: &str) -> Vec<(usize, usize)> {
+        self.regex(pat).map(|re| re.spans(line)).unwrap_or_default()
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
