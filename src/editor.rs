@@ -54,6 +54,12 @@ pub struct Register {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Effect {
+    Shell(String),
+    Suspend,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub text: String,
     pub error: bool,
@@ -230,6 +236,7 @@ pub struct Editor {
     pub(crate) left: Cell<usize>,
     pub(crate) screen: Cell<(usize, usize)>,
     zen: Option<bool>,
+    effects: Vec<Effect>,
     quit: bool,
     clipboard: Box<dyn Clipboard>,
     explorer_focused: bool,
@@ -392,6 +399,10 @@ impl Editor {
 
     pub fn register(&self, name: char) -> Option<&Register> {
         self.registers.get(&name.to_ascii_lowercase())
+    }
+
+    pub fn take_effects(&mut self) -> Vec<Effect> {
+        std::mem::take(&mut self.effects)
     }
 
     pub fn name(&self) -> String {
@@ -823,6 +834,7 @@ impl Editor {
             Key::Ctrl('y') => self.scroll_lines(-(n as isize)),
             Key::Ctrl('g') => self.file_info(),
             Key::Ctrl('l') => self.message = None,
+            Key::Ctrl('z') => self.effects.push(Effect::Suspend),
             _ => {}
         }
     }
@@ -2381,6 +2393,10 @@ impl Editor {
 
     pub(crate) fn set_quit(&mut self) {
         self.quit = true;
+    }
+
+    pub(crate) fn push_effect(&mut self, e: Effect) {
+        self.effects.push(e);
     }
 
     pub(crate) fn marks(&self) -> &HashMap<char, Pos> {

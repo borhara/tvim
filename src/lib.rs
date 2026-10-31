@@ -16,4 +16,4 @@ mod time;
 pub mod ui;
 
 pub use buffer::{Buffer, Pos};
-pub use editor::{Editor, Mode};
+pub use editor::{Editor, Effect, Mode};

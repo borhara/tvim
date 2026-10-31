@@ -59,6 +59,8 @@ impl App for Tvim {
             }
             _ => return Flow::Continue,
         }
+        for effect in self.editor.take_effects() {
+        }
         self.settle();
         if self.editor.should_quit() {
             Flow::Quit
