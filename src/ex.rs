@@ -228,14 +228,19 @@ impl Editor {
             let here = self.file().path.as_ref().and_then(|f| f.canonicalize().ok());
             let same = here.is_some() && target.canonicalize().ok() == here;
             if !same {
+                return self.reset_after_reload();
             }
         }
         let Some(target) = self.file().path.clone() else {
             return self.error("E32: No file name");
         };
+        if !self.dirty_guard(force) {
+            return;
+        }
         if let Err(e) = self.load(&target) {
             self.error(format!("\"{}\" {e}", target.display()));
         }
+        self.reset_after_reload();
     }
 
     fn read_file(&mut self, path: &str, at: usize) {
