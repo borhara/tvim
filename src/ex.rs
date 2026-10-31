@@ -1,6 +1,6 @@
 use crate::buffer::Pos;
 use crate::command::Op;
-use crate::editor::{Editor, Range, expand_home};
+use crate::editor::{Editor, Effect, Range, expand_home};
 
 type Lines = (usize, usize);
 
@@ -30,6 +30,7 @@ impl Editor {
             if cmd.trim().is_empty() {
                 return self.error("E471: Argument required");
             }
+            self.push_effect(Effect::Shell(cmd.trim().to_string()));
             return;
         }
         let mut name_len = rest.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(rest.len());
@@ -147,7 +148,9 @@ impl Editor {
             self.info(HELP);
         } else if is("shell", 2) {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
+            self.push_effect(Effect::Shell(shell));
         } else if is("stop", 2) || is("suspend", 3) {
+            self.push_effect(Effect::Suspend);
         } else if is("undo", 1) {
             self.key(tinsel::app::Key::Char('u'));
         } else if is("redo", 3) {
