@@ -498,6 +498,7 @@ impl Editor {
         match self.mode {
             Mode::Normal | Mode::Visual | Mode::VisualLine => self.normal(input),
             Mode::Insert | Mode::Replace => self.insert_input(input),
+            Mode::Command | Mode::Search => self.cmdline_input(input),
         }
         if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::VisualLine) && self.pending.is_empty() {
             self.end_change();
@@ -2039,6 +2040,71 @@ impl Editor {
             completing: None,
         };
         self.mode = if prompt == ':' { Mode::Command } else { Mode::Search };
+    }
+
+    fn cmdline_input(&mut self, input: Input) {
+        let key = match input {
+            Input::Paste(text) => {
+                let first = text.lines().next().unwrap_or("");
+                let at = crate::text::byte_at(&self.cmd.text, self.cmd.cursor);
+                self.cmd.text.insert_str(at, first);
+                self.cmd.cursor += char_count(first);
+                return;
+            }
+            Input::Key(k) => k,
+        };
+        if !matches!(key, Key::Tab | Key::BackTab) {
+            self.cmd.completing = None;
+        }
+        let at = crate::text::byte_at(&self.cmd.text, self.cmd.cursor);
+        match key {
+            Key::Esc | Key::Ctrl('c') => {
+                return;
+            }
+            Key::Char(c) => {
+                self.cmd.text.insert(at, c);
+                self.cmd.cursor += 1;
+            }
+            Key::Backspace | Key::Ctrl('h') => {
+                if self.cmd.text.is_empty() {
+                    return;
+                }
+                if self.cmd.cursor > 0 {
+                    let from = crate::text::byte_at(&self.cmd.text, self.cmd.cursor - 1);
+                    self.cmd.text.replace_range(from..at, "");
+                    self.cmd.cursor -= 1;
+                }
+            }
+            Key::Delete => {
+                if self.cmd.cursor < char_count(&self.cmd.text) {
+                    let to = crate::text::byte_at(&self.cmd.text, self.cmd.cursor + 1);
+                    self.cmd.text.replace_range(at..to, "");
+                }
+            }
+            Key::Ctrl('w') => {
+                let chars: Vec<char> = self.cmd.text.chars().collect();
+                let mut i = self.cmd.cursor;
+                while i > 0 && chars[i - 1] == ' ' {
+                    i -= 1;
+                }
+                let word = i > 0 && is_word(chars[i - 1]);
+                while i > 0 && chars[i - 1] != ' ' && is_word(chars[i - 1]) == word {
+                    i -= 1;
+                }
+                let from = crate::text::byte_at(&self.cmd.text, i);
+                self.cmd.text.replace_range(from..at, "");
+                self.cmd.cursor = i;
+            }
+            Key::Ctrl('u') => {
+                self.cmd.text.replace_range(..at, "");
+                self.cmd.cursor = 0;
+            }
+            Key::Left => self.cmd.cursor = self.cmd.cursor.saturating_sub(1),
+            Key::Right => self.cmd.cursor = (self.cmd.cursor + 1).min(char_count(&self.cmd.text)),
+            Key::Home | Key::Ctrl('b') => self.cmd.cursor = 0,
+            Key::End | Key::Ctrl('e') => self.cmd.cursor = char_count(&self.cmd.text),
+            _ => {}
+        }
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
