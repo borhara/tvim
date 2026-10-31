@@ -1,6 +1,7 @@
 use crate::buffer::Pos;
 use crate::command::Op;
 use crate::editor::{Editor, Effect, Range, expand_home};
+use crate::regex::{Regex, Span};
 
 type Lines = (usize, usize);
 
@@ -262,6 +263,103 @@ impl Editor {
         }
     }
 
+    fn substitute(&mut self, (first, last): (usize, usize), arg: &str) {
+        let mut chars = arg.chars();
+        let (pat, rep, flags) = match chars.next() {
+            None => match self.last_substitute.clone() {
+                Some((p, r)) => (p, r, String::new()),
+                None => return self.error("E35: No previous regular expression"),
+            },
+            Some(d) if d.is_alphanumeric() || "\\\"| ".contains(d) => {
+                return self.error("E146: Regular expressions can't be delimited by letters");
+            }
+            Some(d) => {
+                let parts = split_unescaped(chars.as_str(), d);
+                let pat = parts.first().cloned().unwrap_or_default();
+                let rep = parts.get(1).cloned().unwrap_or_default();
+                let flags = parts.get(2).cloned().unwrap_or_default();
+                (pat, rep, flags)
+            }
+        };
+        let pat = if pat.is_empty() {
+            match self.last_search.clone() {
+                Some(p) => p,
+                None => return self.error("E35: No previous regular expression"),
+            }
+        } else {
+            pat
+        };
+        let mut re = match Regex::new(&pat) {
+            Ok(re) => re,
+        };
+        self.last_substitute = Some((pat.clone(), rep.clone()));
+        self.last_search = Some(pat.clone());
+        let all = flags.contains('g');
+        if flags.contains('I') {
+            re.set_case(false, false);
+        } else if flags.contains('i') {
+            re.set_case(true, false);
+        } else {
+            re.set_case(self.options.ignore_case, self.options.smart_case);
+        }
+        let quiet = flags.contains('e');
+        let mut count = 0;
+        let mut changed_lines = 0;
+        let mut last_row = None;
+        let mut last = last.min(self.buf.last_row());
+        let mut row = first;
+        while row <= last {
+            let chars: Vec<char> = self.buf.line(row).chars().collect();
+            let hits = if all {
+                re.captures_all(&chars)
+            } else {
+                re.find_at(&chars, 0).into_iter().collect()
+            };
+            if hits.is_empty() {
+                row += 1;
+                continue;
+            }
+            let mut out = String::new();
+            let mut at = 0;
+            for groups in &hits {
+                let Some((from, to)) = groups[0] else { continue };
+                out.extend(&chars[at..from]);
+                out.push_str(&expand_replacement(&rep, &chars, groups));
+                at = to;
+            }
+            out.extend(&chars[at..]);
+            if count == 0 {
+                self.touch();
+            }
+            count += hits.len();
+            changed_lines += 1;
+            // lines the replacement splits off push the rest of the range down
+            let parts: Vec<String> = out.split('\n').map(str::to_string).collect();
+            let added = parts.len() - 1;
+            self.buf.replace_lines(row, row, parts);
+            last += added;
+            row += added;
+            last_row = Some(row);
+            row += 1;
+        }
+        match last_row {
+            Some(row) => {
+                self.search_shown = true;
+                self.set_cursor(self.first_non_blank_pos(row));
+                if count > 1 || changed_lines > 1 {
+                    let s = |n: usize| if n == 1 { "" } else { "s" };
+                    self.info(format!(
+                        "{count} substitution{} on {changed_lines} line{}",
+                        s(count),
+                        s(changed_lines)
+                    ));
+                }
+            }
+            None if quiet => {}
+            None => self.error(format!("E486: Pattern not found: {pat}")),
+        }
+    }
+
     fn show_registers(&mut self) {
         let all = self.registers_list();
         if all.is_empty() {
@@ -314,4 +412,56 @@ const HELP: &str =
 
 fn non_empty(s: &str) -> Option<&str> {
     (!s.is_empty()).then_some(s)
+}
+
+fn split_unescaped(s: &str, delim: char) -> Vec<String> {
+    let mut parts = vec![String::new()];
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.peek() {
+                Some(&n) if n == delim => {
+                    parts.last_mut().unwrap().push(n);
+                    chars.next();
+                }
+                Some(&n) => {
+                    parts.last_mut().unwrap().push('\\');
+                    parts.last_mut().unwrap().push(n);
+                    chars.next();
+                }
+                None => parts.last_mut().unwrap().push('\\'),
+            }
+        } else if c == delim {
+            parts.push(String::new());
+        } else {
+            parts.last_mut().unwrap().push(c);
+        }
+    }
+    parts
+}
+
+fn expand_replacement(rep: &str, line: &[char], groups: &[Option<Span>]) -> String {
+    let group = |n: usize| -> String {
+        groups
+            .get(n)
+            .copied()
+            .flatten()
+            .map_or_else(String::new, |(a, b)| line[a..b].iter().collect())
+    };
+    let mut out = String::new();
+    let mut chars = rep.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '&' => out.push_str(&group(0)),
+            '\\' => match chars.next() {
+                Some(d @ '0'..='9') => out.push_str(&group(d as usize - '0' as usize)),
+                Some('n' | 'r') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some(other) => out.push(other),
+                None => out.push('\\'),
+            },
+            c => out.push(c),
+        }
+    }
+    out
 }
