@@ -51,6 +51,18 @@ fn substitute_is_one_change() {
 }
 
 #[test]
+fn deleting_yanking_and_shifting_ranges() {
+    assert_eq!(t("a\nb\nc\nd", ":2,3d<CR>"), "a\nd");
+    assert_eq!(t("a\nb\nc", ":2,3y<CR>P"), "b\nc\na\nb\nc");
+    assert_eq!(t("a\nb", ":%><CR>"), "    a\n    b");
+    assert_eq!(t("a\nb", ":%>><CR>"), "        a\n        b");
+    assert_eq!(t("    a", ":<<CR>"), "a");
+    assert_eq!(t("a\nb\nc", ":1,2j<CR>"), "a b\nc");
+    assert_eq!(t("a\nb\nc", ":%norm A;<CR>"), "a;\nb;\nc;");
+    assert_eq!(t("a\nb", ":3,1d<CR>"), "a\nb", "a range past the end");
+}
+
+#[test]
 fn substitute_with_regular_expressions() {
     assert_eq!(t("hello world", r":s/(\w+) (\w+)/\2 \1/<CR>"), "world hello");
     assert_eq!(t("a\nb", ":%s/^/# /<CR>"), "# a\n# b");
