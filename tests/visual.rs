@@ -76,6 +76,15 @@ fn putting_over_a_selection() {
 }
 
 #[test]
+fn colon_from_a_selection_works_on_its_lines() {
+    let mut e = ed("a\na\na");
+    e.keys(&parse("Vj:"));
+    assert_eq!(e.cmdline().text, "'<,'>");
+    e.keys(&parse("s/a/b/<CR>"));
+    assert_eq!(e.text(), "b\nb\na");
+}
+
+#[test]
 fn insert_at_the_ends_of_a_selection() {
     assert_eq!(t("  ab\ncd", "VjIx<Esc>"), "  xab\ncd");
     assert_eq!(t("ab\ncd", "VjAx<Esc>"), "ab\ncdx");
