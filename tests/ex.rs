@@ -123,6 +123,18 @@ fn shell_commands_are_handed_to_the_screen() {
 }
 
 #[test]
+fn editing_the_command_line() {
+    let mut e = ed("a");
+    e.keys(&parse(":set nu<Left><Left><BS>x<Home>y<End>z"));
+    assert_eq!(e.cmdline().text, "ysetxnuz");
+    let mut e = ed("a");
+    e.keys(&parse(":one two<C-w>"));
+    assert_eq!(e.cmdline().text, "one ");
+    e.paste("pasted\nlines");
+    assert_eq!(e.cmdline().text, "one pasted");
+}
+
+#[test]
 fn substitute_with_regular_expressions() {
     assert_eq!(t("hello world", r":s/(\w+) (\w+)/\2 \1/<CR>"), "world hello");
     assert_eq!(t("a\nb", ":%s/^/# /<CR>"), "# a\n# b");
