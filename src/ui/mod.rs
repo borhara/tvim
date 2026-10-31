@@ -6,7 +6,7 @@ use std::path::Path;
 use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
 use tinsel::{ColorMode, Rgb, color_mode, mix, paint, paint_bg, palette};
 
-use crate::editor::{Editor, Mode, Range};
+use crate::editor::{Editor, Effect, Mode, Range};
 use crate::text::vcol;
 
 const HINT_DELAY: f32 = 0.4;
@@ -60,6 +60,7 @@ impl App for Tvim {
             _ => return Flow::Continue,
         }
         for effect in self.editor.take_effects() {
+            run_effect(&mut self.editor, effect);
         }
         self.settle();
         if self.editor.should_quit() {
@@ -87,6 +88,23 @@ impl App for Tvim {
 fn file_name(path: Option<&Path>, or: &str) -> String {
     path.and_then(Path::file_name)
         .map_or_else(|| or.to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+fn run_effect(editor: &mut Editor, effect: Effect) {
+    match effect {
+        Effect::Shell(cmd) => {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
+            let result = app::suspend(|| {
+            });
+            match result {
+                Ok(Ok(status)) if status.success() => {}
+                Ok(Ok(status)) => editor.error(format!("shell returned {}", status.code().unwrap_or(-1))),
+                Ok(Err(e)) => editor.error(format!("E282: Can't run {shell}: {e}")),
+                Err(e) => editor.error(format!("Couldn't take the terminal back: {e}")),
+            }
+        }
+        Effect::Suspend => suspend(editor),
+    }
 }
 
 // dark colours; tinsel flips them on light terminals
