@@ -39,6 +39,19 @@ fn line_endings_and_the_final_newline_are_kept() {
 }
 
 #[test]
+fn a_new_file() {
+    let path = temp("brand-new.txt");
+    let _ = std::fs::remove_file(&path);
+    let mut e = Editor::open(&path).unwrap();
+    assert!(e.file().new);
+    assert!(e.message().unwrap().text.ends_with("[New]"));
+    e.keys(&parse("ihello<Esc>:w<CR>"));
+    assert!(e.message().unwrap().text.contains("[New] 1L, 6B written"));
+    assert!(!e.is_modified());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
+}
+
+#[test]
 fn files_that_arent_text_dont_open() {
     let path = temp("binary.bin");
     std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
