@@ -2,6 +2,8 @@ use crate::buffer::Pos;
 use crate::command::Op;
 use crate::editor::{Editor, Range, expand_home};
 
+type Lines = (usize, usize);
+
 impl Editor {
     pub fn ex(&mut self, line: &str) {
         let line = line.trim_start_matches([' ', ':']).trim_end();
@@ -9,6 +11,10 @@ impl Editor {
         if line.is_empty() {
             return;
         }
+        let (range, rest) = match self.parse_range(line) {
+            Ok(r) => r,
+            Err(e) => return self.error(e),
+        };
         // :0r reads in above the first line
         let zero = line[..line.len() - rest.len()].trim().parse() == Ok(0);
         let rest = rest.trim_start();
@@ -151,6 +157,64 @@ impl Editor {
             self.error(format!("E492: Not an editor command: {line}"));
         }
         self.end_change();
+    }
+
+    fn parse_range<'a>(&self, line: &'a str) -> Result<(Option<Lines>, &'a str), String> {
+        if let Some(rest) = line.strip_prefix('%') {
+            return Ok((Some((0, self.buf.last_row())), rest));
+        }
+        let (first, rest) = self.address(line)?;
+        let Some(first) = first else { return Ok((None, line)) };
+        let rest_trim = rest.trim_start();
+        if let Some(after) = rest_trim.strip_prefix([',', ';']) {
+            let (second, rest) = self.address(after.trim_start())?;
+            let second = second.unwrap_or(first);
+            let (a, b) = if second < first {
+                (second, first)
+            } else {
+                (first, second)
+            };
+            if b > self.buf.last_row() {
+                return Err("E16: Invalid range".into());
+            }
+            return Ok((Some((a, b)), rest));
+        }
+        if first > self.buf.last_row() {
+            return Ok((Some((self.buf.last_row(), self.buf.last_row())), rest));
+        }
+        Ok((Some((first, first)), rest))
+    }
+
+    fn address<'a>(&self, s: &'a str) -> Result<(Option<usize>, &'a str), String> {
+        let digits = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+        let (mut row, mut rest): (Option<isize>, &str) = if digits > 0 {
+            let n: isize = s[..digits].parse().map_err(|_| "E16: Invalid range".to_string())?;
+            (Some(n - 1), &s[digits..])
+        } else if let Some(r) = s.strip_prefix('.') {
+            (Some(self.cursor.row as isize), r)
+        } else if let Some(r) = s.strip_prefix('$') {
+            (Some(self.buf.last_row() as isize), r)
+        } else if let Some(r) = s.strip_prefix('\'') {
+            let mut chars = r.chars();
+            let m = chars.next().ok_or("E20: Mark not set")?;
+            let pos = self.marks().get(&m).ok_or("E20: Mark not set")?;
+            (Some(pos.row as isize), chars.as_str())
+        } else {
+            (None, s)
+        };
+        loop {
+            let sign = match rest.chars().next() {
+                Some('+') => 1,
+                Some('-') => -1,
+                _ => break,
+            };
+            let after = &rest[1..];
+            let d = after.find(|c: char| !c.is_ascii_digit()).unwrap_or(after.len());
+            let n: isize = if d == 0 { 1 } else { after[..d].parse().unwrap_or(1) };
+            row = Some(row.unwrap_or(self.cursor.row as isize) + sign * n);
+            rest = &after[d..];
+        }
+        Ok((row.map(|r| r.max(0) as usize), rest))
     }
 
     fn show_registers(&mut self) {
