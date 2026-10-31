@@ -1,6 +1,6 @@
 mod common;
 use common::temp;
-use tvim::Editor;
+use tvim::{Editor, keys::parse};
 
 fn open(name: &str, contents: &[u8]) -> (Editor, std::path::PathBuf) {
     let path = temp(name);
@@ -16,6 +16,26 @@ fn opening_says_what_was_read() {
     assert_eq!(e.text(), "one\ntwo");
     assert_eq!(e.message().unwrap().text, format!("\"{}\" 2L, 8B", path.display()));
     assert!(!e.is_modified());
+}
+
+#[test]
+fn line_endings_and_the_final_newline_are_kept() {
+    let (mut e, path) = open("crlf.txt", b"a\r\nb\r\n");
+    assert!(e.file().crlf);
+    assert_eq!(e.text(), "a\nb");
+    e.keys(&parse("Ax<Esc>:w<CR>"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"ax\r\nb\r\n");
+
+    let (mut e, path) = open("noeol.txt", b"a\nb");
+    assert!(!e.file().final_newline);
+    assert!(e.message().unwrap().text.contains("[noeol]"));
+    e.keys(&parse("x:w<CR>"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"\nb");
+
+    let (mut e, path) = open("empty.txt", b"");
+    e.keys(&parse(":w<CR>"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"");
+    assert_eq!(e.text(), "");
 }
 
 #[test]
