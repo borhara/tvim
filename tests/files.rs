@@ -60,6 +60,27 @@ fn files_that_arent_text_dont_open() {
 }
 
 #[test]
+fn writing_somewhere_else() {
+    let (mut e, path) = open("mine.txt", b"x\n");
+    let other = temp("other.txt");
+    std::fs::write(&other, "taken").unwrap();
+    e.ex(&format!("w {}", other.display()));
+    assert_eq!(e.message().unwrap().text, "E13: File exists (add ! to override)");
+    e.ex(&format!("w! {}", other.display()));
+    assert_eq!(std::fs::read_to_string(&other).unwrap(), "x\n");
+    assert_eq!(
+        e.file().path.as_deref(),
+        Some(path.as_path()),
+        "the buffer keeps its own name"
+    );
+    e.ex(&format!("2,1w {}", temp("part.txt").display()));
+    e.keys(&parse("ix<Esc>"));
+    e.ex(&format!("1w! {}", temp("part.txt").display()));
+    assert_eq!(std::fs::read_to_string(temp("part.txt")).unwrap(), "xx\n");
+    assert!(e.is_modified(), "writing part of it elsewhere doesn't save it");
+}
+
+#[test]
 fn the_language_comes_from_the_name() {
     let (e, _) = open("code.rs", b"fn main() {}\n");
     assert_eq!(e.syntax(), Some(tvim::syntax::Syntax::Rust));
