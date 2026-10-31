@@ -217,6 +217,22 @@ impl Editor {
         Ok((row.map(|r| r.max(0) as usize), rest))
     }
 
+    fn edit(&mut self, path: Option<&str>, force: bool) {
+        if let Some(p) = path {
+            let target = std::path::PathBuf::from(expand_home(p));
+            let here = self.file().path.as_ref().and_then(|f| f.canonicalize().ok());
+            let same = here.is_some() && target.canonicalize().ok() == here;
+            if !same {
+            }
+        }
+        let Some(target) = self.file().path.clone() else {
+            return self.error("E32: No file name");
+        };
+        if let Err(e) = self.load(&target) {
+            self.error(format!("\"{}\" {e}", target.display()));
+        }
+    }
+
     fn show_registers(&mut self) {
         let all = self.registers_list();
         if all.is_empty() {
