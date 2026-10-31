@@ -1,5 +1,6 @@
 mod common;
 use common::{cursor_after as at, ed, text_after as t};
+use tvim::keys::parse;
 
 #[test]
 fn going_to_lines() {
@@ -60,6 +61,32 @@ fn deleting_yanking_and_shifting_ranges() {
     assert_eq!(t("a\nb\nc", ":1,2j<CR>"), "a b\nc");
     assert_eq!(t("a\nb\nc", ":%norm A;<CR>"), "a;\nb;\nc;");
     assert_eq!(t("a\nb", ":3,1d<CR>"), "a\nb", "a range past the end");
+}
+
+#[test]
+fn unknown_commands() {
+    let mut e = ed("a");
+    e.ex("frobnicate");
+    assert_eq!(e.message().unwrap().text, "E492: Not an editor command: frobnicate");
+}
+
+#[test]
+fn quitting() {
+    let mut e = ed("a");
+    e.ex("q");
+    assert!(e.should_quit());
+    let mut e = ed("a");
+    e.keys(&parse("x:q<CR>"));
+    assert!(!e.should_quit());
+    assert_eq!(
+        e.message().unwrap().text,
+        "E37: No write since last change (add ! to override)"
+    );
+    e.keys(&parse(":q!<CR>"));
+    assert!(e.should_quit());
+    let mut e = ed("a");
+    e.keys(&parse("ZQ"));
+    assert!(e.should_quit());
 }
 
 #[test]
