@@ -93,6 +93,12 @@ fn a_macro_that_calls_itself_stops() {
 }
 
 #[test]
+fn colon_commands_repeat_with_at_colon() {
+    assert_eq!(t("a\nb\nc", ":s/$/!<CR>j@:"), "a!\nb!\nc");
+    assert_eq!(t("xa\nxb\nxc", ":s/x/-/<CR>j@:j@:"), "-a\n-b\n-c");
+}
+
+#[test]
 fn a_register_written_after_recording_is_what_plays() {
     assert_eq!(t("x\nhello", "qajqk\"ayyj@a"), "x\nello");
 }
@@ -100,4 +106,12 @@ fn a_register_written_after_recording_is_what_plays() {
 #[test]
 fn a_capital_register_adds_to_a_macro() {
     assert_eq!(t("abcdef", "qaxqqAxq@a"), "ef");
+}
+
+#[test]
+fn at_at_repeats_at_colon() {
+    let mut e = ed("a\na\na\na");
+    e.keys(&parse("qaxq"));
+    e.keys(&parse(":s/a/b/<CR>j@:j@@"));
+    assert_eq!(e.text(), "\nb\nb\na");
 }
