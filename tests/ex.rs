@@ -112,6 +112,17 @@ fn writing_and_quitting() {
 }
 
 #[test]
+fn shell_commands_are_handed_to_the_screen() {
+    let mut e = ed("a");
+    e.ex("!echo hi");
+    assert_eq!(e.take_effects(), [tvim::Effect::Shell("echo hi".into())]);
+    e.ex("!");
+    assert!(e.message().unwrap().text.starts_with("E471"));
+    e.keys(&parse("<C-z>"));
+    assert_eq!(e.take_effects(), [tvim::Effect::Suspend]);
+}
+
+#[test]
 fn substitute_with_regular_expressions() {
     assert_eq!(t("hello world", r":s/(\w+) (\w+)/\2 \1/<CR>"), "world hello");
     assert_eq!(t("a\nb", ":%s/^/# /<CR>"), "# a\n# b");
