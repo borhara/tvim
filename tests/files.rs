@@ -81,6 +81,37 @@ fn writing_somewhere_else() {
 }
 
 #[test]
+fn reloading_and_switching_files() {
+    let (mut e, path) = open("reload.txt", b"first\n");
+    e.keys(&parse("dd"));
+    e.ex("e");
+    assert!(e.message().unwrap().text.starts_with("E37"));
+    e.ex("e!");
+    assert_eq!(e.text(), "first");
+    assert!(!e.is_modified());
+    e.keys(&parse("u"));
+    assert_eq!(e.text(), "first", "reloading starts the undo history again");
+    let other = temp("switch.txt");
+    std::fs::write(&other, "second\n").unwrap();
+    e.ex(&format!("e {}", other.display()));
+    assert_eq!(e.text(), "second");
+    assert_eq!(e.file().path.as_deref(), Some(other.as_path()));
+    let _ = path;
+}
+
+#[test]
+fn reading_a_file_in() {
+    let (mut e, _) = open("host.txt", b"a\nb\n");
+    let part = temp("part-in.txt");
+    std::fs::write(&part, "x\ny\n").unwrap();
+    e.ex(&format!("r {}", part.display()));
+    assert_eq!(e.text(), "a\nx\ny\nb");
+    assert_eq!(e.cursor().row, 1);
+    e.ex("r /nonexistent/nope");
+    assert!(e.message().unwrap().text.starts_with("E484"));
+}
+
+#[test]
 fn the_language_comes_from_the_name() {
     let (e, _) = open("code.rs", b"fn main() {}\n");
     assert_eq!(e.syntax(), Some(tvim::syntax::Syntax::Rust));
