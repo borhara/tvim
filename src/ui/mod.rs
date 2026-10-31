@@ -183,6 +183,16 @@ fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: boo
     body
 }
 
+// scrolled to keep the cursor in view; returns the cursor's cell
+fn input(frame: &mut Frame, row: Rect, label: &str, text: &str, cursor: usize, ink: Option<Rgb>) -> (usize, usize) {
+    let before: String = text.chars().take(cursor).collect();
+    let at = tinsel::text::width(label) + tinsel::text::width(&before);
+    let skip = (at + 1).saturating_sub(row.width);
+    let text = ink.map_or_else(|| text.to_string(), |ink| paint(ink, text));
+    frame.print(row, 0, &format!("{label}{text}"));
+    (row.x + at - skip, row.y)
+}
+
 fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
     let gutter = Rect::new(area.x, area.y, gutter.min(area.width), area.height);
     let body = Rect::new(
