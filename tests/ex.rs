@@ -1,5 +1,5 @@
 mod common;
-use common::{cursor_after as at, ed, text_after as t};
+use common::{cursor_after as at, ed, temp, text_after as t};
 use tvim::keys::parse;
 
 #[test]
@@ -90,6 +90,28 @@ fn quitting() {
 }
 
 #[test]
+fn writing_and_quitting() {
+    let path = temp("wq.txt");
+    let _ = std::fs::remove_file(&path);
+    let mut e = ed("hi");
+    e.ex(&format!("w {}", path.display()));
+    assert!(
+        e.message().unwrap().text.ends_with("[New] 1L, 3B written"),
+        "{:?}",
+        e.message()
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\n");
+    assert_eq!(
+        e.file().path.as_deref(),
+        Some(path.as_path()),
+        "an unnamed buffer takes the name"
+    );
+    e.keys(&parse("Ax<Esc>:x<CR>"));
+    assert!(e.should_quit());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hix\n");
+}
+
+#[test]
 fn substitute_with_regular_expressions() {
     assert_eq!(t("hello world", r":s/(\w+) (\w+)/\2 \1/<CR>"), "world hello");
     assert_eq!(t("a\nb", ":%s/^/# /<CR>"), "# a\n# b");
@@ -124,4 +146,13 @@ fn substitute_skips_an_empty_match_where_the_last_ended() {
     let mut e = ed("baaac");
     e.ex("s/a*/-/g");
     assert_eq!(e.text(), "-b-c-");
+}
+
+#[test]
+fn read_at_line_zero_goes_above_the_first() {
+    let p = temp("read-zero.txt");
+    std::fs::write(&p, "x\n").unwrap();
+    let mut e = ed("a\nb");
+    e.ex(&format!("0r {}", p.display()));
+    assert_eq!(e.text(), "x\na\nb");
 }
