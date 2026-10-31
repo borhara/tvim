@@ -72,3 +72,17 @@ fn substitute_with_a_bad_pattern() {
     assert_eq!(e.text(), "a[b");
     assert!(e.message().unwrap().text.starts_with("E383"));
 }
+
+#[test]
+fn substitute_splitting_lines_reaches_the_whole_range() {
+    let mut e = ed("a,b\nc,d");
+    e.ex("%s/,/\\r/g");
+    assert_eq!(e.text(), "a\nb\nc\nd");
+}
+
+#[test]
+fn substitute_skips_an_empty_match_where_the_last_ended() {
+    let mut e = ed("baaac");
+    e.ex("s/a*/-/g");
+    assert_eq!(e.text(), "-b-c-");
+}
