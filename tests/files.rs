@@ -112,6 +112,28 @@ fn reading_a_file_in() {
 }
 
 #[test]
+fn write_errors_are_shown() {
+    let mut e = Editor::with_text("x");
+    e.ex("w");
+    assert_eq!(e.message().unwrap().text, "E32: No file name");
+    e.ex("w /nonexistent-dir/x.txt");
+    assert!(e.message().unwrap().text.starts_with("E212"));
+}
+
+#[test]
+fn wq_writes_even_when_unchanged_and_x_only_when_changed() {
+    let (mut e, path) = open("x.txt", b"same\n");
+    std::fs::write(&path, "changed behind our back\n").unwrap();
+    e.ex("x");
+    assert!(e.should_quit());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "changed behind our back\n");
+    let (mut e, path) = open("wq.txt", b"same\n");
+    std::fs::write(&path, "changed behind our back\n").unwrap();
+    e.ex("wq");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "same\n");
+}
+
+#[test]
 fn the_language_comes_from_the_name() {
     let (e, _) = open("code.rs", b"fn main() {}\n");
     assert_eq!(e.syntax(), Some(tvim::syntax::Syntax::Rust));
