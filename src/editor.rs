@@ -2427,6 +2427,17 @@ impl Editor {
         all
     }
 
+    pub(crate) fn reset_after_reload(&mut self) {
+        self.mode = Mode::Normal;
+    }
+
+    pub(crate) fn dirty_guard(&mut self, force: bool) -> bool {
+        if self.is_modified() && !force {
+            self.error("E37: No write since last change (add ! to override)");
+            return false;
+        }
+        true
+    }
 }
 
 fn toggle(c: char) -> char {
