@@ -188,6 +188,7 @@ impl Range {
 }
 
 const MAX_UNDO: usize = 1000;
+const MAX_HISTORY: usize = 100;
 
 pub struct Editor {
     pub(crate) buf: Buffer,
@@ -2106,8 +2107,30 @@ impl Editor {
             Key::Right => self.cmd.cursor = (self.cmd.cursor + 1).min(char_count(&self.cmd.text)),
             Key::Home | Key::Ctrl('b') => self.cmd.cursor = 0,
             Key::End | Key::Ctrl('e') => self.cmd.cursor = char_count(&self.cmd.text),
+            Key::Up | Key::Down => self.browse_history(key == Key::Up),
             _ => {}
         }
+    }
+
+    fn browse_history(&mut self, back: bool) {
+        let history = if self.mode == Mode::Command {
+            &self.cmd_history
+        } else {
+            &self.search_history
+        };
+        if history.is_empty() {
+            return;
+        }
+        let at = match (self.cmd.browse, back) {
+            (None, true) => Some(history.len() - 1),
+            (None, false) => return,
+            (Some(i), true) => Some(i.saturating_sub(1)),
+            (Some(i), false) if i + 1 < history.len() => Some(i + 1),
+            (Some(_), false) => None,
+        };
+        self.cmd.browse = at;
+        self.cmd.text = at.map(|i| history[i].clone()).unwrap_or_default();
+        self.cmd.cursor = char_count(&self.cmd.text);
     }
 
     fn cancel_cmdline(&mut self) {
@@ -2125,6 +2148,7 @@ impl Editor {
         let prompt = self.cmd.prompt;
         self.mode = Mode::Normal;
         if prompt == ':' {
+            remember(&mut self.cmd_history, &text);
             self.ex(&text);
         } else {
             let pat = if text.is_empty() {
@@ -2133,6 +2157,7 @@ impl Editor {
                 text.clone()
             };
             if !text.is_empty() {
+                remember(&mut self.search_history, &text);
             }
             if pat.is_empty() {
                 self.error("E35: No previous regular expression");
@@ -2401,6 +2426,17 @@ fn toggle(c: char) -> char {
 fn single(mut chars: impl Iterator<Item = char>) -> Option<char> {
     let c = chars.next()?;
     chars.next().is_none().then_some(c)
+}
+
+fn remember(history: &mut Vec<String>, entry: &str) {
+    if entry.is_empty() {
+        return;
+    }
+    history.retain(|h| h != entry);
+    history.push(entry.to_string());
+    if history.len() > MAX_HISTORY {
+        history.remove(0);
+    }
 }
 
 fn display_name(path: Option<&Path>) -> String {
