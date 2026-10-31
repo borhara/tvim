@@ -1,3 +1,5 @@
+mod sky;
+
 use std::io::Write;
 use std::path::Path;
 
