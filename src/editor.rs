@@ -2059,14 +2059,17 @@ impl Editor {
         let at = crate::text::byte_at(&self.cmd.text, self.cmd.cursor);
         match key {
             Key::Esc | Key::Ctrl('c') => {
+                self.cancel_cmdline();
                 return;
             }
+            Key::Enter | Key::Ctrl('j') => return self.finish_cmdline(),
             Key::Char(c) => {
                 self.cmd.text.insert(at, c);
                 self.cmd.cursor += 1;
             }
             Key::Backspace | Key::Ctrl('h') => {
                 if self.cmd.text.is_empty() {
+                    self.cancel_cmdline();
                     return;
                 }
                 if self.cmd.cursor > 0 {
@@ -2105,6 +2108,53 @@ impl Editor {
             Key::End | Key::Ctrl('e') => self.cmd.cursor = char_count(&self.cmd.text),
             _ => {}
         }
+    }
+
+    fn cancel_cmdline(&mut self) {
+        if self.mode == Mode::Search {
+            self.cursor = self.cmd.origin;
+            self.top.set(self.cmd.origin_top);
+        }
+        self.mode = Mode::Normal;
+        self.cmd.text.clear();
+        self.message = None;
+    }
+
+    fn finish_cmdline(&mut self) {
+        let text = std::mem::take(&mut self.cmd.text);
+        let prompt = self.cmd.prompt;
+        self.mode = Mode::Normal;
+        if prompt == ':' {
+            self.ex(&text);
+        } else {
+            let pat = if text.is_empty() {
+                self.last_search.clone().unwrap_or_default()
+            } else {
+                text.clone()
+            };
+            if !text.is_empty() {
+            }
+            if pat.is_empty() {
+                self.error("E35: No previous regular expression");
+                return;
+            }
+            self.cursor = self.cmd.origin;
+            self.last_search = Some(pat.clone());
+            self.search_backward = prompt == '?';
+            self.search_shown = true;
+            match self.find(&pat, self.cmd.origin, prompt == '/', true) {
+                Some(p) => {
+                    self.cursor = p;
+                    self.set_want();
+                    self.land(true);
+                    if self.message.is_none() {
+                        self.info(format!("{prompt}{pat}"));
+                    }
+                }
+                None => self.top.set(self.cmd.origin_top),
+            }
+        }
+        self.clamp();
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
