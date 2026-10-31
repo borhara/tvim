@@ -44,3 +44,13 @@ fn the_clipboard() {
     e.keys(&parse("gg\"*yiwG$\"*p"));
     assert_eq!(e.text(), "hello\nworld\nhellohello");
 }
+
+#[test]
+fn listing() {
+    let mut e = ed("a");
+    e.ex("reg");
+    assert_eq!(e.message().unwrap().text, "No registers set");
+    e.keys(&parse("\"kyy"));
+    e.ex("reg");
+    assert_eq!(e.message().unwrap().text, "\"\" a  \"0 a  \"k a");
+}
