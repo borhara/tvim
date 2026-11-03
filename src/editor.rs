@@ -2111,6 +2111,7 @@ impl Editor {
                 let at = crate::text::byte_at(&self.cmd.text, self.cmd.cursor);
                 self.cmd.text.insert_str(at, first);
                 self.cmd.cursor += char_count(first);
+                self.preview_search();
                 return;
             }
             Input::Key(k) => k,
@@ -2171,6 +2172,7 @@ impl Editor {
             Key::Up | Key::Down => self.browse_history(key == Key::Up),
             _ => {}
         }
+        self.preview_search();
     }
 
     fn browse_history(&mut self, back: bool) {
@@ -2192,6 +2194,23 @@ impl Editor {
         self.cmd.browse = at;
         self.cmd.text = at.map(|i| history[i].clone()).unwrap_or_default();
         self.cmd.cursor = char_count(&self.cmd.text);
+    }
+
+    fn preview_search(&mut self) {
+        if self.mode != Mode::Search || !self.options.incremental_search {
+            return;
+        }
+        self.cursor = self.cmd.origin;
+        self.top.set(self.cmd.origin_top);
+        if self.cmd.text.is_empty() {
+            return;
+        }
+        let pat = self.cmd.text.clone();
+        let message = self.message.take();
+        if let Some(p) = self.find(&pat, self.cmd.origin, self.cmd.prompt == '/', true) {
+            self.cursor = p;
+        }
+        self.message = message;
     }
 
     fn cancel_cmdline(&mut self) {
