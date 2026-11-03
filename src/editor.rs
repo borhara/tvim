@@ -870,6 +870,8 @@ impl Editor {
             Key::Char(':') => self.begin_cmdline(':', String::new()),
             Key::Char('/') => self.begin_cmdline('/', String::new()),
             Key::Char('?') => self.begin_cmdline('?', String::new()),
+            Key::Char('*') => self.search_word(true),
+            Key::Char('#') => self.search_word(false),
             Key::Char('&') => self.ex("s"),
             Key::Ctrl('a') => self.increment(n as i64),
             Key::Ctrl('x') => self.increment(-(n as i64)),
@@ -2315,6 +2317,51 @@ impl Editor {
         }
         self.error(format!("E486: Pattern not found: {pat}"));
         None
+    }
+
+    fn word_under_cursor(&self) -> Option<(usize, String)> {
+        let chars: Vec<char> = self.buf.line(self.cursor.row).chars().collect();
+        let mut col = self.cursor.col;
+        while col < chars.len() && !is_word(chars[col]) {
+            col += 1;
+        }
+        if col >= chars.len() {
+            return None;
+        }
+        let mut start = col;
+        while start > 0 && is_word(chars[start - 1]) {
+            start -= 1;
+        }
+        let mut end = col;
+        while end < chars.len() && is_word(chars[end]) {
+            end += 1;
+        }
+        Some((start, chars[start..end].iter().collect()))
+    }
+
+    fn search_word(&mut self, forward: bool) {
+        let Some((col, word)) = self.word_under_cursor() else {
+            self.error("E348: No string under cursor");
+            return;
+        };
+        let pat = format!("\\<{}\\>", crate::regex::escape(&word));
+        self.last_search = Some(pat.clone());
+        self.search_backward = !forward;
+        self.search_shown = true;
+        remember(&mut self.search_history, &pat);
+        let start = self.cursor;
+        self.message = None;
+        // from the start of the word, so # doesn't land on it
+        let Some(at) = self.find(&pat, Pos::new(start.row, col), forward, true) else {
+            return;
+        };
+        self.cursor = at;
+        self.set_want();
+        self.land(true);
+        if self.message.is_none() {
+            let prompt = if forward { '/' } else { '?' };
+            self.info(format!("{prompt}{pat}"));
+        }
     }
 
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
