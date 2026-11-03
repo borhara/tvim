@@ -28,6 +28,28 @@ fn says_when_it_goes_round_or_finds_nothing() {
 }
 
 #[test]
+fn case_is_ignored_unless_there_are_capitals() {
+    let src = "Foo foo FOO";
+    assert_eq!(at(src, "/foo<CR>"), (0, 4));
+    assert_eq!(at(src, "/foo<CR>n"), (0, 8));
+    assert_eq!(at(src, "/FOO<CR>"), (0, 8));
+    let mut e = ed(src);
+    e.ex("set noic");
+    e.keys(&parse("/foo<CR>n"));
+    assert_eq!(e.cursor(), Pos::new(0, 4));
+}
+
+#[test]
+fn whole_words_under_the_cursor() {
+    let src = "cat concat cat\ncat";
+    assert_eq!(at(src, "*"), (0, 11), "not inside concat");
+    assert_eq!(at(src, "**"), (1, 0));
+    assert_eq!(at(src, "#"), (1, 0));
+    assert_eq!(at(src, "*n"), (1, 0));
+    assert_eq!(at("x y", "*"), (0, 0));
+}
+
+#[test]
 fn patterns_are_regular_expressions() {
     let src = "ab 12 cd 345\nba";
     assert_eq!(at(src, r"/\d+<CR>"), (0, 3));
