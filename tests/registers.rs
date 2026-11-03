@@ -46,6 +46,11 @@ fn the_clipboard() {
 }
 
 #[test]
+fn the_search_register() {
+    assert_eq!(t("ab ab", "/b<CR>\"/P"), "abb ab");
+}
+
+#[test]
 fn listing() {
     let mut e = ed("a");
     e.ex("reg");
