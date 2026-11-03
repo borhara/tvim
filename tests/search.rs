@@ -148,3 +148,12 @@ fn matches_cover_what_the_pattern_matched() {
     e.keys(&parse(r"/x\d+<CR>n"));
     assert_eq!(e.search_count(), Some((3, 3)));
 }
+
+#[test]
+fn star_searches_for_the_whole_word() {
+    let mut e = ed("a.b a ab");
+    e.keys(&parse("*"));
+    assert_eq!(e.cursor(), Pos::new(0, 4));
+    assert_eq!(e.message().unwrap().text, r"/\<a\>");
+    assert_eq!(e.search_pattern(), Some(r"\<a\>"));
+}
