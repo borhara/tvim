@@ -196,6 +196,8 @@ impl Range {
 }
 
 type RegexCache = (String, (bool, bool), Rc<Regex>);
+// keyed on (buffer version, git answer)
+type HitsCache = (usize, u64, Rc<Regex>, Rc<[Pos]>);
 
 const MAX_UNDO: usize = 1000;
 const MAX_HISTORY: usize = 100;
@@ -247,6 +249,7 @@ pub struct Editor {
     saved_lines: Vec<String>,
     git_history: Vec<String>,
     regex_cache: RefCell<Option<RegexCache>>,
+    hits_cache: RefCell<Option<HitsCache>>,
     pub(crate) no_jumps: bool,
     current: usize,
     pub(crate) buffer_id: usize,
@@ -418,8 +421,47 @@ impl Editor {
         self.mode.is_visual().then(|| self.visual_range())
     }
 
+    pub fn search_pattern(&self) -> Option<&str> {
+        if self.mode == Mode::Search && self.options.incremental_search {
+            return (!self.cmd.text.is_empty()).then_some(self.cmd.text.as_str());
+        }
+        if !(self.options.highlight_search && self.search_shown) {
+            return None;
+        }
+        self.last_search.as_deref().filter(|p| !p.is_empty())
+    }
+
     pub fn clear_message(&mut self) {
         self.message = None;
+    }
+
+    pub(crate) fn search_hits(&self) -> Option<Rc<[Pos]>> {
+        let pat = self.search_pattern()?;
+        if self.buf.len() > 50_000 {
+            return None;
+        }
+        let re = self.regex(pat).ok()?;
+        let mut cache = self.hits_cache.borrow_mut();
+        let fresh = cache
+            .as_ref()
+            .is_some_and(|(id, v, r, _)| *id == self.buffer_id && *v == self.version && Rc::ptr_eq(r, &re));
+        if !fresh {
+            let hits = self
+                .buf
+                .lines()
+                .iter()
+                .enumerate()
+                .flat_map(|(row, line)| re.spans(line).into_iter().map(move |(col, _)| Pos::new(row, col)))
+                .collect();
+            *cache = Some((self.buffer_id, self.version, re, hits));
+        }
+        cache.as_ref().map(|c| c.3.clone())
+    }
+
+    pub fn search_count(&self) -> Option<(usize, usize)> {
+        let hits = self.search_hits()?;
+        let current = hits.partition_point(|p| *p <= self.cursor);
+        (!hits.is_empty()).then_some((current.max(1), hits.len()))
     }
 
     pub fn set_screen(&self, width: usize, height: usize) {
