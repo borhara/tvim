@@ -14,6 +14,7 @@ pub mod syntax;
 pub mod text;
 mod time;
 pub mod ui;
+mod window;
 
 pub use buffer::{Buffer, Pos};
 pub use editor::{Editor, Effect, Mode};
