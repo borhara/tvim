@@ -91,6 +91,17 @@ fn highlighting_stops_with_noh_and_starts_again_with_n() {
 }
 
 #[test]
+fn history() {
+    let mut e = ed("a b c");
+    e.keys(&parse("/b<CR>/c<CR>/<Up><Up>"));
+    assert_eq!(e.cmdline().text, "b");
+    e.keys(&parse("<Down>"));
+    assert_eq!(e.cmdline().text, "c");
+    e.keys(&parse("<Esc>:set nu<CR>:<Up>"));
+    assert_eq!(e.cmdline().text, "set nu");
+}
+
+#[test]
 fn patterns_are_regular_expressions() {
     let src = "ab 12 cd 345\nba";
     assert_eq!(at(src, r"/\d+<CR>"), (0, 3));
