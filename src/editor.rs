@@ -14,7 +14,7 @@ use crate::object::{Span, object};
 use crate::regex::Regex;
 use crate::syntax;
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
-use crate::window::Node;
+use crate::window::{Node, Win};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -254,6 +254,8 @@ pub struct Editor {
     current: usize,
     pub(crate) buffer_id: usize,
     next_id: usize,
+    // the focused window's cursor and scroll live in the fields above; wins has the rest
+    pub(crate) wins: Vec<Win>,
     pub(crate) layout: Node,
     pub(crate) focus: usize,
     pub(crate) next_win: usize,
@@ -335,6 +337,11 @@ impl Editor {
             next_id: 2,
             recent: Vec::new(),
             outline: RefCell::new(None),
+            wins: vec![Win {
+                id: 1,
+                buffer: 1,
+                ..Win::default()
+            }],
             layout: Node::Leaf(1),
             focus: 1,
             next_win: 2,
