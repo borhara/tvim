@@ -2222,6 +2222,59 @@ impl Editor {
         self.regex(pat).map(|re| re.spans(line)).unwrap_or_default()
     }
 
+    pub(crate) fn find(&mut self, pat: &str, from: Pos, forward: bool, skip_here: bool) -> Option<Pos> {
+        let re = match self.regex(pat) {
+            Ok(re) => re,
+            Err(e) => {
+                self.bad_pattern(pat, &e);
+                return None;
+            }
+        };
+        let rows = self.buf.len();
+        let hits =
+            |e: &Self, row: usize| -> Vec<usize> { re.spans(e.buf.line(row)).into_iter().map(|m| m.0).collect() };
+        let mut wrapped = false;
+        if forward {
+            for i in 0..=rows {
+                let row = (from.row + i) % rows;
+                if from.row + i >= rows {
+                    wrapped = true;
+                }
+                let found = hits(self, row).into_iter().find(|&c| {
+                    i > 0 && i < rows
+                        || i == 0 && (c > from.col || !skip_here && c == from.col)
+                        || i == rows && c <= from.col
+                });
+                if let Some(c) = found {
+                    if wrapped {
+                        self.info("search hit BOTTOM, continuing at TOP");
+                    }
+                    return Some(Pos::new(row, c));
+                }
+            }
+        } else {
+            for i in 0..=rows {
+                let row = (from.row + rows * 2 - i) % rows;
+                if i > from.row {
+                    wrapped = true;
+                }
+                let found = hits(self, row).into_iter().rev().find(|&c| {
+                    i > 0 && i < rows
+                        || i == 0 && (c < from.col || !skip_here && c == from.col)
+                        || i == rows && c >= from.col
+                });
+                if let Some(c) = found {
+                    if wrapped {
+                        self.info("search hit TOP, continuing at BOTTOM");
+                    }
+                    return Some(Pos::new(row, c));
+                }
+            }
+        }
+        self.error(format!("E486: Pattern not found: {pat}"));
+        None
+    }
+
     fn scroll_half(&mut self, down: bool, count: Option<usize>) {
         let n = count.unwrap_or(self.text_rows() / 2).max(1);
         let max_top = self.buf.last_row();
