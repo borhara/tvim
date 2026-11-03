@@ -20,6 +20,21 @@ fn relative_numbers() {
 }
 
 #[test]
+fn searching_shows_how_many_matches() {
+    let mut e = ed("a b a b a");
+    e.keys(&parse("/a"));
+    let shown = screen(e, 40, 5);
+    let last = shown.lines().last().unwrap();
+    assert!(last.starts_with("  / a ") && last.ends_with("2 of 3   1:5"), "{last:?}");
+    let mut e = ed("a b a b a");
+    e.keys(&parse("/a<CR>n"));
+    assert!(screen(e, 60, 5).contains("/ 3/3"));
+    let mut e = ed("abc");
+    e.keys(&parse("/z"));
+    assert!(screen(e, 40, 5).contains("no match"));
+}
+
+#[test]
 fn long_lines_scroll_sideways() {
     let mut e = ed(&format!("{}END", "x".repeat(50)));
     e.keys(&parse("$"));
