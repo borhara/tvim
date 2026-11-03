@@ -125,3 +125,26 @@ fn case_flags_in_the_pattern() {
         "\\W isn't a capital, so case is still ignored"
     );
 }
+
+#[test]
+fn a_bad_pattern_says_so() {
+    let mut e = ed("a(b");
+    e.keys(&parse("/a(<CR>"));
+    let m = e.message().unwrap();
+    assert!(m.error && m.text.starts_with("E383"), "{}", m.text);
+    assert_eq!(e.cursor(), Pos::new(0, 0));
+    e.keys(&parse("/a\\(<CR>"));
+    assert!(e.message().is_none_or(|m| !m.error));
+    let mut e = ed("abc");
+    e.keys(&parse("/[a"));
+    assert_eq!(e.search_count(), None, "while it's typed nothing breaks");
+}
+
+#[test]
+fn matches_cover_what_the_pattern_matched() {
+    let e = ed("");
+    assert_eq!(e.matches_in("ab 123 4", r"\d+"), [(3, 6), (7, 8)]);
+    let mut e = ed("x1 x22 x333");
+    e.keys(&parse(r"/x\d+<CR>n"));
+    assert_eq!(e.search_count(), Some((3, 3)));
+}
