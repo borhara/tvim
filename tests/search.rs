@@ -1,6 +1,6 @@
 mod common;
 use common::{cursor_after as at, ed, text_after as t};
-use tvim::{Pos, keys::parse};
+use tvim::{Mode, Pos, keys::parse};
 
 #[test]
 fn forward_and_back() {
@@ -47,6 +47,26 @@ fn whole_words_under_the_cursor() {
     assert_eq!(at(src, "#"), (1, 0));
     assert_eq!(at(src, "*n"), (1, 0));
     assert_eq!(at("x y", "*"), (0, 0));
+}
+
+#[test]
+fn as_a_motion() {
+    assert_eq!(t("one two three two", "/two<CR>0dn"), "two three two");
+    assert_eq!(t("a x b x", "/x<CR>cnY<Esc>"), "a Yx");
+}
+
+#[test]
+fn typing_shows_matches_and_escape_goes_back() {
+    let mut e = ed("abc\nxyz\nabc");
+    e.keys(&parse("/xy"));
+    assert_eq!(e.mode(), Mode::Search);
+    assert_eq!(e.cursor(), Pos::new(1, 0), "jumps there as it's typed");
+    assert_eq!(e.search_pattern(), Some("xy"));
+    e.keys(&parse("<Esc>"));
+    assert_eq!(e.cursor(), Pos::new(0, 0));
+    assert_eq!(e.mode(), Mode::Normal);
+    e.keys(&parse("/q<BS><BS>"));
+    assert_eq!(e.mode(), Mode::Normal, "backspace on nothing leaves");
 }
 
 #[test]
