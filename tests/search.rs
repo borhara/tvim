@@ -70,6 +70,27 @@ fn typing_shows_matches_and_escape_goes_back() {
 }
 
 #[test]
+fn an_empty_search_repeats_the_last() {
+    assert_eq!(at("a\na\na", "/a<CR>/<CR>"), (2, 0));
+    let mut e = ed("a");
+    e.keys(&parse("/<CR>"));
+    assert!(e.message().unwrap().text.starts_with("E35"));
+}
+
+#[test]
+fn highlighting_stops_with_noh_and_starts_again_with_n() {
+    let mut e = ed("a b a");
+    e.keys(&parse("/a<CR>"));
+    assert_eq!(e.search_pattern(), Some("a"));
+    e.keys(&parse(":noh<CR>"));
+    assert_eq!(e.search_pattern(), None);
+    e.keys(&parse("n"));
+    assert_eq!(e.search_pattern(), Some("a"));
+    e.keys(&parse(":set nohls<CR>"));
+    assert_eq!(e.search_pattern(), None);
+}
+
+#[test]
 fn patterns_are_regular_expressions() {
     let src = "ab 12 cd 345\nba";
     assert_eq!(at(src, r"/\d+<CR>"), (0, 3));
