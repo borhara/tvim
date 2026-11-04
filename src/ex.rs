@@ -48,6 +48,7 @@ impl Editor {
                 self.apply(op, Range::lines(a, b), None, 1);
             }
             self.end_change();
+            self.sync_windows();
             return;
         }
         let (name, mut arg) = rest.split_at(name_len);
@@ -172,6 +173,7 @@ impl Editor {
             self.error(format!("E492: Not an editor command: {line}"));
         }
         self.end_change();
+        self.sync_windows();
     }
 
     fn parse_range<'a>(&self, line: &'a str) -> Result<(Option<Lines>, &'a str), String> {
