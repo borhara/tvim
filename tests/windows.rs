@@ -52,3 +52,30 @@ fn only_keeps_the_focused_window() {
     e.ex("only");
     assert_eq!(e.window_count(), 1);
 }
+
+#[test]
+fn moving_between_windows() {
+    let mut e = ed("hello");
+    e.ex("vsplit");
+    e.ex("split");
+    // top left, bottom left, right
+    assert_eq!(e.window_index(), 0);
+    e.keys(&parse("<C-w>j"));
+    assert_eq!(e.window_index(), 1);
+    e.keys(&parse("<C-w>l"));
+    assert_eq!(e.window_index(), 2);
+    e.keys(&parse("<C-w>h"));
+    assert_eq!(e.window_index(), 0, "the one level with the cursor");
+    e.keys(&parse("<C-w><Down>"));
+    assert_eq!(e.window_index(), 1);
+    e.keys(&parse("<C-w>k"));
+    assert_eq!(e.window_index(), 0);
+    e.keys(&parse("<C-w>k"));
+    assert_eq!(e.window_index(), 0, "nothing above stays put");
+    e.keys(&parse("<C-w>w<C-w>w<C-w>w"));
+    assert_eq!(e.window_index(), 0, "w goes round");
+    e.keys(&parse("<C-w>W"));
+    assert_eq!(e.window_index(), 2);
+    e.keys(&parse("2<C-w>w"));
+    assert_eq!(e.window_index(), 1);
+}
