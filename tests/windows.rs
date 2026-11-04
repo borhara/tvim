@@ -112,3 +112,14 @@ fn a_shared_buffer_stays_in_sync() {
     e.keys(&parse("<C-w>h"));
     assert_eq!(e.cursor(), Pos::new(0, 0), "and stays inside a buffer that shrank");
 }
+
+#[test]
+fn edits_below_leave_the_other_window_alone() {
+    let mut e = ed(&lines(30));
+    e.keys(&parse("<C-w>s5G<C-w>j25Gdd<C-w>k"));
+    assert_eq!(e.cursor().row, 4);
+    e.keys(&parse("<C-w>jgg"));
+    e.ex("s/line/LINE/");
+    e.keys(&parse("<C-w>k"));
+    assert_eq!(e.cursor().row, 4, "a changed line above doesn't move it");
+}
