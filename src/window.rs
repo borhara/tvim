@@ -118,4 +118,42 @@ impl Node {
         }
     }
 
+    pub(crate) fn remove(&mut self, id: usize) -> Option<usize> {
+        let Node::Split { across, kids } = self else {
+            return None;
+        };
+        let i = kids.iter().position(|k| k.0.contains(id))?;
+        let next = if matches!(kids[i].0, Node::Leaf(_)) {
+            let (_, share) = kids.remove(i);
+            let (j, next) = if i < kids.len() {
+                (i, kids[i].0.first())
+            } else {
+                (i - 1, kids[i - 1].0.last())
+            };
+            kids[j].1 += share;
+            next
+        } else {
+            let next = kids[i].0.remove(id)?;
+            // a kid split the same way joins this one
+            let merge = match &kids[i].0 {
+                Node::Split { across: a, kids: inner } if *a == *across => Some(inner.clone()),
+                _ => None,
+            };
+            if let Some(inner) = merge {
+                let share = kids[i].1;
+                let total: usize = inner.iter().map(|k| k.1.max(1)).sum();
+                let parts: Vec<(Node, usize)> = inner
+                    .into_iter()
+                    .map(|(n, s)| (n, (share * s.max(1) / total).max(1)))
+                    .collect();
+                kids.splice(i..=i, parts);
+            }
+            next
+        };
+        if kids.len() == 1 {
+            *self = kids.remove(0).0;
+        }
+        Some(next)
+    }
+
 }
