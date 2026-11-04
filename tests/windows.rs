@@ -29,3 +29,26 @@ fn quit_closes_the_window_until_the_last() {
     e.ex("q!");
     assert!(e.should_quit());
 }
+
+#[test]
+fn ctrl_w_q_and_close() {
+    let mut e = ed("hello");
+    e.keys(&parse("<C-w>s<C-w>q"));
+    assert_eq!(e.window_count(), 1);
+    e.ex("close");
+    assert!(e.message().unwrap().text.starts_with("E444"));
+    assert!(!e.should_quit());
+    e.keys(&parse("<C-w>q"));
+    assert!(e.should_quit());
+}
+
+#[test]
+fn only_keeps_the_focused_window() {
+    let mut e = ed("hello");
+    e.keys(&parse("<C-w>s<C-w>v<C-w>v"));
+    e.keys(&parse("<C-w>o"));
+    assert_eq!(e.window_count(), 1);
+    e.ex("sp");
+    e.ex("only");
+    assert_eq!(e.window_count(), 1);
+}
