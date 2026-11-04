@@ -174,4 +174,34 @@ impl Editor {
         out
     }
 
+    pub(crate) fn set_region(&self, width: usize, height: usize) {
+        self.region.set(Some((width, height)));
+    }
+
+    pub(crate) fn region(&self) -> Rect {
+        let (w, h) = self.region.get().unwrap_or_else(|| {
+            let (w, h) = self.screen.get();
+            (w, h.saturating_sub(2))
+        });
+        Rect::new(0, 0, w, h)
+    }
+
+    pub(crate) fn window_rects(&self, area: Rect) -> Vec<(usize, Rect)> {
+        let mut out = Vec::new();
+        self.layout.place(area, &mut out);
+        out
+    }
+
+    pub(crate) fn fit_screen(&self) {
+        if self.region.get().is_none() {
+            let r = self.region();
+            self.set_region(r.width, r.height);
+        }
+        let rects = self.window_rects(self.region());
+        if let Some((_, r)) = rects.iter().find(|(id, _)| *id == self.focus) {
+            let title = usize::from(rects.len() > 1);
+            self.set_screen(r.width, r.height.saturating_sub(title) + 2);
+        }
+    }
+
 }
