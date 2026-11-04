@@ -273,4 +273,25 @@ impl Editor {
         true
     }
 
+    pub(crate) fn close_window(&mut self) -> bool {
+        if self.wins.len() < 2 {
+            return false;
+        }
+        let gone = self.focus;
+        let Some(next) = self.layout.remove(gone) else {
+            return false;
+        };
+        self.wins.retain(|w| w.id != gone);
+        self.previews.remove(&gone);
+        self.enter_window(next);
+        true
+    }
+
+    pub(crate) fn only_window(&mut self) {
+        self.wins.retain(|w| w.id == self.focus);
+        self.layout = Node::Leaf(self.focus);
+        self.shadow = None;
+        self.fit_screen();
+    }
+
 }
