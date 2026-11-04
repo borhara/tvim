@@ -82,6 +82,11 @@ impl Editor {
         } else if is("only", 2) {
         } else if is("split", 2) || is("vsplit", 2) || is("new", 3) || is("vnew", 3) {
             let fresh = is("new", 3) || is("vnew", 3);
+            if self.split_window(name.starts_with('v'), fresh && arg.is_empty()) {
+                if let Some(p) = non_empty(arg) {
+                    let target = std::path::PathBuf::from(expand_home(p));
+                }
+            }
         } else if is("bnext", 2) {
         } else if is("bprevious", 2) || is("bNext", 2) {
         } else if is("bfirst", 2) || is("brewind", 2) {
