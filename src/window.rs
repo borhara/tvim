@@ -2,6 +2,7 @@ use tinsel::app::Rect;
 
 use crate::buffer::Pos;
 use crate::editor::{Editor, Mode};
+use crate::text::vcol;
 
 // a title row and a line of text
 pub(crate) const MIN_ROWS: usize = 2;
@@ -22,6 +23,14 @@ pub(crate) enum Node {
     Leaf(usize),
     // across: side by side, else stacked; numbers are shares
     Split { across: bool, kids: Vec<(Node, usize)> },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 fn divide(r: Rect, across: bool, shares: &[usize]) -> Vec<Rect> {
@@ -296,6 +305,75 @@ impl Editor {
         self.layout = Node::Leaf(self.focus);
         self.shadow = None;
         self.fit_screen();
+    }
+
+    fn cycle_window(&mut self, by: isize) {
+        let order = self.order();
+        let n = order.len() as isize;
+        let at = self.window_index() as isize;
+        self.focus_window(order[(at + by).rem_euclid(n) as usize]);
+    }
+
+    fn focus_toward(&mut self, dir: Dir) {
+        let rects = self.window_rects(self.region());
+        let Some(&(_, here)) = rects.iter().find(|(id, _)| *id == self.focus) else {
+            return;
+        };
+        let title = usize::from(rects.len() > 1);
+        let y = here.y + title + self.cursor.row.saturating_sub(self.top.get());
+        let col = vcol(self.buf.line(self.cursor.row), self.cursor.col, self.options.tab_stop);
+        let x = here.x + self.gutter() + col.saturating_sub(self.left.get());
+        let mut best: Option<((usize, usize), usize)> = None;
+        for &(id, r) in &rects {
+            let (ahead, gap, from, to, at) = match dir {
+                Dir::Left => (
+                    r.x + r.width <= here.x,
+                    here.x.saturating_sub(r.x + r.width),
+                    r.y,
+                    r.y + r.height,
+                    y,
+                ),
+                Dir::Right => (
+                    r.x >= here.x + here.width,
+                    r.x.saturating_sub(here.x + here.width),
+                    r.y,
+                    r.y + r.height,
+                    y,
+                ),
+                Dir::Up => (
+                    r.y + r.height <= here.y,
+                    here.y.saturating_sub(r.y + r.height),
+                    r.x,
+                    r.x + r.width,
+                    x,
+                ),
+                Dir::Down => (
+                    r.y >= here.y + here.height,
+                    r.y.saturating_sub(here.y + here.height),
+                    r.x,
+                    r.x + r.width,
+                    x,
+                ),
+            };
+            let (lo, hi) = match dir {
+                Dir::Left | Dir::Right => (here.y, here.y + here.height),
+                Dir::Up | Dir::Down => (here.x, here.x + here.width),
+            };
+            if id == self.focus || !ahead || to <= lo || from >= hi {
+                continue;
+            }
+            let miss = if at < from {
+                from - at
+            } else {
+                at.saturating_sub(to - 1)
+            };
+            if best.is_none_or(|(b, _)| (gap, miss) < b) {
+                best = Some(((gap, miss), id));
+            }
+        }
+        if let Some((_, id)) = best {
+            self.focus_window(id);
+        }
     }
 
     pub(crate) fn sync_windows(&mut self) {
