@@ -123,3 +123,20 @@ fn edits_below_leave_the_other_window_alone() {
     e.keys(&parse("<C-w>k"));
     assert_eq!(e.cursor().row, 4, "a changed line above doesn't move it");
 }
+
+#[test]
+fn substitute_still_reads_as_one() {
+    let mut e = ed("aaa");
+    e.ex("s/a/b/");
+    assert_eq!(e.text(), "baa");
+    assert_eq!(e.window_count(), 1);
+}
+
+#[test]
+fn not_enough_room() {
+    let mut e = ed("hello");
+    e.set_screen(80, 5);
+    e.ex("sp");
+    assert!(e.message().unwrap().text.starts_with("E36"));
+    assert_eq!(e.window_count(), 1);
+}
