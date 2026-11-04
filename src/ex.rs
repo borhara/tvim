@@ -78,8 +78,13 @@ impl Editor {
                 self.set_quit();
             }
         } else if is("quit", 1) || is("qall", 2) || is("quitall", 5) {
+            let closed = is("quit", 1) && self.close_window();
         } else if is("close", 3) {
+            if !self.close_window() {
+                self.error("E444: Cannot close last window");
+            }
         } else if is("only", 2) {
+            self.only_window();
         } else if is("split", 2) || is("vsplit", 2) || is("new", 3) || is("vnew", 3) {
             let fresh = is("new", 3) || is("vnew", 3);
             if self.split_window(name.starts_with('v'), fresh && arg.is_empty()) {
