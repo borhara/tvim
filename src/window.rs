@@ -50,6 +50,34 @@ impl Node {
         kids.iter().map(|k| k.1).collect()
     }
 
+    pub fn leaves(&self, out: &mut Vec<usize>) {
+        match self {
+            Node::Leaf(id) => out.push(*id),
+            Node::Split { kids, .. } => kids.iter().for_each(|k| k.0.leaves(out)),
+        }
+    }
+
+    fn first(&self) -> usize {
+        match self {
+            Node::Leaf(id) => *id,
+            Node::Split { kids, .. } => kids[0].0.first(),
+        }
+    }
+
+    fn last(&self) -> usize {
+        match self {
+            Node::Leaf(id) => *id,
+            Node::Split { kids, .. } => kids[kids.len() - 1].0.last(),
+        }
+    }
+
+    fn contains(&self, id: usize) -> bool {
+        match self {
+            Node::Leaf(n) => *n == id,
+            Node::Split { kids, .. } => kids.iter().any(|k| k.0.contains(id)),
+        }
+    }
+
     pub fn place(&self, r: Rect, out: &mut Vec<(usize, Rect)>) {
         match self {
             Node::Leaf(id) => out.push((*id, r)),
