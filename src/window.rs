@@ -1,7 +1,7 @@
 use tinsel::app::Rect;
 
 use crate::buffer::Pos;
-use crate::editor::Editor;
+use crate::editor::{Editor, Mode};
 
 // a title row and a line of text
 pub(crate) const MIN_ROWS: usize = 2;
@@ -202,6 +202,46 @@ impl Editor {
             let title = usize::from(rects.len() > 1);
             self.set_screen(r.width, r.height.saturating_sub(title) + 2);
         }
+    }
+
+    pub(crate) fn save_window(&mut self) {
+        let (cursor, want, top, left, buffer) =
+            (self.cursor, self.want, self.top.get(), self.left.get(), self.buffer_id);
+        if let Some(w) = self.wins.iter_mut().find(|w| w.id == self.focus) {
+            *w = Win {
+                id: w.id,
+                buffer,
+                cursor,
+                want,
+                top,
+                left,
+            };
+        }
+    }
+
+    fn enter_window(&mut self, id: usize) {
+        let Some(w) = self.wins.iter().find(|w| w.id == id).cloned() else {
+            return;
+        };
+        self.focus = id;
+        if w.buffer != self.buffer_id {
+        }
+        self.mode = Mode::Normal;
+        self.completion = None;
+        self.cursor = w.cursor;
+        self.want = w.want;
+        self.top.set(w.top);
+        self.left.set(w.left);
+        self.clamp();
+        self.fit_screen();
+    }
+
+    pub(crate) fn focus_window(&mut self, id: usize) {
+        if id == self.focus || !self.wins.iter().any(|w| w.id == id) {
+            return;
+        }
+        self.save_window();
+        self.enter_window(id);
     }
 
 }
