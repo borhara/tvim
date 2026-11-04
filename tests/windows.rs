@@ -1,6 +1,11 @@
 mod common;
 use common::ed;
 use tvim::keys::parse;
+use tvim::Pos;
+
+fn lines(n: usize) -> String {
+    (1..=n).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n")
+}
 
 #[test]
 fn splitting_by_key_and_command() {
@@ -78,4 +83,32 @@ fn moving_between_windows() {
     assert_eq!(e.window_index(), 2);
     e.keys(&parse("2<C-w>w"));
     assert_eq!(e.window_index(), 1);
+}
+
+#[test]
+fn each_window_keeps_its_own_cursor() {
+    let mut e = ed(&lines(50));
+    e.keys(&parse("<C-w>s40G"));
+    e.keys(&parse("<C-w>j"));
+    assert_eq!(e.cursor(), Pos::new(0, 0));
+    e.keys(&parse("<C-w>k"));
+    assert_eq!(e.cursor().row, 39);
+}
+
+#[test]
+fn a_shared_buffer_stays_in_sync() {
+    let mut e = ed(&lines(30));
+    e.keys(&parse("<C-w>v20G"));
+    e.keys(&parse("<C-w>l"));
+    e.keys(&parse("ggOnew<Esc>"));
+    e.keys(&parse("<C-w>h"));
+    assert_eq!(e.cursor().row, 20, "a line added above moves the other window down");
+    assert_eq!(e.buffer().line(20), "line 20");
+    assert_eq!(e.buffer().line(0), "new");
+    e.keys(&parse("<C-w>lggd3d<C-w>h"));
+    assert_eq!(e.buffer().line(e.cursor().row), "line 20");
+    e.keys(&parse("<C-w>l"));
+    e.ex("%d");
+    e.keys(&parse("<C-w>h"));
+    assert_eq!(e.cursor(), Pos::new(0, 0), "and stays inside a buffer that shrank");
 }
