@@ -244,4 +244,33 @@ impl Editor {
         self.enter_window(id);
     }
 
+    pub(crate) fn split_window(&mut self, across: bool, fresh: bool) -> bool {
+        let area = self.region();
+        let Some((_, r)) = self.window_rects(area).into_iter().find(|(id, _)| *id == self.focus) else {
+            return false;
+        };
+        let (len, need) = if across {
+            (r.width, MIN_COLS * 2 + 1)
+        } else {
+            (r.height, MIN_ROWS * 2)
+        };
+        if len < need {
+            self.error("E36: Not enough room");
+            return false;
+        }
+        self.save_window();
+        let id = self.next_win;
+        self.next_win += 1;
+        let Some(copy) = self.wins.iter().find(|w| w.id == self.focus).cloned() else {
+            return false;
+        };
+        self.wins.push(Win { id, ..copy });
+        self.layout.split(area, self.focus, id, across, false);
+        self.focus = id;
+        if fresh {
+        }
+        self.fit_screen();
+        true
+    }
+
 }
