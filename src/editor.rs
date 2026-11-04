@@ -570,6 +570,7 @@ impl Editor {
             self.end_change();
         }
         self.clamp();
+        self.sync_windows();
         // a preview sent to another buffer by :e is an ordinary window now
         if self
             .previews

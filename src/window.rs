@@ -240,11 +240,13 @@ impl Editor {
         if id == self.focus || !self.wins.iter().any(|w| w.id == id) {
             return;
         }
+        self.sync_windows();
         self.save_window();
         self.enter_window(id);
     }
 
     pub(crate) fn split_window(&mut self, across: bool, fresh: bool) -> bool {
+        self.sync_windows();
         let area = self.region();
         let Some((_, r)) = self.window_rects(area).into_iter().find(|(id, _)| *id == self.focus) else {
             return false;
@@ -270,6 +272,7 @@ impl Editor {
         if fresh {
         }
         self.fit_screen();
+        self.sync_windows();
         true
     }
 
@@ -277,6 +280,7 @@ impl Editor {
         if self.wins.len() < 2 {
             return false;
         }
+        self.sync_windows();
         let gone = self.focus;
         let Some(next) = self.layout.remove(gone) else {
             return false;
@@ -294,4 +298,35 @@ impl Editor {
         self.fit_screen();
     }
 
+    pub(crate) fn sync_windows(&mut self) {
+        let id = self.buffer_id;
+        if !self.wins.iter().any(|w| w.id != self.focus && w.buffer == id) {
+            self.shadow = None;
+            return;
+        }
+        let new = self.buf.lines();
+        if let Some((_, old)) = self.shadow.as_ref().filter(|s| s.0 == id) {
+            if old.as_slice() == new {
+                return;
+            }
+            let (same_start, same_end) = crate::diff::common_ends(old, new);
+            let (old_end, new_end) = (old.len() - same_end, new.len() - same_end);
+            let last = new.len() - 1;
+            let shift = |row: usize| {
+                let row = if row < same_start {
+                    row
+                } else if row >= old_end {
+                    row + new_end - old_end
+                } else {
+                    row.min(new_end.saturating_sub(1)).max(same_start)
+                };
+                row.min(last)
+            };
+            for w in self.wins.iter_mut().filter(|w| w.id != self.focus && w.buffer == id) {
+                w.cursor.row = shift(w.cursor.row);
+                w.top = shift(w.top);
+            }
+        }
+        self.shadow = Some((id, new.to_vec()));
+    }
 }
