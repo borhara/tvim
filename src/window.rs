@@ -89,4 +89,33 @@ impl Node {
         }
     }
 
+    pub(crate) fn split(&mut self, r: Rect, at: usize, new: usize, across: bool, after: bool) {
+        match self {
+            Node::Leaf(id) if *id == at => {
+                let mut kids = vec![(Node::Leaf(new), 1), (Node::Leaf(at), 1)];
+                if after {
+                    kids.reverse();
+                }
+                *self = Node::Split { across, kids };
+            }
+            Node::Leaf(_) => {}
+            Node::Split { across: a, kids } => {
+                let rects = divide(r, *a, &Self::shares(kids));
+                let Some(i) = kids.iter().position(|k| k.0.contains(at)) else {
+                    return;
+                };
+                if *a == across && matches!(kids[i].0, Node::Leaf(_)) {
+                    for (k, rect) in kids.iter_mut().zip(&rects) {
+                        k.1 = if across { rect.width } else { rect.height };
+                    }
+                    let size = kids[i].1;
+                    kids[i].1 = size - size / 2;
+                    kids.insert(i + usize::from(after), (Node::Leaf(new), (size / 2).max(1)));
+                } else {
+                    kids[i].0.split(rects[i], at, new, across, after);
+                }
+            }
+        }
+    }
+
 }
