@@ -1,6 +1,7 @@
 use tinsel::app::Rect;
 
 use crate::buffer::Pos;
+use crate::editor::Editor;
 
 // a title row and a line of text
 pub(crate) const MIN_ROWS: usize = 2;
@@ -154,6 +155,23 @@ impl Node {
             *self = kids.remove(0).0;
         }
         Some(next)
+    }
+
+}
+
+impl Editor {
+    pub fn window_count(&self) -> usize {
+        self.wins.len()
+    }
+
+    pub fn window_index(&self) -> usize {
+        self.order().iter().position(|&id| id == self.focus).unwrap_or(0)
+    }
+
+    fn order(&self) -> Vec<usize> {
+        let mut out = Vec::new();
+        self.layout.leaves(&mut out);
+        out
     }
 
 }
