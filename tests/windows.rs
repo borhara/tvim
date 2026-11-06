@@ -190,3 +190,19 @@ fn resizing_and_evening_out() {
         .collect();
     assert_eq!(titles.len(), 2, "{shown}");
 }
+
+#[test]
+fn a_window_on_another_file_draws_that_file() {
+    let a = file("win-two-a.rs", "fn alpha() {}\n");
+    let b = file("win-two-b.txt", "beta\n");
+    let mut e = Editor::open(&a).unwrap();
+    e.set_screen(80, 24);
+    e.ex(&format!("vs {}", b.display()));
+    e.keys(&parse("x"));
+    let shown = screen(&e, 70, 12);
+    assert!(shown.contains("fn alpha()") && shown.contains("eta"), "{shown}");
+    assert!(
+        shown.contains("win-two-b.txt ●"),
+        "the focused title marks the change: {shown}"
+    );
+}
