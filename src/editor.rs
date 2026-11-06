@@ -12,7 +12,7 @@ use crate::diff::Hunk;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::regex::Regex;
-use crate::syntax::{self, Syntax};
+use crate::syntax::{self, State, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::{Node, Win};
 
@@ -195,12 +195,28 @@ impl Range {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct States {
+    version: u64,
+    syntax: Option<Syntax>,
+    hashes: Vec<u64>,
+    states: Vec<State>,
+}
+
+fn line_hash(line: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    line.hash(&mut h);
+    h.finish()
+}
+
 pub(crate) struct Text<'a> {
     pub buf: &'a Buffer,
     pub path: Option<&'a Path>,
     pub modified: bool,
     pub version: u64,
     saved_lines: &'a [String],
+    states: &'a RefCell<States>,
 }
 
 impl Text<'_> {
@@ -213,7 +229,33 @@ impl Text<'_> {
 
     pub fn highlight(&self, row: usize, on: bool) -> Option<Vec<syntax::Kind>> {
         let syntax = self.syntax(on)?;
+        let state = self.state_at(row, syntax);
         Some(syntax::highlight(self.buf.line(row), syntax, state).0)
+    }
+
+    fn state_at(&self, row: usize, syntax: Syntax) -> State {
+        let mut cache = self.states.borrow_mut();
+        let cache = &mut *cache;
+        if cache.syntax != Some(syntax) {
+            *cache = States { syntax: Some(syntax), ..States::default() };
+        }
+        if cache.version != self.version {
+            // a line's state only depends on the lines above it, so keep everything above the first change
+            let same = cache.hashes.iter().zip(self.buf.lines()).take_while(|(h, l)| **h == line_hash(l)).count();
+            cache.hashes.truncate(same);
+            cache.states.truncate(same + 1);
+            cache.version = self.version;
+        }
+        if cache.states.is_empty() {
+            cache.states.push(State::Normal);
+        }
+        while cache.states.len() <= row.min(self.buf.len()) {
+            let r = cache.states.len() - 1;
+            let line = self.buf.line(r);
+            cache.hashes.push(line_hash(line));
+            cache.states.push(syntax::highlight(line, syntax, cache.states[r]).1);
+        }
+        cache.states[row.min(cache.states.len() - 1)]
     }
 
 }
@@ -281,6 +323,7 @@ pub struct Editor {
     explorer_focused: bool,
     saved_lines: Vec<String>,
     git_history: Vec<String>,
+    states: RefCell<States>,
     regex_cache: RefCell<Option<RegexCache>>,
     hits_cache: RefCell<Option<HitsCache>>,
     pub(crate) no_jumps: bool,
