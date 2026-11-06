@@ -6,6 +6,7 @@ use std::path::Path;
 use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
 use tinsel::{ColorMode, Rgb, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
 
+use crate::buffer::Buffer;
 use crate::buffer::Pos;
 use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
@@ -258,6 +259,7 @@ fn bar_on_guide(e: &Editor) -> Option<usize> {
     let buf = e.buffer();
     let ts = e.options.tab_stop;
     let col = vcol(buf.line(p.row), p.col, ts);
+    (col % e.options.shift_width.max(1) == 0 && col < resolved_indent(buf, ts, p.row)).then_some(col)
 }
 
 fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool, scrollbar: bool) -> Rect {
@@ -440,6 +442,41 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
     );
 }
 
+fn indent_width(line: &str, ts: usize) -> Option<usize> {
+    let ind = crate::text::indent(line);
+    (ind.len() < line.len()).then(|| vcol(line, char_count(ind), ts))
+}
+
+fn resolved_indent(buf: &Buffer, ts: usize, row: usize) -> usize {
+    if let Some(w) = indent_width(buf.line(row), ts) {
+        return w;
+    }
+    let up = (row.saturating_sub(200)..row)
+        .rev()
+        .find_map(|r| indent_width(buf.line(r), ts));
+    let down = (row + 1..buf.len().min(row + 200)).find_map(|r| indent_width(buf.line(r), ts));
+    match (up, down) {
+        (Some(a), Some(b)) => a.min(b),
+        _ => 0,
+    }
+}
+
+fn scope(buf: &Buffer, row: usize, ts: usize, sw: usize) -> Option<(usize, usize, usize)> {
+    let inner = resolved_indent(buf, ts, row);
+    if inner < sw {
+        return None;
+    }
+    let last = buf.last_row();
+    let (mut top, mut bottom) = (row, row);
+    while top > 0 && row - top < 2000 && resolved_indent(buf, ts, top - 1) >= inner {
+        top -= 1;
+    }
+    while bottom < last && bottom - row < 2000 && resolved_indent(buf, ts, bottom + 1) >= inner {
+        bottom += 1;
+    }
+    Some((inner - sw, top, bottom))
+}
+
 // v.focused alone means only that this is the focused window
 fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, c: &Colors, focused: bool) {
     let buf = v.text.buf;
@@ -458,6 +495,11 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         .filter(|_| active && matches!(mode, Mode::Normal | Mode::Insert));
     let colored = color_mode() != ColorMode::None;
     let guides = e.options.indent_guides && colored;
+    let scope = if guides && active && !mode.is_visual() {
+        scope(buf, cursor.row, ts, sw)
+    } else {
+        None
+    };
     let bar = if active && focused { bar_on_guide(e) } else { None };
     let lens = if active && focused { e.lens() } else { None };
     if active && focused && lens.is_none() {
@@ -563,9 +605,11 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         }
 
         if guides {
+            let width = resolved_indent(buf, ts, row);
             let mut col = 0;
             while col < width {
                 if col >= left && col - left < body.width {
+                    let in_scope = scope.is_some_and(|(sc, t, b)| sc == col && row >= t && row <= b);
                     let shown = if on_cursor && bar == Some(col) {
                     } else {
                         paint(color, "│")
