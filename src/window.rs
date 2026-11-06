@@ -177,6 +177,15 @@ impl Node {
         Some(next)
     }
 
+    fn equalize(&mut self) {
+        if let Node::Split { kids, .. } = self {
+            for k in kids {
+                k.1 = 1;
+                k.0.equalize();
+            }
+        }
+    }
+
     fn resize(&mut self, r: Rect, id: usize, across: bool, by: isize) -> bool {
         let Node::Split { across: a, kids } = self else {
             return false;
@@ -426,6 +435,11 @@ impl Editor {
     fn resize_window(&mut self, across: bool, by: isize) {
         let area = self.region();
         self.layout.resize(area, self.focus, across, by);
+        self.fit_screen();
+    }
+
+    pub(crate) fn equalize_windows(&mut self) {
+        self.layout.equalize();
         self.fit_screen();
     }
 
