@@ -218,6 +218,16 @@ impl Text<'_> {
 
 }
 
+pub(crate) struct View<'a> {
+    pub id: usize,
+    pub rect: tinsel::app::Rect,
+    pub focused: bool,
+    pub cursor: Pos,
+    pub top: usize,
+    pub left: usize,
+    pub text: Text<'a>,
+}
+
 type RegexCache = (String, (bool, bool), Rc<Regex>);
 // keyed on (buffer version, git answer)
 type HitsCache = (usize, u64, Rc<Regex>, Rc<[Pos]>);
@@ -466,6 +476,33 @@ impl Editor {
             states: &self.states,
             diffs: &self.marks_cache,
         }
+    }
+
+    pub(crate) fn text_of(&self, id: usize) -> Text<'_> {
+        match self.buffer_at(id).map(|i| &self.docs[i]) {
+            Some(d) if id != self.buffer_id => Text {
+                buf: &d.buf,
+                path: d.file.path.as_deref(),
+                modified: d.modified(),
+                version: d.version,
+                git: &d.git,
+                saved_lines: &d.saved_lines,
+                states: &d.states,
+                diffs: &d.diffs,
+            },
+            _ => self.shown_text(),
+        }
+    }
+
+    pub(crate) fn has_buffer(&self, id: usize) -> bool {
+        id == self.buffer_id || self.buffer_at(id).is_some()
+    }
+
+    pub(crate) fn buffer_at(&self, id: usize) -> Option<usize> {
+        self.docs
+            .iter()
+            .enumerate()
+            .position(|(i, d)| i != self.current && d.id == id)
     }
 
     pub fn selection(&self) -> Option<Range> {
