@@ -1,7 +1,7 @@
 use tinsel::app::{Key, Rect};
 
 use crate::buffer::Pos;
-use crate::editor::{Editor, Mode};
+use crate::editor::{Editor, Mode, View};
 use crate::text::vcol;
 
 // a title row and a line of text
@@ -255,6 +255,37 @@ impl Editor {
         let mut out = Vec::new();
         self.layout.place(area, &mut out);
         out
+    }
+
+    pub(crate) fn views(&self, area: Rect) -> Vec<View<'_>> {
+        self.window_rects(area)
+            .into_iter()
+            .filter_map(|(id, rect)| {
+                if id == self.focus {
+                    return Some(View {
+                        id,
+                        rect,
+                        focused: true,
+                        cursor: self.cursor,
+                        top: self.top.get(),
+                        left: self.left.get(),
+                        text: self.shown_text(),
+                    });
+                }
+                let w = self.wins.iter().find(|w| w.id == id)?;
+                let text = self.text_of(w.buffer);
+                let last = text.buf.last_row();
+                Some(View {
+                    id,
+                    rect,
+                    focused: false,
+                    cursor: Pos::new(w.cursor.row.min(last), w.cursor.col),
+                    top: w.top.min(last),
+                    left: w.left,
+                    text,
+                })
+            })
+            .collect()
     }
 
     pub(crate) fn fit_screen(&self) {
