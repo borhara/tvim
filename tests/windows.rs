@@ -3,7 +3,7 @@ use common::ed;
 use tinsel::app::Frame;
 use tvim::keys::parse;
 use tvim::ui::draw;
-use tvim::Pos;
+use tvim::{Editor, Pos};
 
 fn lines(n: usize) -> String {
     (1..=n).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n")
@@ -164,4 +164,29 @@ fn every_window_is_drawn() {
         1,
         "only the focused one marks its line: {shown}"
     );
+}
+
+#[test]
+fn resizing_and_evening_out() {
+    let mut e = ed("alpha");
+    e.keys(&parse("<C-w>v"));
+    let width = |e: &Editor| {
+        let shown = screen(e, 61, 12);
+        let row = shown.lines().find(|r| r.contains("alpha")).unwrap().to_string();
+        row.chars().position(|c| c == '│').unwrap()
+    };
+    let even = width(&e);
+    e.keys(&parse("5<C-w>>"));
+    assert_eq!(width(&e), even + 5);
+    e.keys(&parse("<C-w>3<lt>"));
+    assert_eq!(width(&e), even + 2);
+    e.keys(&parse("<C-w>="));
+    assert_eq!(width(&e), even);
+    e.keys(&parse("<C-w>s4<C-w>+"));
+    let shown = screen(&e, 61, 20);
+    let rows: Vec<&str> = shown.lines().collect();
+    let titles: Vec<usize> = (0..rows.len())
+        .filter(|&i| rows[i].trim_start().starts_with("── "))
+        .collect();
+    assert_eq!(titles.len(), 2, "{shown}");
 }
