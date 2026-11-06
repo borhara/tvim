@@ -4,10 +4,11 @@ use std::io::Write;
 use std::path::Path;
 
 use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
-use tinsel::{ColorMode, Rgb, color_mode, mix, paint, paint_bg, palette};
+use tinsel::{ColorMode, Rgb, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
 
 use crate::editor::{Editor, Effect, Mode, Range};
-use crate::text::vcol;
+use crate::syntax::Kind;
+use crate::text::{caret, cell_width, vcol};
 
 const HINT_DELAY: f32 = 0.4;
 
@@ -144,7 +145,68 @@ fn colors() -> Colors {
     }
 }
 
+const LILAC: Rgb = Rgb(196, 166, 238);
+const PEACH: Rgb = Rgb(246, 184, 150);
 const ORANGE: Rgb = Rgb(240, 140, 70);
+
+fn paint_kind(kind: Kind, s: &str, c: &Colors) -> String {
+    use Kind::*;
+    let quiet = mix(palette::SOFT, palette::MUTED, 0.45);
+    match kind {
+        Plain => s.to_string(),
+        Keyword => paint(palette::ROSE, s),
+        Function => paint(LILAC, s),
+        Type => paint(PEACH, s),
+        Str => paint(palette::SAGE, s),
+        Escape => paint(palette::PETAL, s),
+        Number | Constant => paint(palette::AMBER, s),
+        Comment => italic(&paint(palette::MUTED, s)),
+        Todo => bold(&paint_bg(c.ink, palette::AMBER, s)),
+        Macro => paint(palette::BLUSH, s),
+        Attribute => paint(mix(LILAC, palette::MUTED, 0.45), s),
+        Punct => paint(quiet, s),
+        Operator => paint(palette::SOFT, s),
+        Key => paint(palette::BLUSH, s),
+        Label => italic(&paint(palette::PETAL, s)),
+        Heading => bold(&paint(palette::ROSE, s)),
+        Strong => bold(s),
+        Emphasis => italic(s),
+        Code => paint(palette::SAGE, s),
+        Link => underline(&paint(palette::BLUSH, s)),
+        Url => underline(&paint(palette::MUTED, s)),
+        ListMark => paint(palette::AMBER, s),
+        Quote => italic(&paint(palette::SOFT, s)),
+    }
+}
+
+fn styled_line(line: &str, kinds: Option<&[Kind]>, ts: usize, c: &Colors) -> String {
+    let mut out = String::new();
+    let mut run = String::new();
+    let mut run_kind = Kind::Plain;
+    let mut v = 0;
+    for (i, ch) in line.chars().enumerate() {
+        let w = cell_width(ch, v, ts);
+        let kind = kinds.and_then(|k| k.get(i).copied()).unwrap_or(Kind::Plain);
+        if kind != run_kind && !run.is_empty() {
+            out.push_str(&paint_kind(run_kind, &run, c));
+            run.clear();
+        }
+        run_kind = kind;
+        match ch {
+            '\t' => run.extend(std::iter::repeat_n(' ', w)),
+            ch if ch.is_control() => {
+                run.push('^');
+                run.push(caret(ch));
+            }
+            ch => run.push(ch),
+        }
+        v += w;
+    }
+    if !run.is_empty() {
+        out.push_str(&paint_kind(run_kind, &run, c));
+    }
+    out
+}
 
 const LOGO: [&str; 2] = ["▀█▀ █ █ █ █▀▄▀█ ✶", " █  ▀▄▀ █ █ ▀ █  "];
 
