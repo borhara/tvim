@@ -11,7 +11,7 @@ use crate::buffer::Pos;
 use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
 use crate::syntax::Kind;
-use crate::text::{caret, cell_width, char_count, vcol};
+use crate::text::{caret, cell_width, char_count, is_word, vcol};
 
 const HINT_DELAY: f32 = 0.4;
 
@@ -489,6 +489,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let pattern = e.search_pattern();
     let marks = v.text.change_marks();
     let word = (mode == Mode::Normal && focused)
+        .then(|| word_at(buf.line(cursor.row), cursor.col))
         .flatten();
     let current_match = (mode == Mode::Search).then_some(cursor);
     let bracket = e
@@ -591,6 +592,9 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             tint(frame, b.col, b.col + 1, c.bracket);
         }
         if let Some(w) = &word {
+            for (at, end) in whole_words(line, w) {
+                tint(frame, at, end, c.word);
+            }
         }
         let trimmed = char_count(line.trim_end_matches([' ', '\t']));
         let len = char_count(line);
@@ -645,6 +649,23 @@ fn selected_cols(sel: &Range, row: usize, len: usize) -> Option<(usize, usize)> 
         (from, to)
     };
     Some((from, to.max(from + usize::from(len == 0))))
+}
+
+fn whole_words<'a>(line: &'a str, w: &'a str) -> impl Iterator<Item = (usize, usize)> + 'a {
+    let whole = |i: Option<usize>| i.and_then(|i| line.chars().nth(i)).is_none_or(|ch| !is_word(ch));
+        .into_iter()
+        .map(|at| (at, at + char_count(w)))
+        .filter(move |&(at, end)| whole(at.checked_sub(1)) && whole(Some(end)))
+}
+
+fn word_at(line: &str, col: usize) -> Option<String> {
+    let chars: Vec<char> = line.chars().collect();
+    if !chars.get(col).is_some_and(|c| is_word(*c)) {
+        return None;
+    }
+    let start = (0..col).rev().find(|&i| !is_word(chars[i])).map_or(0, |i| i + 1);
+    let end = (col..chars.len()).find(|&i| !is_word(chars[i])).unwrap_or(chars.len());
+    Some(chars[start..end].iter().collect())
 }
 
 fn display_path(path: &Path) -> String {
