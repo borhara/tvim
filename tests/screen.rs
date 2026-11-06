@@ -1,4 +1,5 @@
 mod common;
+use tvim::Editor;
 use tvim::keys::parse;
 
 #[test]
@@ -42,4 +43,37 @@ fn long_lines_scroll_sideways() {
     let first = rows(&shown)[1];
     assert!(first.starts_with("    1 › x") && first.ends_with("xxEND"), "{first:?}");
     assert_eq!(first.chars().count(), 29, "the last column stays clear");
+}
+
+#[test]
+fn colouring_carries_over_lines() {
+    let path = common::temp("carry.rs");
+    std::fs::write(&path, "/* a\nb */ fn x() {}\n").unwrap();
+    let e = Editor::open(&path).unwrap();
+    use tvim::syntax::Kind::*;
+    let second = e.highlight(1).unwrap();
+    assert_eq!((second[0], second[5], second[8]), (Comment, Keyword, Function));
+    let plain = common::temp("plain.txt");
+    std::fs::write(&plain, "fn x").unwrap();
+    assert!(Editor::open(&plain).unwrap().highlight(0).is_none());
+}
+
+#[test]
+fn colouring_follows_edits_and_undo() {
+    let path = common::temp("edits.rs");
+    let text = "fn a() {}\nlet s = \"x\";\n// c\nfn b() {}\nlet t = 1;\nfn c() {}\n";
+    std::fs::write(&path, text).unwrap();
+    let mut e = Editor::open(&path).unwrap();
+    let all = |e: &Editor| (0..e.text().lines().count()).map(|r| e.highlight(r).unwrap()).collect::<Vec<_>>();
+    let fresh = |e: &Editor| {
+        let p = common::temp("edits_fresh.rs");
+        std::fs::write(&p, e.text()).unwrap();
+        all(&Editor::open(&p).unwrap())
+    };
+    let before = all(&e);
+    for keys in ["3GO/*<Esc>", "5Gox */<Esc>", "u", "2Gf\"a\\<Esc>", "ggdd", "Gp", "u", "u", "u", "u"] {
+        e.keys(&parse(keys));
+        assert_eq!(all(&e), fresh(&e), "after {keys}");
+    }
+    assert_eq!(all(&e), before);
 }
