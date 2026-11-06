@@ -6,9 +6,11 @@ use std::path::Path;
 use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
 use tinsel::{ColorMode, Rgb, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
 
-use crate::editor::{Editor, Effect, Mode, Range};
+use crate::buffer::Pos;
+use crate::diff::Mark;
+use crate::editor::{Editor, Effect, Mode, Range, View};
 use crate::syntax::Kind;
-use crate::text::{caret, cell_width, vcol};
+use crate::text::{caret, cell_width, char_count, vcol};
 
 const HINT_DELAY: f32 = 0.4;
 
@@ -347,6 +349,151 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
         tinsel::text::width(&version),
         &paint(palette::MUTED, &version),
     );
+}
+
+// v.focused alone means only that this is the focused window
+fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, c: &Colors, focused: bool) {
+    let buf = v.text.buf;
+    let ts = e.options.tab_stop;
+    let sw = e.options.shift_width.max(1);
+    let (top, left, cursor, active) = (v.top, v.left, v.cursor, v.focused);
+    let time = frame.time();
+    let mode = if active { e.mode() } else { Mode::Normal };
+    let selection = e.selection().filter(|_| active);
+    let pattern = e.search_pattern();
+    let marks = v.text.change_marks();
+    let word = (mode == Mode::Normal && focused)
+        .flatten();
+    let current_match = (mode == Mode::Search).then_some(cursor);
+    let bracket = e
+        .filter(|_| active && matches!(mode, Mode::Normal | Mode::Insert));
+    let colored = color_mode() != ColorMode::None;
+    let guides = e.options.indent_guides && colored;
+    let bar = if active && focused { bar_on_guide(e) } else { None };
+    let lens = if active && focused { e.lens() } else { None };
+    if active && focused && lens.is_none() {
+    }
+
+    let clock = e.anim.clock();
+    let mut sky_from = None;
+    for i in 0..body.height {
+        let row = top + i;
+        let y = body.y + i;
+        if row >= buf.len() {
+            // sky starts a row past the end
+            if row > buf.len() && !e.zen() && sky_from.is_none() {
+                sky_from = Some(y);
+            }
+            continue;
+        }
+        let line = buf.line(row);
+        let on_cursor = row == cursor.row;
+
+        let glow = if active { e.anim.glow(row, time) } else { 0.0 };
+        let band = if on_cursor && active && e.options.cursor_line {
+            0.07
+        } else {
+            0.0
+        };
+        let glow = if mode.is_visual() { 0.0 } else { 0.3 * glow };
+        if glow + band > 0.0 {
+        }
+        if gutter.width > 4 {
+            let width = gutter.width - 4;
+            let n = if e.options.relative_number && !on_cursor {
+                row.abs_diff(cursor.row)
+            } else {
+                row + 1
+            };
+            let digits = if e.options.zero_pad && (on_cursor || !e.options.relative_number) {
+                v.text.buf.len().to_string().len().max(2)
+            } else {
+                1
+            };
+            let label = if e.options.relative_number && on_cursor && e.options.number {
+                format!("{n:<width$}")
+            } else {
+                format!("{:>width$}", format!("{n:0>digits$}"))
+            };
+            let label = if on_cursor && active {
+                bold(&paint(lit, &label))
+            } else {
+                paint(c.faint, &label)
+            };
+            frame.print(Rect::new(gutter.x + 1, y, width, 1), 0, &label);
+            if on_cursor && active && e.options.cursor_line {
+                frame.print(Rect::new(gutter.x + width + 2, y, 1, 1), 0, &bold(&paint(lit, "›")));
+            }
+            if let Some(Some(mark)) = marks.get(row) {
+                let color = match mark {
+                    Mark::Added => palette::SAGE,
+                    Mark::Changed => palette::AMBER,
+                    Mark::Removed | Mark::RemovedAbove => palette::RED,
+                };
+                frame.print(Rect::new(gutter.x, y, 1, 1), 0, &bold(&paint(color, "·")));
+            }
+        }
+
+        let tint = |frame: &mut Frame, from: usize, to: usize, color: Rgb| {
+            let a = vcol(line, from, ts);
+            let b = vcol(line, to, ts).max(a + 1);
+            let (a, b) = (a.max(left) - left, b.saturating_sub(left).min(body.width));
+            if a < b {
+                frame.tint(Rect::new(body.x + a, y, b - a, 1), color);
+            }
+        };
+        if let Some((from, to)) = selection.and_then(|sel| selected_cols(&sel, row, char_count(line))) {
+            tint(frame, from, to, c.selection);
+        }
+        if let Some(pat) = pattern {
+            for (from, to) in e.matches_in(line, pat) {
+                let color = if current_match == Some(Pos::new(row, from)) {
+                    c.current_match
+                } else {
+                    c.search
+                };
+                tint(frame, from, to, color);
+            }
+        }
+        if let Some(b) = bracket.filter(|b| b.row == row) {
+            tint(frame, b.col, b.col + 1, c.bracket);
+        }
+        if let Some(w) = &word {
+        }
+        let trimmed = char_count(line.trim_end_matches([' ', '\t']));
+        let len = char_count(line);
+        if trimmed < len && trimmed > 0 && !(on_cursor && matches!(mode, Mode::Insert | Mode::Replace)) {
+            tint(frame, trimmed, len, c.trailing);
+        }
+
+        let kinds = v.text.highlight(row, e.options.syntax);
+        let shown = styled_line(line, kinds.as_deref(), ts, c);
+        frame.print(Rect::new(body.x, y, body.width, 1), 0, &shown);
+
+        if colored {
+        }
+
+        if guides {
+            let mut col = 0;
+            while col < width {
+                if col >= left && col - left < body.width {
+                    let shown = if on_cursor && bar == Some(col) {
+                    } else {
+                        paint(color, "│")
+                    };
+                    frame.print(Rect::new(body.x + col - left, y, 1, 1), 0, &shown);
+                }
+                col += sw;
+            }
+        }
+
+        if let Some(text) = lens.as_deref().filter(|_| on_cursor) {
+        }
+    }
+    if let Some(y) = sky_from {
+        let width = body.x + body.width - gutter.x;
+        sparkles(frame, Rect::new(gutter.x, y, width, body.y + body.height - y), clock, 0.012);
+    }
 }
 
 fn selected_cols(sel: &Range, row: usize, len: usize) -> Option<(usize, usize)> {
