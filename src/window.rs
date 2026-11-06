@@ -99,6 +99,17 @@ impl Node {
         }
     }
 
+    fn min_len(&self, across: bool) -> usize {
+        let min = if across { MIN_COLS } else { MIN_ROWS };
+        match self {
+            Node::Leaf(_) => min,
+            Node::Split { across: a, kids } if *a == across => {
+                kids.iter().map(|k| k.0.min_len(across)).sum::<usize>() + usize::from(across) * (kids.len() - 1)
+            }
+            Node::Split { kids, .. } => kids.iter().map(|k| k.0.min_len(across)).max().unwrap_or(min),
+        }
+    }
+
     pub(crate) fn split(&mut self, r: Rect, at: usize, new: usize, across: bool, after: bool) {
         match self {
             Node::Leaf(id) if *id == at => {
@@ -166,6 +177,42 @@ impl Node {
         Some(next)
     }
 
+    fn resize(&mut self, r: Rect, id: usize, across: bool, by: isize) -> bool {
+        let Node::Split { across: a, kids } = self else {
+            return false;
+        };
+        let rects = divide(r, *a, &Self::shares(kids));
+        let Some(i) = kids.iter().position(|k| k.0.contains(id)) else {
+            return false;
+        };
+        if kids[i].0.resize(rects[i], id, across, by) {
+            return true;
+        }
+        if *a != across || kids.len() < 2 {
+            return false;
+        }
+        let len = |r: &Rect| if across { r.width } else { r.height };
+        let mut sizes: Vec<usize> = rects.iter().map(len).collect();
+        let spare = |j: usize, sizes: &[usize]| sizes[j].saturating_sub(kids[j].0.min_len(across));
+        if by > 0 {
+            let mut want = by as usize;
+            for j in (i + 1..kids.len()).chain((0..i).rev()) {
+                let give = spare(j, &sizes).min(want);
+                sizes[j] -= give;
+                sizes[i] += give;
+                want -= give;
+            }
+        } else {
+            let take = by.unsigned_abs().min(spare(i, &sizes));
+            let j = if i + 1 < kids.len() { i + 1 } else { i - 1 };
+            sizes[i] -= take;
+            sizes[j] += take;
+        }
+        for (k, s) in kids.iter_mut().zip(sizes) {
+            k.1 = s.max(1);
+        }
+        true
+    }
 }
 
 impl Editor {
@@ -374,6 +421,12 @@ impl Editor {
         if let Some((_, id)) = best {
             self.focus_window(id);
         }
+    }
+
+    fn resize_window(&mut self, across: bool, by: isize) {
+        let area = self.region();
+        self.layout.resize(area, self.focus, across, by);
+        self.fit_screen();
     }
 
     pub(crate) fn sync_windows(&mut self) {
