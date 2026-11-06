@@ -492,6 +492,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         .flatten();
     let current_match = (mode == Mode::Search).then_some(cursor);
     let bracket = e
+        .matching_bracket()
         .filter(|_| active && matches!(mode, Mode::Normal | Mode::Insert));
     let colored = color_mode() != ColorMode::None;
     let guides = e.options.indent_guides && colored;

@@ -595,6 +595,14 @@ impl Editor {
         (!hits.is_empty()).then_some((current.max(1), hits.len()))
     }
 
+    pub fn matching_bracket(&self) -> Option<Pos> {
+        let c = self.buf.char_at(self.cursor)?;
+        if !"()[]{}".contains(c) {
+            return None;
+        }
+        motion::match_bracket(&self.buf, self.cursor)
+    }
+
     pub fn set_screen(&self, width: usize, height: usize) {
         self.screen.set((width, height));
     }
