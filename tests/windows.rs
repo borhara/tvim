@@ -1,6 +1,8 @@
 mod common;
 use common::ed;
+use tinsel::app::Frame;
 use tvim::keys::parse;
+use tvim::ui::draw;
 use tvim::Pos;
 
 fn lines(n: usize) -> String {
@@ -139,4 +141,27 @@ fn not_enough_room() {
     e.ex("sp");
     assert!(e.message().unwrap().text.starts_with("E36"));
     assert_eq!(e.window_count(), 1);
+}
+
+#[test]
+fn the_cursor_is_in_the_focused_window() {
+    let mut e = ed("alpha\nbeta");
+    e.keys(&parse("<C-w>v<C-w>l"));
+    let mut frame = Frame::new(60, 12);
+    draw(&e, &mut frame);
+    let (x, _, _) = frame.cursor().unwrap();
+    assert!(x > 30, "the right window has it: {x}");
+}
+
+#[test]
+fn every_window_is_drawn() {
+    let mut e = ed("alpha");
+    e.keys(&parse("<C-w>s<C-w>v"));
+    let shown = screen(&e, 70, 20);
+    assert_eq!(shown.matches("1   alpha").count(), 2, "{shown}");
+    assert_eq!(
+        shown.matches("1 › alpha").count(),
+        1,
+        "only the focused one marks its line: {shown}"
+    );
 }
