@@ -275,6 +275,26 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
         return text_area(e, frame, area, c, focused, scrollbar);
     }
     let mut body = Rect::default();
+    for v in e.views(area) {
+        let r = v.rect;
+        if r.width == 0 || r.height == 0 {
+            continue;
+        }
+        let text = Rect::new(r.x, r.y + 1, r.width, r.height - 1);
+        if preview {
+            if v.focused {
+                body = b;
+            }
+        } else if v.focused {
+            body = text_area(e, frame, text, c, focused, true);
+        } else {
+            other_window(e, &v, frame, text, c);
+        }
+        let lit = v.focused && focused;
+        if r.x + r.width < area.x + area.width {
+            vline(frame, r.x + r.width, r.y, r.height, &paint(palette::LINE, "│"));
+        }
+    }
     body
 }
 
