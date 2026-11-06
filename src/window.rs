@@ -290,6 +290,10 @@ impl Editor {
         };
         self.focus = id;
         if w.buffer != self.buffer_id {
+            if let Some(i) = self.buffer_at(w.buffer) {
+                self.no_jumps = true;
+                self.no_jumps = false;
+            }
         }
         self.mode = Mode::Normal;
         self.completion = None;
