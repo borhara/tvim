@@ -290,6 +290,51 @@ fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
     (gutter, body)
 }
 
+fn thumb_color(e: &Editor, focused: bool, c: &Colors) -> Rgb {
+    if focused {
+    } else {
+        c.scrollbar
+    }
+}
+
+fn draw_scrollbar(e: &Editor, v: &View, frame: &mut Frame, bar: Rect, c: &Colors, focused: bool) {
+    let lines = v.text.buf.len();
+    let rows = bar.height;
+    if rows == 0 || lines <= rows {
+        return;
+    }
+    draw_thumb(frame, bar, v.top, lines, thumb_color(e, focused, c));
+    if lines > 20_000 {
+        return;
+    }
+    let mut mark = |row: usize| {
+        frame.print(Rect::new(bar.x, bar.y + row * rows / lines, 1, 1), 0, &paint(palette::AMBER, "▐"));
+    };
+    if std::ptr::eq(v.text.buf, e.buffer()) {
+        for p in e.search_hits().iter().flat_map(|h| h.iter()) {
+            mark(p.row);
+        }
+    } else if let Some(pat) = e.search_pattern() {
+        for (row, line) in v.text.buf.lines().iter().enumerate() {
+            if !e.matches_in(line, pat).is_empty() {
+                mark(row);
+            }
+        }
+    }
+}
+
+fn draw_thumb(frame: &mut Frame, bar: Rect, top: usize, lines: usize, color: Rgb) {
+    let rows = bar.height;
+    if rows == 0 || lines <= rows {
+        return;
+    }
+    let size = (rows * rows / lines).clamp(1, rows);
+    let start = (top * rows / lines).min(rows - size);
+    for i in start..start + size {
+        frame.print(Rect::new(bar.x, bar.y + i, 1, 1), 0, &paint(color, "▐"));
+    }
+}
+
 fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
     if color_mode() != ColorMode::None {
         sparkles(frame, area, e.anim.clock(), 0.012);
