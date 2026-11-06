@@ -818,6 +818,7 @@ impl Editor {
             Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
             Act::Select { .. } => {}
+            Act::Window(k) => self.window_key(k, cmd.count),
         }
         if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
             self.dot = self.building.take();

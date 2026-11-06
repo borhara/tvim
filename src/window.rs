@@ -1,4 +1,4 @@
-use tinsel::app::Rect;
+use tinsel::app::{Key, Rect};
 
 use crate::buffer::Pos;
 use crate::editor::{Editor, Mode};
@@ -441,6 +441,44 @@ impl Editor {
     pub(crate) fn equalize_windows(&mut self) {
         self.layout.equalize();
         self.fit_screen();
+    }
+
+    pub(crate) fn window_key(&mut self, key: Key, count: Option<usize>) {
+        let n = count.unwrap_or(1) as isize;
+        match key {
+            Key::Char('s' | 'S') | Key::Ctrl('s') => {
+                self.split_window(false, false);
+            }
+            Key::Char('v') | Key::Ctrl('v') => {
+                self.split_window(true, false);
+            }
+            Key::Char('n') | Key::Ctrl('n') => {
+                self.split_window(false, true);
+            }
+            Key::Char('h') | Key::Ctrl('h') | Key::Backspace | Key::Left => self.focus_toward(Dir::Left),
+            Key::Char('l') | Key::Ctrl('l') | Key::Right => self.focus_toward(Dir::Right),
+            Key::Char('k') | Key::Ctrl('k') | Key::Up => self.focus_toward(Dir::Up),
+            Key::Char('j') | Key::Ctrl('j') | Key::Down => self.focus_toward(Dir::Down),
+            Key::Char('w') | Key::Ctrl('w') => match count {
+                Some(k) => {
+                    let order = self.order();
+                    if let Some(&id) = order.get(k.saturating_sub(1)).or(order.last()) {
+                        self.focus_window(id);
+                    }
+                }
+                None => self.cycle_window(1),
+            },
+            Key::Char('W') => self.cycle_window(-1),
+            Key::Char('q') | Key::Ctrl('q') => self.ex("quit"),
+            Key::Char('c') => self.ex("close"),
+            Key::Char('o') | Key::Ctrl('o') => self.ex("only"),
+            Key::Char('=') => self.equalize_windows(),
+            Key::Char('+') => self.resize_window(false, n),
+            Key::Char('-') => self.resize_window(false, -n),
+            Key::Char('>') => self.resize_window(true, n),
+            Key::Char('<') => self.resize_window(true, -n),
+            _ => {}
+        }
     }
 
     pub(crate) fn sync_windows(&mut self) {
