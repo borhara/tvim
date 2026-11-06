@@ -12,7 +12,7 @@ use crate::diff::Hunk;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::regex::Regex;
-use crate::syntax;
+use crate::syntax::{self, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::{Node, Win};
 
@@ -193,6 +193,29 @@ impl Range {
             self.end.row
         }
     }
+}
+
+pub(crate) struct Text<'a> {
+    pub buf: &'a Buffer,
+    pub path: Option<&'a Path>,
+    pub modified: bool,
+    pub version: u64,
+    saved_lines: &'a [String],
+}
+
+impl Text<'_> {
+    pub fn syntax(&self, on: bool) -> Option<Syntax> {
+        if !on {
+            return None;
+        }
+        Syntax::detect(self.path?.file_name()?.to_str()?)
+    }
+
+    pub fn highlight(&self, row: usize, on: bool) -> Option<Vec<syntax::Kind>> {
+        let syntax = self.syntax(on)?;
+        Some(syntax::highlight(self.buf.line(row), syntax, state).0)
+    }
+
 }
 
 type RegexCache = (String, (bool, bool), Rc<Regex>);
@@ -422,6 +445,27 @@ impl Editor {
 
     pub fn name(&self) -> String {
         display_name(self.file.path.as_deref())
+    }
+
+    pub fn syntax(&self) -> Option<Syntax> {
+        self.shown_text().syntax(self.options.syntax)
+    }
+
+    pub fn highlight(&self, row: usize) -> Option<Vec<syntax::Kind>> {
+        self.shown_text().highlight(row, self.options.syntax)
+    }
+
+    pub(crate) fn shown_text(&self) -> Text<'_> {
+        Text {
+            buf: &self.buf,
+            path: self.file.path.as_deref(),
+            modified: self.is_modified(),
+            version: self.version,
+            git: &self.git,
+            saved_lines: &self.saved_lines,
+            states: &self.states,
+            diffs: &self.marks_cache,
+        }
     }
 
     pub fn selection(&self) -> Option<Range> {
