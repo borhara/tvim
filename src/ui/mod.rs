@@ -269,6 +269,15 @@ fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: boo
     body
 }
 
+fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool, scrollbar: bool) -> Rect {
+    e.set_region(area.width, area.height);
+    if e.window_count() == 1 {
+        return text_area(e, frame, area, c, focused, scrollbar);
+    }
+    let mut body = Rect::default();
+    body
+}
+
 // scrolled to keep the cursor in view; returns the cursor's cell
 fn input(frame: &mut Frame, row: Rect, label: &str, text: &str, cursor: usize, ink: Option<Rgb>) -> (usize, usize) {
     let before: String = text.chars().take(cursor).collect();
@@ -277,6 +286,12 @@ fn input(frame: &mut Frame, row: Rect, label: &str, text: &str, cursor: usize, i
     let text = ink.map_or_else(|| text.to_string(), |ink| paint(ink, text));
     frame.print(row, 0, &format!("{label}{text}"));
     (row.x + at - skip, row.y)
+}
+
+fn vline(frame: &mut Frame, x: usize, y: usize, height: usize, glyph: &str) {
+    for y in y..y + height {
+        frame.print(Rect::new(x, y, 1, 1), 0, glyph);
+    }
 }
 
 fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
@@ -288,6 +303,15 @@ fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
         area.height,
     );
     (gutter, body)
+}
+
+fn other_window(e: &Editor, v: &View, frame: &mut Frame, area: Rect, c: &Colors) {
+    let (gutter, body) = split_gutter(area, e.gutter_for(v.text.buf.len()));
+    draw_text(e, v, frame, gutter, body, c, false);
+    if area.width > 0 {
+        let bar = Rect::new(area.x + area.width - 1, area.y, 1, area.height);
+        draw_scrollbar(e, v, frame, bar, c, false);
+    }
 }
 
 fn thumb_color(e: &Editor, focused: bool, c: &Colors) -> Rgb {
