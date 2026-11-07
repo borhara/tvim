@@ -123,6 +123,24 @@ fn shell_commands_are_handed_to_the_screen() {
 }
 
 #[test]
+fn completing_names() {
+    let mut e = ed("a");
+    e.keys(&parse(":se<Tab>"));
+    assert_eq!(e.cmdline().text, "set");
+    e.keys(&parse(" relat<Tab>"));
+    assert_eq!(e.cmdline().text, "set relativenumber");
+    let dir = temp("complete");
+    std::fs::create_dir_all(dir.join("subdir")).unwrap();
+    std::fs::write(dir.join("notes.txt"), "").unwrap();
+    let mut e = ed("a");
+    e.keys(&parse(&format!(":e {}/no<Tab>", dir.display())));
+    assert_eq!(e.cmdline().text, format!("e {}/notes.txt", dir.display()));
+    e.keys(&parse("<C-u>"));
+    e.keys(&parse(&format!("e {}/s<Tab>", dir.display())));
+    assert_eq!(e.cmdline().text, format!("e {}/subdir/", dir.display()));
+}
+
+#[test]
 fn editing_the_command_line() {
     let mut e = ed("a");
     e.keys(&parse(":set nu<Left><Left><BS>x<Home>y<End>z"));
