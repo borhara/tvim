@@ -737,6 +737,19 @@ impl Editor {
         }
     }
 
+    pub fn finder(&self) -> Option<&Finder> {
+        self.finder.as_ref()
+    }
+
+    pub fn find_files(&mut self, query: Option<&str>) {
+        let root = cwd();
+        self.find_files_in(&root, query.unwrap_or(""));
+    }
+
+    pub fn find_files_in(&mut self, root: &Path, query: &str) {
+        self.finder = Some(Finder::new(root, query));
+    }
+
     pub(crate) fn touch(&mut self) {
         if !self.changing {
             self.undo.push(self.snapshot());
@@ -1036,6 +1049,7 @@ impl Editor {
             Key::Ctrl('g') => self.file_info(),
             Key::Ctrl('l') => self.message = None,
             Key::Ctrl('z') => self.effects.push(Effect::Suspend),
+            Key::Ctrl('p') => self.find_files(None),
             _ => {}
         }
     }
@@ -2925,6 +2939,18 @@ pub fn find_all(line: &str, pat: &str, ignore_case: bool) -> Vec<usize> {
 
 fn display_name(path: Option<&Path>) -> String {
     path.map_or_else(|| "[No Name]".to_string(), |p| p.display().to_string())
+}
+
+pub(crate) fn cwd() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+pub(crate) fn relative_to_cwd(path: &Path) -> PathBuf {
+    let cwd = std::env::current_dir().ok().and_then(|d| d.canonicalize().ok());
+    match cwd.as_deref().and_then(|d| path.strip_prefix(d).ok()) {
+        Some(rel) if !rel.as_os_str().is_empty() => rel.to_path_buf(),
+        _ => path.to_path_buf(),
+    }
 }
 
 pub(crate) fn expand_home(path: &str) -> String {
