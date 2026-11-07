@@ -209,6 +209,10 @@ impl Finder {
         Pick::Nothing
     }
 
+    pub fn paste(&mut self, text: &str) {
+        self.query.push_str(text.lines().next().unwrap_or("").trim());
+        self.refresh();
+    }
 }
 
 // scrolls as little as it can to keep selected in view
