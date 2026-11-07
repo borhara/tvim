@@ -78,3 +78,18 @@ fn nothing_matching() {
     e.keys(&parse("<CR>"));
     assert!(e.finder().is_some(), "enter on nothing does nothing");
 }
+
+#[test]
+fn ctrl_p_and_find_open_it() {
+    let mut e = Editor::with_text("x");
+    e.keys(&parse("<C-p>"));
+    assert!(e.finder().is_some());
+    e.keys(&parse("<Esc>"));
+    e.keys(&parse(":find edit<CR>"));
+    assert_eq!(e.finder().unwrap().query(), "edit");
+    assert_eq!(
+        found(&e)[0],
+        "src/editor.rs",
+        "run from the crate, so it finds tvim's own files"
+    );
+}
