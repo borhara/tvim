@@ -1,5 +1,6 @@
 mod common;
-use common::text_after as t;
+use common::{ed, text_after as t};
+use tvim::keys::parse;
 
 #[test]
 fn ctrl_n_completes_from_the_nearest_word() {
@@ -27,4 +28,25 @@ fn cycling_past_the_end_comes_back_to_what_was_typed() {
         t("format\nfoobar\n", "Gifo<C-n><C-n><C-n><C-y><Esc><Esc>"),
         "format\nfoobar\nfo"
     );
+}
+
+#[test]
+fn esc_and_ctrl_e_put_back_what_was_typed() {
+    let mut e = ed("foobar\n");
+    e.keys(&parse("Gifo<C-n>"));
+    assert_eq!(e.text(), "foobar\nfoobar");
+    e.keys(&parse("<C-e>"));
+    assert_eq!(e.text(), "foobar\nfo");
+    assert!(e.completion().is_none());
+    e.keys(&parse("o<C-n><Esc>"));
+    assert_eq!(e.text(), "foobar\nfoo");
+    assert_eq!(e.mode(), tvim::Mode::Insert, "esc only closes the list");
+}
+
+#[test]
+fn any_other_key_takes_the_word_and_carries_on() {
+    assert_eq!(t("foobar\n", "Gifo<C-n><C-c>"), "foobar\nfoobar");
+    assert_eq!(t("foobar\n", "Gifo<C-n>(<Esc>"), "foobar\nfoobar()");
+    assert_eq!(t("foobar\n", "Gifo<C-n> x<Esc>"), "foobar\nfoobar x");
+    assert_eq!(t("foobar\n", "Gifo<C-n><CR>x<Esc>"), "foobar\nfoobar\nx");
 }
