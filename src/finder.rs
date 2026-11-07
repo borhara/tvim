@@ -138,6 +138,34 @@ impl Finder {
             .map(|(i, hits)| (self.files[*i].as_str(), hits.as_slice()))
     }
 
+    pub fn preview(&self) -> Option<(String, Vec<String>)> {
+        let (i, _) = self.matches.get(self.selected)?;
+        let rel = &self.files[*i];
+        // a recent file shows around the line it was left at, so read that far
+        let (bytes_cap, lines_cap) = match self.line(self.selected) {
+            Some(row) => (4 << 20, row + 200),
+            None => (64 * 1024, 200),
+        };
+        let mut cache = self.preview.borrow_mut();
+        if cache.as_ref().is_none_or(|(p, _)| p != rel) {
+            let mut bytes = Vec::new();
+            if let Ok(f) = std::fs::File::open(self.root.join(rel)) {
+                use std::io::Read;
+                let _ = f.take(bytes_cap).read_to_end(&mut bytes);
+            }
+            let text = match std::str::from_utf8(&bytes) {
+                Ok(text) => Some(text),
+                Err(e) => std::str::from_utf8(&bytes[..e.valid_up_to()]).ok().filter(|t| !t.is_empty()),
+            };
+            let lines = match text {
+                Some(text) => text.lines().take(lines_cap).map(|l| l.replace('\r', "")).collect(),
+                None => vec!["(not text)".to_string()],
+            };
+            *cache = Some((rel.clone(), lines));
+        }
+        cache.clone()
+    }
+
     pub fn match_count(&self) -> usize {
         self.matches.len()
     }

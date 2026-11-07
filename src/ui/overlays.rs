@@ -128,6 +128,10 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         frame.print(Rect::new(list.x + 4, y, room, 1), 0, &shown);
     }
     if let Some(pane) = p.pane {
+        if let Some((path, lines)) = f.preview() {
+            let at = f.line(f.selected()).filter(|r| *r < lines.len()).map(|r| (r, 0, 0));
+            preview_lines(&path, &lines, at, frame, pane, c);
+        }
     }
     Some(p.at)
 }
