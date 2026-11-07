@@ -2796,6 +2796,26 @@ fn remember(history: &mut Vec<String>, entry: &str) {
     }
 }
 
+pub fn find_all(line: &str, pat: &str, ignore_case: bool) -> Vec<usize> {
+    let hay: Vec<char> = line.chars().collect();
+    let needle: Vec<char> = pat.chars().collect();
+    if needle.is_empty() || needle.len() > hay.len() {
+        return Vec::new();
+    }
+    let same = |a: char, b: char| a == b || ignore_case && a.to_lowercase().eq(b.to_lowercase());
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + needle.len() <= hay.len() {
+        if needle.iter().enumerate().all(|(j, &c)| same(hay[i + j], c)) {
+            out.push(i);
+            i += needle.len();
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
 fn display_name(path: Option<&Path>) -> String {
     path.map_or_else(|| "[No Name]".to_string(), |p| p.display().to_string())
 }
