@@ -375,3 +375,31 @@ fn gitignore(root: &Path) -> Vec<Ignore> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn best(files: &[&str], query: &str) -> String {
+        let mut scored: Vec<(i64, &str)> = files
+            .iter()
+            .filter_map(|f| score(f, &needle(query)).map(|(s, _)| (s, *f)))
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.first().map(|x| x.1.to_string()).unwrap_or_default()
+    }
+
+    #[test]
+    fn letters_in_order_match() {
+        let score = |path: &str, query: &str| score(path, &needle(query));
+        assert!(score("src/editor.rs", "edrs").is_some());
+        assert!(score("src/editor.rs", "zz").is_none());
+        assert_eq!(score("src/ui.rs", "UI").unwrap().1, [4, 5], "case is ignored");
+        assert_eq!(
+            score("a b", "a b").unwrap().1,
+            [0, 2],
+            "spaces in the query are ignored"
+        );
+    }
+
+}
