@@ -97,6 +97,32 @@ impl Finder {
         f
     }
 
+    pub fn matches(&self) -> impl Iterator<Item = (&str, &[usize])> {
+        self.matches
+            .iter()
+            .map(|(i, hits)| (self.files[*i].as_str(), hits.as_slice()))
+    }
+
+    pub fn match_count(&self) -> usize {
+        self.matches.len()
+    }
+
+    fn refresh(&mut self) {
+        let query = needle(&self.query);
+        let mut scored: Vec<(i64, usize, Vec<usize>)> = self
+            .files
+            .iter()
+            .enumerate()
+            .filter_map(|(i, f)| score(f, &query).map(|(s, hits)| (s, i, hits)))
+            .collect();
+        if self.lines.is_none() || !self.query.trim().is_empty() {
+            scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        }
+        self.matches = scored.into_iter().map(|(_, i, hits)| (i, hits)).collect();
+        self.selected = 0;
+        self.top.set(0);
+    }
+
 }
 
 fn needle(query: &str) -> Vec<char> {
