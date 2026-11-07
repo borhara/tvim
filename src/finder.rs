@@ -1,3 +1,52 @@
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+const SKIP: &[&str] = &["target", "node_modules", "__pycache__", "venv", "dist", "build"];
+
+const MAX_FILES: usize = 50_000;
+const MAX_TIME: Duration = Duration::from_millis(1500);
+
+pub fn walk(root: &Path) -> (Vec<String>, bool) {
+    let mut files = Vec::new();
+    let started = Instant::now();
+    let mut cut_short = false;
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let Ok(kind) = entry.file_type() else { continue };
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            if ignored.iter().any(|p| p.matches(&name)) {
+                continue;
+            }
+            if kind.is_dir() {
+                if !SKIP.contains(&name.as_str()) && !name.starts_with('.') && depth < 32 {
+                    stack.push((entry.path(), depth + 1));
+                }
+            } else if kind.is_file() && name != ".DS_Store" {
+                if let Ok(rel) = entry.path().strip_prefix(root) {
+                    files.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        if files.len() >= MAX_FILES || started.elapsed() > MAX_TIME {
+            cut_short = true;
+            break;
+        }
+    }
+    files.sort_by(|a, b| {
+        a.matches('/')
+            .count()
+            .cmp(&b.matches('/').count())
+            .then_with(|| a.cmp(b))
+    });
+    (files, cut_short)
+}
+
 fn needle(query: &str) -> Vec<char> {
     query
         .chars()
