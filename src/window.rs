@@ -319,6 +319,7 @@ impl Editor {
         let Some(w) = self.wins.iter().find(|w| w.id == id).cloned() else {
             return;
         };
+        self.leave_visual_if_any();
         self.focus = id;
         if w.buffer != self.buffer_id {
             if let Some(i) = self.buffer_at(w.buffer) {

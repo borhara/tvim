@@ -148,6 +148,7 @@ impl Editor {
                 if matches!(self.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
                     self.key(tinsel::app::Key::Esc);
                 }
+                self.leave_visual_if_any();
             }
         } else if is("set", 2) {
             self.set(arg);

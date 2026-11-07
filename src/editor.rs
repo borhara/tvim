@@ -9,7 +9,7 @@ use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::Hunk;
-use crate::finder::Finder;
+use crate::finder::{Finder, Pick};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::regex::Regex;
@@ -691,6 +691,7 @@ impl Editor {
         if self.git_menu.is_some() {
         }
         if self.finder.is_some() {
+            return self.finder_input(input);
         }
         if self.grep.is_some() {
         }
@@ -737,6 +738,10 @@ impl Editor {
         }
     }
 
+    fn open_or_report(&mut self, path: &Path) -> bool {
+        let path = relative_to_cwd(path);
+    }
+
     pub fn finder(&self) -> Option<&Finder> {
         self.finder.as_ref()
     }
@@ -747,7 +752,26 @@ impl Editor {
     }
 
     pub fn find_files_in(&mut self, root: &Path, query: &str) {
+        self.reset_for_picker();
         self.finder = Some(Finder::new(root, query));
+    }
+
+    fn finder_input(&mut self, input: Input) {
+        let Some(f) = self.finder.as_mut() else { return };
+        let key = match input {
+            Input::Paste(text) => return f.paste(&text),
+            Input::Key(k) => k,
+        };
+        self.message = None;
+        match f.key(key) {
+            Pick::Nothing => {}
+            Pick::Close => self.finder = None,
+            Pick::Open(path) => {
+                if self.open_or_report(&path) {
+                    self.finder = None;
+                }
+            }
+        }
     }
 
     pub(crate) fn touch(&mut self) {
@@ -2879,6 +2903,19 @@ impl Editor {
     }
 
     pub(crate) fn reset_after_reload(&mut self) {
+        self.mode = Mode::Normal;
+    }
+
+    pub(crate) fn leave_visual_if_any(&mut self) {
+        if self.mode.is_visual() {
+            self.leave_visual();
+        }
+    }
+
+    fn reset_for_picker(&mut self) {
+        self.pending.clear();
+        self.message = None;
+        self.leave_visual_if_any();
         self.mode = Mode::Normal;
     }
 
