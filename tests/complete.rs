@@ -50,3 +50,22 @@ fn any_other_key_takes_the_word_and_carries_on() {
     assert_eq!(t("foobar\n", "Gifo<C-n> x<Esc>"), "foobar\nfoobar x");
     assert_eq!(t("foobar\n", "Gifo<C-n><CR>x<Esc>"), "foobar\nfoobar\nx");
 }
+
+#[test]
+fn the_word_being_typed_isnt_offered() {
+    let mut e = ed("abc");
+    e.keys(&parse("A<C-n>"));
+    assert!(e.completion().is_none());
+    assert_eq!(e.message().unwrap().text, "Pattern not found");
+}
+
+#[test]
+fn undo_and_repeat_use_the_word_chosen() {
+    assert_eq!(t("foobar\n", "Gifo<C-n><C-y><Esc>u"), "foobar\n");
+    assert_eq!(
+        t("foobar\n\nfork", "jifo<C-n><C-y><Esc>j0."),
+        "foobar\nfoobar\nfoobarfork",
+        "dot types the same word, even where another would be nearer"
+    );
+    assert_eq!(t("foobar\n", "G2ifo<C-n><C-y><Esc>"), "foobar\nfoobarfoobar");
+}
