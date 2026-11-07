@@ -718,3 +718,14 @@ fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
         frame.print(Rect::new(area.x, area.y + i, area.width, 1), 0, line);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn icons_by_kind() {
+        assert_eq!(icon("main.rs", false).0, "⊛");
+        assert_eq!(icon("Cargo.toml", false).0, "≡");
+        assert_eq!(icon("README.md", false).0, "◆");
+        assert_eq!(icon("src", true).0, "▸");
+    }
+}
