@@ -402,4 +402,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn matches_bunch_together() {
+        assert_eq!(
+            subsequence(&"xaxab".chars().collect::<Vec<_>>(), &['a', 'b']),
+            Some(vec![3, 4])
+        );
+    }
+
+    #[test]
+    fn the_file_name_counts_most() {
+        let files = ["src/editor.rs", "editor/src/main.rs", "docs/edit-notes.md"];
+        assert_eq!(best(&files, "editor"), "src/editor.rs");
+        assert_eq!(best(&files, "main"), "editor/src/main.rs");
+        assert_eq!(best(&["tests/ui_test.rs", "src/ui.rs"], "ui"), "src/ui.rs");
+        assert_eq!(best(&["src/some/deep/thing/mod.rs", "src/mod.rs"], "mod"), "src/mod.rs");
+        assert_eq!(best(&["src/explorer.rs", "examples/x.rs"], "exp"), "src/explorer.rs");
+    }
+
 }
