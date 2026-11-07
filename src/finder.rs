@@ -156,6 +156,24 @@ impl Finder {
         self.top.set(0);
     }
 
+    pub fn top(&self, rows: usize) -> usize {
+        follow(&self.top, self.selected, rows)
+    }
+
+}
+
+// scrolls as little as it can to keep selected in view
+pub(crate) fn follow(top: &Cell<usize>, selected: usize, rows: usize) -> usize {
+    let rows = rows.max(1);
+    let mut at = top.get();
+    if selected < at {
+        at = selected;
+    }
+    if selected >= at + rows {
+        at = selected + 1 - rows;
+    }
+    top.set(at);
+    at
 }
 
 fn needle(query: &str) -> Vec<char> {
