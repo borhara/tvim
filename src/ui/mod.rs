@@ -653,6 +653,7 @@ fn selected_cols(sel: &Range, row: usize, len: usize) -> Option<(usize, usize)> 
 
 fn whole_words<'a>(line: &'a str, w: &'a str) -> impl Iterator<Item = (usize, usize)> + 'a {
     let whole = |i: Option<usize>| i.and_then(|i| line.chars().nth(i)).is_none_or(|ch| !is_word(ch));
+    crate::editor::find_all(line, w, false)
         .into_iter()
         .map(|at| (at, at + char_count(w)))
         .filter(move |&(at, end)| whole(at.checked_sub(1)) && whole(Some(end)))
