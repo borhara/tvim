@@ -1,3 +1,4 @@
+mod overlays;
 mod sky;
 
 use std::io::Write;
