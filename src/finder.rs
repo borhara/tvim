@@ -97,6 +97,39 @@ impl Finder {
         f
     }
 
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    pub fn total(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn is_recent(&self) -> bool {
+        self.lines.is_some()
+    }
+
+    pub fn line(&self, nth: usize) -> Option<usize> {
+        let (i, _) = self.matches.get(nth)?;
+        self.lines.as_ref()?.get(*i).copied()
+    }
+
+    pub fn cut_short(&self) -> bool {
+        self.cut_short
+    }
+
     pub fn matches(&self) -> impl Iterator<Item = (&str, &[usize])> {
         self.matches
             .iter()
