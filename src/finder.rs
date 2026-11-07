@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use tinsel::app::Key;
+
 const SKIP: &[&str] = &["target", "node_modules", "__pycache__", "venv", "dist", "build"];
 
 const MAX_FILES: usize = 50_000;
@@ -158,6 +160,53 @@ impl Finder {
 
     pub fn top(&self, rows: usize) -> usize {
         follow(&self.top, self.selected, rows)
+    }
+
+    pub fn key(&mut self, key: Key) -> Pick {
+        let last = self.matches.len().saturating_sub(1);
+        let key = match key {
+            Key::Char('j') if self.is_recent() && self.query.is_empty() => Key::Down,
+            Key::Char('k') if self.is_recent() && self.query.is_empty() => Key::Up,
+            k => k,
+        };
+        match key {
+            Key::Esc | Key::Ctrl('c') => return Pick::Close,
+            Key::Enter => {
+                return match self.matches.get(self.selected) {
+                    Some((i, _)) => Pick::Open(self.root.join(&self.files[*i])),
+                    None => Pick::Nothing,
+                };
+            }
+            Key::Down | Key::Ctrl('n') | Key::Ctrl('j') | Key::Tab => self.selected = (self.selected + 1).min(last),
+            Key::Up | Key::Ctrl('p') | Key::Ctrl('k') | Key::BackTab => self.selected = self.selected.saturating_sub(1),
+            Key::PageDown => self.selected = (self.selected + 10).min(last),
+            Key::PageUp => self.selected = self.selected.saturating_sub(10),
+            Key::Char(c) => {
+                self.query.push(c);
+                self.refresh();
+            }
+            Key::Backspace | Key::Ctrl('h') => {
+                if self.query.pop().is_none() {
+                    return Pick::Close;
+                }
+                self.refresh();
+            }
+            Key::Ctrl('w') => {
+                let keep = self
+                    .query
+                    .trim_end()
+                    .rfind(['/', ' ', '.', '_', '-'])
+                    .map_or(0, |i| i + 1);
+                self.query.truncate(keep);
+                self.refresh();
+            }
+            Key::Ctrl('u') => {
+                self.query.clear();
+                self.refresh();
+            }
+            _ => {}
+        }
+        Pick::Nothing
     }
 
 }
