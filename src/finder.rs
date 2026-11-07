@@ -420,4 +420,16 @@ mod tests {
         assert_eq!(best(&["src/explorer.rs", "examples/x.rs"], "exp"), "src/explorer.rs");
     }
 
+    #[test]
+    fn simple_gitignore_lines() {
+        let i = |l: &str| Ignore {
+            prefix: l.split('*').next().unwrap().into(),
+            suffix: l.split('*').nth(1).unwrap_or("").into(),
+            wild: l.contains('*'),
+        };
+        assert!(i("*.log").matches("debug.log"));
+        assert!(!i("*.log").matches("log"));
+        assert!(i("secrets").matches("secrets"));
+        assert!(!i("secrets").matches("secrets.txt"));
+    }
 }
