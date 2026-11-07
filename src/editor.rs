@@ -152,6 +152,14 @@ struct InsertSession {
     register_next: bool,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct Completion {
+    start: Pos,
+    prefix: String,
+    words: Vec<String>,
+    at: Option<usize>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CmdLine {
     pub text: String,
@@ -307,6 +315,7 @@ pub struct Editor {
     replaying: bool,
     insert_replay: bool,
     insert: InsertSession,
+    pub(crate) completion: Option<Completion>,
     recording: Option<(char, Vec<Input>)>,
     macros: HashMap<char, Vec<Input>>,
     last_macro: Option<char>,
@@ -1675,6 +1684,9 @@ impl Editor {
     }
 
     fn insert_input(&mut self, input: Input) {
+        if self.completion_input(&input) {
+            return;
+        }
         if let Some(b) = self.building.as_mut() {
             b.inputs.push(input.clone());
         }
@@ -1783,6 +1795,33 @@ impl Editor {
         }
         self.clamp();
         self.set_want();
+    }
+
+    pub fn completion(&self) -> Option<(&str, &[String], Option<usize>)> {
+        let c = self.completion.as_ref()?;
+        Some((c.prefix.as_str(), c.words.as_slice(), c.at))
+    }
+
+    fn completion_input(&mut self, input: &Input) -> bool {
+        let key = match input {
+            Input::Key(k) => Some(*k),
+            Input::Paste(_) => None,
+        };
+        if self.completion.is_some() {
+            match key {
+                Some(Key::Ctrl('e') | Key::Esc) => {
+                    self.completion = None;
+                }
+                _ => {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if self.mode == Mode::Insert && matches!(key, Some(Key::Ctrl('n' | 'p'))) {
+            return true;
+        }
+        false
     }
 
     fn type_char(&mut self, c: char) {
