@@ -1,6 +1,7 @@
 use tinsel::app::{Frame, Panel, Rect};
+use tinsel::{paint, palette};
 
-use super::Colors;
+use super::{Colors, vline};
 use crate::editor::Editor;
 
 pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
@@ -39,4 +40,53 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
         } else {
         };
     }
+}
+
+struct Picker {
+    list: Rect,
+    pane: Option<Rect>,
+    at: (usize, usize),
+}
+
+// the finder's and grep's frame; split gives the list's width when there's room for a preview
+fn picker(
+    frame: &mut Frame,
+    area: Rect,
+    (max_width, max_height): (usize, usize),
+    panel: Panel,
+    query: &str,
+    split: impl Fn(usize) -> Option<usize>,
+    c: &Colors,
+) -> Option<Picker> {
+    if area.width < 20 || area.height < 6 {
+        return None;
+    }
+    let width = area.width.saturating_sub(8).clamp(20, max_width);
+    let height = area.height.saturating_sub(4).clamp(6, max_height);
+    let rect = Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + (area.height - height) / 3,
+        width,
+        height,
+    );
+    let panel = panel.footer("↑↓ choose · enter open · esc close").focused(true);
+    let inner = float(frame, rect, panel, c);
+
+    frame.print(inner, 0, &format!("{} {}", paint(palette::ROSE, "›"), query));
+    let at = (inner.x + 2 + tinsel::text::width(query)).min(inner.x + inner.width.saturating_sub(1));
+    frame.print(inner, 1, &paint(palette::LINE, &"─".repeat(inner.width)));
+
+    let rows = Rect::new(inner.x, inner.y + 2, inner.width, inner.height.saturating_sub(2));
+    let split = split(inner.width);
+    let list = Rect::new(rows.x, rows.y, split.unwrap_or(inner.width), rows.height);
+    let pane = split.map(|w| {
+        vline(frame, list.x + w, rows.y, rows.height, &paint(palette::LINE, "│"));
+        frame.print(Rect::new(list.x + w, inner.y + 1, 1, 1), 0, &paint(palette::LINE, "┬"));
+        Rect::new(list.x + w + 2, rows.y, rows.width.saturating_sub(w + 2), rows.height)
+    });
+    Some(Picker {
+        list,
+        pane,
+        at: (at, inner.y),
+    })
 }
