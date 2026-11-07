@@ -9,6 +9,7 @@ use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::Hunk;
+use crate::finder::Finder;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::regex::Regex;
@@ -330,6 +331,7 @@ pub struct Editor {
     quit: bool,
     clipboard: Box<dyn Clipboard>,
     explorer_focused: bool,
+    pub(crate) finder: Option<Finder>,
     saved_lines: Vec<String>,
     git_history: Vec<String>,
     states: RefCell<States>,

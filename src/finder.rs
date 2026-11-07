@@ -1,10 +1,32 @@
-use std::path::Path;
+use std::cell::{Cell, RefCell};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const SKIP: &[&str] = &["target", "node_modules", "__pycache__", "venv", "dist", "build"];
 
 const MAX_FILES: usize = 50_000;
 const MAX_TIME: Duration = Duration::from_millis(1500);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pick {
+    Nothing,
+    Open(PathBuf),
+    Close,
+}
+
+pub struct Finder {
+    root: PathBuf,
+    files: Vec<String>,
+    cut_short: bool,
+    query: String,
+    matches: Vec<(usize, Vec<usize>)>,
+    selected: usize,
+    top: Cell<usize>,
+    preview: RefCell<Option<(String, Vec<String>)>>,
+    title: String,
+    // for recent files: the line each was left at, and j/k move until a filter is typed
+    lines: Option<Vec<usize>>,
+}
 
 pub fn walk(root: &Path) -> (Vec<String>, bool) {
     let ignored = gitignore(root);
@@ -46,6 +68,35 @@ pub fn walk(root: &Path) -> (Vec<String>, bool) {
             .then_with(|| a.cmp(b))
     });
     (files, cut_short)
+}
+
+impl Finder {
+    pub fn new(root: &Path, query: &str) -> Finder {
+        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let (files, cut_short) = walk(&root);
+        let name = root
+            .file_name()
+            .map_or_else(|| "/".into(), |n| n.to_string_lossy().into_owned());
+        Finder::build(root, files, cut_short, query, format!("find in {name}"))
+    }
+
+    fn build(root: PathBuf, files: Vec<String>, cut_short: bool, query: &str, title: String) -> Finder {
+        let mut f = Finder {
+            root,
+            files,
+            cut_short,
+            query: query.to_string(),
+            matches: Vec::new(),
+            selected: 0,
+            top: Cell::new(0),
+            preview: RefCell::new(None),
+            title,
+            lines: None,
+        };
+        f.refresh();
+        f
+    }
+
 }
 
 fn needle(query: &str) -> Vec<char> {
