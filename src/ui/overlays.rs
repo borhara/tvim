@@ -1,8 +1,9 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{paint, palette};
 
-use super::{Colors, vline};
+use super::{Colors, icon, vline};
 use crate::editor::Editor;
+use crate::finder::Finder;
 
 pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
     let Some((prefix, words, picked)) = e.completion() else {
@@ -89,4 +90,44 @@ fn picker(
         pane,
         at: (at, inner.y),
     })
+}
+
+pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
+    let count = if f.cut_short() {
+        format!("{} of {}+", f.match_count(), f.total())
+    } else {
+        format!("{} of {}", f.match_count(), f.total())
+    };
+    let p = picker(frame, area, (120, 26), panel, f.query(), |w| (w >= 80).then(|| w * 2 / 5), c)?;
+    let list = p.list;
+    if f.match_count() == 0 {
+        let note = if f.total() == 0 && f.is_recent() {
+            "nothing opened yet"
+        } else if f.total() == 0 {
+            "no files here"
+        } else {
+            "nothing matches"
+        };
+        return Some(p.at);
+    }
+    let top = f.top(list.height);
+    for (i, (path, hits)) in f.matches().enumerate().skip(top).take(list.height) {
+        let y = list.y + i - top;
+        let selected = i == f.selected();
+        if selected {
+            frame.tint(Rect::new(list.x, y, list.width, 1), c.picked);
+        }
+        if f.is_recent() {
+            continue;
+        }
+        let name_start = path.rfind('/').map_or(0, |b| path[..b].chars().count() + 1);
+        let file = &path[path.rfind('/').map_or(0, |b| b + 1)..];
+        let (glyph, color) = icon(file, false);
+        let room = list.width.saturating_sub(5);
+        let skip = (tinsel::text::width(path) + 1).saturating_sub(room);
+        frame.print(Rect::new(list.x + 4, y, room, 1), 0, &shown);
+    }
+    if let Some(pane) = p.pane {
+    }
+    Some(p.at)
 }
