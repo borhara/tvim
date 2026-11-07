@@ -1,9 +1,10 @@
 use tinsel::app::{Frame, Panel, Rect};
-use tinsel::{paint, palette};
+use tinsel::{bold, mix, paint, palette};
 
-use super::{Colors, icon, vline};
+use super::{Colors, icon, styled_line, vline};
 use crate::editor::Editor;
 use crate::finder::Finder;
+use crate::syntax::{self, State, Syntax};
 
 pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
     let Some((prefix, words, picked)) = e.completion() else {
@@ -134,4 +135,71 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         }
     }
     Some(p.at)
+}
+
+
+fn preview_lines(
+    path: &str,
+    lines: &[String],
+    at: Option<(usize, usize, usize)>,
+    frame: &mut Frame,
+    pane: Rect,
+    c: &Colors,
+) {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let syntax = Syntax::detect(name);
+    let about = syntax.map_or("text".to_string(), |s| s.name().to_string());
+    frame.print(
+        pane,
+        0,
+        &format!(
+            "{}  {}",
+            bold(&paint(palette::SOFT, path)),
+            paint(palette::MUTED, &about)
+        ),
+    );
+    let rows = pane.height.saturating_sub(2);
+    let row = at.map(|a| a.0);
+    let first = row.map_or(0, |r| r.saturating_sub(rows / 3));
+    let mut state = State::Normal;
+    let number_width = (first + rows).to_string().len().max(3) + 1;
+    for (i, line) in lines.iter().enumerate().take(first + rows) {
+        let kinds = syntax.map(|s| {
+            let (k, next) = syntax::highlight(line, s, state);
+            state = next;
+            k
+        });
+        if i < first {
+            continue;
+        }
+        let y = pane.y + 2 + i - first;
+        let w = pane.width.saturating_sub(number_width);
+        let here = row == Some(i);
+        if here {
+            frame.tint(Rect::new(pane.x, y, pane.width, 1), mix(c.bar, palette::ROSE, 0.18));
+        }
+        if let Some((_, col, len)) = at.filter(|a| here && a.2 > 0) {
+            let a = crate::text::vcol(line, col, 4);
+            let b = crate::text::vcol(line, col + len, 4);
+            if a < w {
+                let tint = mix(c.bar, palette::AMBER, 0.55);
+                frame.tint(
+                    Rect::new(pane.x + number_width + a, y, (b - a).min(w - a).max(1), 1),
+                    tint,
+                );
+            }
+        }
+        let label = format!("{:>w$} ", i + 1, w = number_width - 1);
+        let n = if here {
+            bold(&paint(palette::ROSE, &label))
+        } else {
+            paint(palette::LINE, &label)
+        };
+        frame.print(Rect::new(pane.x, y, number_width, 1), 0, &n);
+        frame.print(
+            Rect::new(pane.x + number_width, y, w, 1),
+            0,
+            &styled_line(line, kinds.as_deref(), 4, c),
+        );
+    }
 }
