@@ -1810,10 +1810,13 @@ impl Editor {
         if self.completion.is_some() {
             match key {
                 Some(Key::Ctrl(c @ ('n' | 'p'))) => self.cycle_completion(c == 'p'),
+                Some(Key::Ctrl('y')) => self.accept_completion(),
                 Some(Key::Ctrl('e') | Key::Esc) => {
+                    self.pick_completion(None);
                     self.completion = None;
                 }
                 _ => {
+                    self.accept_completion();
                     return false;
                 }
             }
@@ -1858,6 +1861,33 @@ impl Editor {
             (Some(i), false) => (i + 1 < n).then_some(i + 1),
             (Some(i), true) => i.checked_sub(1),
         };
+        self.pick_completion(at);
+    }
+
+    fn pick_completion(&mut self, at: Option<usize>) {
+        let Some(c) = self.completion.as_mut() else { return };
+        c.at = at;
+        let text = at.map_or(&c.prefix, |i| &c.words[i]).clone();
+        let start = c.start;
+        self.touch();
+        self.buf.delete(start, self.cursor);
+        self.cursor = self.buf.insert(start, &text);
+        self.insert.auto_indent = None;
+        self.set_want();
+    }
+
+    // dot and counts replay the chosen word as typed text, not as another search
+    fn accept_completion(&mut self) {
+        let Some(c) = self.completion.take() else { return };
+        let Some(i) = c.at else { return };
+        let rest = c.words[i][c.prefix.len()..].to_string();
+        if rest.is_empty() {
+            return;
+        }
+        if let Some(b) = self.building.as_mut() {
+            b.inputs.push(Input::Paste(rest.clone()));
+        }
+        self.insert.typed.push(Input::Paste(rest));
     }
 
     fn type_char(&mut self, c: char) {
