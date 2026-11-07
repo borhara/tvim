@@ -1,6 +1,7 @@
 mod common;
 use common::temp;
 use tvim::Editor;
+use tvim::keys::parse;
 
 fn project(name: &str) -> std::path::PathBuf {
     let root = temp(name);
@@ -36,4 +37,26 @@ fn lists_every_file_but_the_ignored_ones() {
     let mut files = found(&e);
     files.sort();
     assert_eq!(files, [".gitignore", "README.md", "src/main.rs", "src/ui/panel.rs"]);
+}
+
+#[test]
+fn typing_narrows_and_enter_opens() {
+    let root = project("open");
+    let mut e = Editor::new();
+    e.find_files_in(&root, "");
+    e.keys(&parse("pnl"));
+    assert_eq!(found(&e), ["src/ui/panel.rs"]);
+    e.keys(&parse("<CR>"));
+    assert!(e.finder().is_none());
+    assert_eq!(e.text(), "// panel");
+}
+
+#[test]
+fn nothing_matching() {
+    let root = project("none");
+    let mut e = Editor::new();
+    e.find_files_in(&root, "qqqq");
+    assert!(found(&e).is_empty());
+    e.keys(&parse("<CR>"));
+    assert!(e.finder().is_some(), "enter on nothing does nothing");
 }
