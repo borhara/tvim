@@ -104,6 +104,7 @@ impl Editor {
             let query = arg.trim_matches('/');
             self.grep(non_empty(query));
         } else if is("find", 3) || is("Files", 2) || is("files", 3) {
+            self.find_files(non_empty(arg));
         } else if is("Lexplore", 2) || is("lexplore", 3) {
         } else if is("preview", 4) {
         } else if is("git", 3) || is("Git", 3) {
