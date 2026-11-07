@@ -52,6 +52,24 @@ fn typing_narrows_and_enter_opens() {
 }
 
 #[test]
+fn moving_and_closing() {
+    let root = project("moving");
+    let mut e = Editor::new();
+    e.find_files_in(&root, "rs");
+    assert_eq!(e.finder().unwrap().selected(), 0);
+    e.keys(&parse("<Down>"));
+    assert_eq!(e.finder().unwrap().selected(), 1);
+    e.keys(&parse("<C-p>"));
+    assert_eq!(e.finder().unwrap().selected(), 0);
+    e.keys(&parse("<Esc>"));
+    assert!(e.finder().is_none());
+    assert!(e.text().is_empty());
+    e.find_files_in(&root, "a");
+    e.keys(&parse("<BS><BS>"));
+    assert!(e.finder().is_none(), "backspace on nothing closes it");
+}
+
+#[test]
 fn nothing_matching() {
     let root = project("none");
     let mut e = Editor::new();
