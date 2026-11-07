@@ -7,6 +7,7 @@ const MAX_FILES: usize = 50_000;
 const MAX_TIME: Duration = Duration::from_millis(1500);
 
 pub fn walk(root: &Path) -> (Vec<String>, bool) {
+    let ignored = gitignore(root);
     let mut files = Vec::new();
     let started = Instant::now();
     let mut cut_short = false;
@@ -117,4 +118,51 @@ fn subsequence(chars: &[char], query: &[char]) -> Option<Vec<usize>> {
         }
     }
     Some(hits)
+}
+
+struct Ignore {
+    prefix: String,
+    suffix: String,
+    wild: bool,
+}
+
+impl Ignore {
+    fn matches(&self, name: &str) -> bool {
+        if self.wild {
+            name.len() >= self.prefix.len() + self.suffix.len()
+                && name.starts_with(&self.prefix)
+                && name.ends_with(&self.suffix)
+        } else {
+            name == self.prefix
+        }
+    }
+}
+
+fn gitignore(root: &Path) -> Vec<Ignore> {
+    let Ok(text) = std::fs::read_to_string(root.join(".gitignore")) else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with('!'))
+        .filter_map(|l| {
+            let l = l.trim_start_matches('/').trim_end_matches('/');
+            // only bare names and single * globs
+            if l.contains('/') || l.matches('*').count() > 1 || l.is_empty() {
+                return None;
+            }
+            Some(match l.split_once('*') {
+                Some((p, s)) => Ignore {
+                    prefix: p.to_string(),
+                    suffix: s.to_string(),
+                    wild: true,
+                },
+                None => Ignore {
+                    prefix: l.to_string(),
+                    suffix: String::new(),
+                    wild: false,
+                },
+            })
+        })
+        .collect()
 }
