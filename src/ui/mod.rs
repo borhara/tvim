@@ -150,6 +150,7 @@ fn colors() -> Colors {
 }
 
 const LILAC: Rgb = Rgb(196, 166, 238);
+const BLUE: Rgb = Rgb(141, 182, 242);
 const PEACH: Rgb = Rgb(246, 184, 150);
 const ORANGE: Rgb = Rgb(240, 140, 70);
 
@@ -210,6 +211,29 @@ fn styled_line(line: &str, kinds: Option<&[Kind]>, ts: usize, c: &Colors) -> Str
         out.push_str(&paint_kind(run_kind, &run, c));
     }
     out
+}
+
+fn icon(name: &str, dir: bool) -> (&'static str, Rgb) {
+    if dir {
+        return ("▸", BLUE);
+    }
+    let lower = name.to_ascii_lowercase();
+    match crate::syntax::extension(name).as_str() {
+        // ⊛ for Rust's cog and ≡ for settings: both are in JetBrains Mono, unlike ⚙
+        "rs" => ("⊛", palette::BERRY),
+        "py" | "pyi" => ("●", palette::SAGE),
+        "js" | "mjs" | "jsx" | "ts" | "tsx" => ("●", palette::AMBER),
+        "go" | "lua" => ("●", LILAC),
+        "c" | "h" | "cc" | "cpp" | "hpp" | "java" | "swift" | "kt" => ("●", PEACH),
+        "md" | "markdown" | "txt" | "rst" => ("◆", LILAC),
+        "toml" | "yaml" | "yml" | "json" | "ini" | "cfg" | "conf" => ("≡", palette::AMBER),
+        "lock" => ("◇", palette::MUTED),
+        "sh" | "bash" | "zsh" | "fish" => ("$", palette::SAGE),
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" => ("▣", palette::BLUSH),
+        _ if lower.starts_with("license") || lower.starts_with("readme") => ("○", palette::SOFT),
+        _ if lower.starts_with('.') => ("·", palette::MUTED),
+        _ => ("·", palette::SOFT),
+    }
 }
 
 const LOGO: [&str; 2] = ["▀█▀ █ █ █ █▀▄▀█ ✶", " █  ▀▄▀ █ █ ▀ █  "];
