@@ -1809,6 +1809,7 @@ impl Editor {
         };
         if self.completion.is_some() {
             match key {
+                Some(Key::Ctrl(c @ ('n' | 'p'))) => self.cycle_completion(c == 'p'),
                 Some(Key::Ctrl('e') | Key::Esc) => {
                     self.completion = None;
                 }
@@ -1819,9 +1820,44 @@ impl Editor {
             return true;
         }
         if self.mode == Mode::Insert && matches!(key, Some(Key::Ctrl('n' | 'p'))) {
+            self.start_completion(key == Some(Key::Ctrl('p')));
             return true;
         }
         false
+    }
+
+    fn start_completion(&mut self, back: bool) {
+        let p = self.cursor;
+        let before: Vec<char> = self.buf.line(p.row).chars().take(p.col).collect();
+        let len = before.iter().rev().take_while(|c| is_word(**c)).count();
+        let prefix: String = before[before.len() - len..].iter().collect();
+        let start = Pos::new(p.row, p.col - len);
+        let others: Vec<&[String]> = (self.docs.iter().enumerate())
+            .filter(|(i, _)| *i != self.current)
+            .map(|(_, d)| d.buf.lines())
+            .collect();
+        let words = crate::complete::candidates(self.buf.lines(), start, &prefix, &others);
+        if words.is_empty() {
+            return self.error("Pattern not found");
+        }
+        self.completion = Some(Completion {
+            start,
+            prefix,
+            words,
+            at: None,
+        });
+        self.cycle_completion(back);
+    }
+
+    fn cycle_completion(&mut self, back: bool) {
+        let Some(c) = &self.completion else { return };
+        let n = c.words.len();
+        let at = match (c.at, back) {
+            (None, false) => Some(0),
+            (None, true) => Some(n - 1),
+            (Some(i), false) => (i + 1 < n).then_some(i + 1),
+            (Some(i), true) => i.checked_sub(1),
+        };
     }
 
     fn type_char(&mut self, c: char) {
