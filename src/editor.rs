@@ -9,6 +9,7 @@ use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::Hunk;
+use crate::explorer::Explorer;
 use crate::finder::{Finder, Pick};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -330,6 +331,7 @@ pub struct Editor {
     effects: Vec<Effect>,
     quit: bool,
     clipboard: Box<dyn Clipboard>,
+    explorer: Option<Explorer>,
     explorer_focused: bool,
     pub(crate) finder: Option<Finder>,
     saved_lines: Vec<String>,
@@ -695,6 +697,7 @@ impl Editor {
         }
         if self.grep.is_some() {
         }
+        let filtering = self.explorer.as_ref().is_some_and(Explorer::is_filtering);
         if self.mode == Mode::Normal && self.previews.contains_key(&self.focus) {
             if let Input::Key(k) = input {
             }
