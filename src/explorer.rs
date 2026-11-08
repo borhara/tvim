@@ -399,6 +399,11 @@ impl Explorer {
         Action::Nothing
     }
 
+    pub fn paste(&mut self, text: &str) {
+        if self.filtering {
+            self.set_filter(|f| f.push_str(text.lines().next().unwrap_or("")));
+        }
+    }
 }
 
 fn fuzzy(name: &str, pattern: &str) -> Option<Vec<usize>> {
