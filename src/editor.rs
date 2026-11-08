@@ -698,6 +698,11 @@ impl Editor {
         if self.grep.is_some() {
         }
         let filtering = self.explorer.as_ref().is_some_and(Explorer::is_filtering);
+        if input == Input::Key(Key::Ctrl('p')) && self.explorer_focused() && !filtering && self.mode == Mode::Normal {
+            return self.find_files(None);
+        }
+        if self.explorer_focused() && self.mode != Mode::Command {
+        }
         if self.mode == Mode::Normal && self.previews.contains_key(&self.focus) {
             if let Input::Key(k) = input {
             }
@@ -775,6 +780,32 @@ impl Editor {
                 }
             }
         }
+    }
+
+    pub fn explorer(&self) -> Option<&Explorer> {
+        self.explorer.as_ref()
+    }
+
+    pub fn explorer_focused(&self) -> bool {
+        self.explorer.is_some() && self.explorer_focused && !self.zen()
+    }
+
+    pub fn explore(&mut self, dir: &Path) {
+        match Explorer::open(dir, current.as_deref()) {
+            Ok(x) => {
+                self.explorer = Some(x);
+                self.explorer_focused = true;
+                self.mode = Mode::Normal;
+                self.pending.clear();
+                self.message = None;
+            }
+            Err(e) => self.error(format!("\"{}\" {e}", dir.display())),
+        }
+    }
+
+    pub fn explorer_rows(&self) -> usize {
+        // less the sidebar's heading and the gap under it
+        self.text_rows().saturating_sub(2).max(1)
     }
 
     pub(crate) fn touch(&mut self) {
@@ -2735,6 +2766,7 @@ impl Editor {
 
     pub(crate) fn load(&mut self, path: &Path) -> std::io::Result<()> {
         if path.is_dir() {
+            self.explore(path);
             return Ok(());
         }
         let display = path.display().to_string();

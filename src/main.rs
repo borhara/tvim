@@ -53,6 +53,12 @@ fn main() -> ExitCode {
     let mut editor = match &file {
         Some(path) if path.is_dir() => {
             let mut e = Editor::new();
+            e.explore(path);
+            if e.explorer().is_none() {
+                let why = e.message().map_or(String::new(), |m| m.text.clone());
+                tinsel::error(&format!("can't open {}: {why}", path.display()));
+                return ExitCode::FAILURE;
+            }
             e
         }
         Some(path) => match Editor::open(path) {
