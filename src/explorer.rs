@@ -84,6 +84,14 @@ impl Explorer {
         self.selected
     }
 
+    pub fn filter(&self) -> Option<&str> {
+        (self.filtering || !self.filter.is_empty()).then_some(self.filter.as_str())
+    }
+
+    pub fn is_filtering(&self) -> bool {
+        self.filtering
+    }
+
     pub fn shows_hidden(&self) -> bool {
         self.show_hidden
     }
@@ -136,6 +144,28 @@ impl Explorer {
         }
     }
 
+    // matches in the expanded folders, each under the folders that lead to it
+    fn matches(&self, dir: &Path, depth: usize, out: &mut Vec<(Entry, Vec<usize>)>) -> bool {
+        let Some(kids) = self.loaded.get(dir) else { return false };
+        let mut any = false;
+        for (name, is_dir) in kids {
+            if !self.shown(name) {
+                continue;
+            }
+            let entry = Self::entry(dir, name, *is_dir, depth);
+            let mut inner = Vec::new();
+            let below =
+                *is_dir && self.expanded.contains(&entry.path) && self.matches(&entry.path, depth + 1, &mut inner);
+            let hits = fuzzy(name, &self.filter);
+            if hits.is_some() || below {
+                out.push((entry, hits.unwrap_or_default()));
+                out.append(&mut inner);
+                any = true;
+            }
+        }
+        any
+    }
+
     fn selected_path(&self) -> Option<PathBuf> {
         self.rows.get(self.selected).map(|(e, _)| e.path.clone())
     }
@@ -147,6 +177,22 @@ impl Explorer {
                 true
             }
             None => false,
+        }
+    }
+
+    fn set_filter(&mut self, f: impl FnOnce(&mut String)) {
+        f(&mut self.filter);
+        self.rebuild();
+        // the folders around the matches are there for context, so start on a match
+        self.selected = self.rows.iter().position(|(_, hits)| !hits.is_empty()).unwrap_or(0);
+        self.top.set(0);
+    }
+
+    fn clear_filter(&mut self) {
+        self.filtering = false;
+        if !self.filter.is_empty() {
+            self.filter.clear();
+            self.rebuild();
         }
     }
 
@@ -195,6 +241,7 @@ impl Explorer {
         if old.starts_with(&self.root) {
             self.expanded.insert(old.clone());
         }
+        self.clear_filter();
         self.rebuild();
         if !self.select_path(&old) {
             self.selected = 0;
@@ -214,6 +261,7 @@ impl Explorer {
             return Action::Nothing;
         };
         let filtered = !self.filter.is_empty();
+        self.clear_filter();
         if !entry.dir {
             self.select_path(&entry.path);
             return Action::Open(entry.path);
@@ -278,4 +326,17 @@ impl Explorer {
         follow(&self.top, self.selected, rows)
     }
 
+}
+
+fn fuzzy(name: &str, pattern: &str) -> Option<Vec<usize>> {
+    let mut hits = Vec::new();
+    let mut want = pattern.chars().flat_map(char::to_lowercase).peekable();
+    for (i, c) in name.chars().enumerate() {
+        let Some(&w) = want.peek() else { break };
+        if c.to_lowercase().eq(std::iter::once(w)) {
+            hits.push(i);
+            want.next();
+        }
+    }
+    want.peek().is_none().then_some(hits)
 }
