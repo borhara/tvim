@@ -74,3 +74,28 @@ fn tab_moves_between_the_file_and_the_browser() {
     e.keys(&parse("<Tab>"));
     assert!(e.explorer_focused(), "Tab opens it when it's hidden");
 }
+
+fn depths(e: &Editor) -> Vec<usize> {
+    e.explorer().unwrap().visible().iter().map(|(en, _)| en.depth).collect()
+}
+
+#[test]
+fn folders_open_in_place() {
+    let (mut e, root) = browse("folders");
+    e.keys(&parse("<CR>"));
+    assert_eq!(e.explorer().unwrap().root(), root, "the tree keeps its root");
+    assert_eq!(names(&e), ["sub", "inner.txt", "a.rs", "b.txt", "Zed.md"]);
+    assert_eq!(depths(&e), [0, 1, 0, 0, 0]);
+    e.keys(&parse("<CR>"));
+    assert_eq!(names(&e).len(), 4, "Enter folds it again");
+    e.keys(&parse("l"));
+    assert_eq!((names(&e).len(), selected(&e)), (5, 0), "l opens it");
+    e.keys(&parse("l"));
+    assert_eq!(selected(&e), 1, "and on an open folder steps in");
+    e.keys(&parse("h"));
+    assert_eq!(selected(&e), 0, "h goes to the folder above");
+    e.keys(&parse("h"));
+    assert_eq!(names(&e).len(), 4, "and on an open folder folds it");
+    e.keys(&parse("<Right>j<Left>"));
+    assert_eq!(selected(&e), 0, "the arrows do the same");
+}
