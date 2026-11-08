@@ -99,3 +99,29 @@ fn folders_open_in_place() {
     e.keys(&parse("<Right>j<Left>"));
     assert_eq!(selected(&e), 0, "the arrows do the same");
 }
+
+#[test]
+fn dash_makes_the_parent_the_root() {
+    let (mut e, root) = browse("dash");
+    e.keys(&parse("l"));
+    e.keys(&parse("-"));
+    let x = e.explorer().unwrap();
+    assert_eq!(x.root(), root.parent().unwrap());
+    let (picked, _) = &x.visible()[x.selected()];
+    assert_eq!(picked.path, root, "on the folder it came out of");
+    assert!(
+        x.is_expanded(&root) && x.is_expanded(&root.join("sub")),
+        "still open, as it was"
+    );
+}
+
+#[test]
+fn moving_around() {
+    let (mut e, _) = browse("moving");
+    e.keys(&parse("G"));
+    assert_eq!(selected(&e), 3);
+    e.keys(&parse("j"));
+    assert_eq!(selected(&e), 3);
+    e.keys(&parse("gk"));
+    assert_eq!(selected(&e), 0);
+}
