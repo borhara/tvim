@@ -804,6 +804,22 @@ impl Editor {
         }
     }
 
+    fn current_file(&self) -> Option<PathBuf> {
+        self.file.path.as_ref().and_then(|p| p.canonicalize().ok())
+    }
+
+    // keeps the open file showing in the sidebar, or moves the sidebar to its folder
+    fn follow_file(&mut self) {
+        let Some(path) = self.current_file() else { return };
+        let Some(x) = self.explorer.as_mut() else { return };
+        if !x.reveal(&path) {
+            let dir = self.file_dir();
+            let focused = self.explorer_focused;
+            self.explore(&dir);
+            self.explorer_focused = focused;
+        }
+    }
+
     pub fn toggle_explorer_focus(&mut self) {
         if self.explorer.is_none() {
             let dir = self.sidebar_root();
@@ -823,6 +839,7 @@ impl Editor {
     }
 
     pub fn explore(&mut self, dir: &Path) {
+        let current = self.current_file();
         match Explorer::open(dir, current.as_deref()) {
             Ok(x) => {
                 self.explorer = Some(x);
@@ -2854,6 +2871,7 @@ impl Editor {
         self.marks.clear();
         self.explorer_focused = false;
         self.mode = Mode::Normal;
+        self.follow_file();
         Ok(())
     }
 
