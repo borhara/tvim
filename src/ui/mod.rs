@@ -11,10 +11,13 @@ use crate::buffer::Buffer;
 use crate::buffer::Pos;
 use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
+use crate::explorer::Explorer;
 use crate::syntax::Kind;
 use crate::text::{caret, cell_width, char_count, is_word, vcol};
 
 const HINT_DELAY: f32 = 0.4;
+// how much the sidebar fades while the text has focus
+const SIDE_DIM: f32 = 0.35;
 
 pub struct Tvim {
     pub editor: Editor,
@@ -698,6 +701,92 @@ fn word_at(line: &str, col: usize) -> Option<String> {
     let start = (0..col).rev().find(|&i| !is_word(chars[i])).map_or(0, |i| i + 1);
     let end = (col..chars.len()).find(|&i| !is_word(chars[i])).unwrap_or(chars.len());
     Some(chars[start..end].iter().collect())
+}
+
+fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Colors, lit: Rgb) {
+    if area.height == 0 || area.width < 6 {
+        return;
+    }
+    let tree = e.tree();
+    let mut list = area;
+    if area.height >= 5 {
+        list = Rect::new(area.x, area.y + 2, area.width, area.height - 2);
+    }
+    let shown = x.visible();
+    if shown.is_empty() {
+        let note = match x.filter() {
+            Some(f) if !f.is_empty() => format!("nothing matches “{f}”"),
+            _ => "this folder is empty".to_string(),
+        };
+        frame.print(list, 0, &format!("    {}", paint(palette::MUTED, &note)));
+        return;
+    }
+    let top = x.top(list.height);
+    let current = e.file().path.as_ref().and_then(|p| p.canonicalize().ok());
+    let focused = e.explorer_focused();
+    for (i, (entry, hits)) in shown.iter().enumerate().skip(top).take(list.height) {
+        let y = list.y + i - top;
+        let row = Rect::new(list.x, y, list.width, 1);
+        let selected = focused && i == x.selected();
+        let is_current = !entry.dir && current.as_deref() == Some(entry.path.as_path());
+        let tint = match (selected, is_current) {
+            (true, true) => 0.11,
+            (true, false) => 0.07,
+            (false, true) => 0.05,
+            _ => 0.0,
+        };
+        if tint > 0.0 {
+            // clear of the screen's edges, which the terminal stretches into its margins
+            let inside = Rect::new(row.x + 1, y, row.width.saturating_sub(2), 1);
+            frame.tint(inside, mix(c.app, palette::ROSE, tint));
+        }
+        let state = tree.with(|t| {
+        });
+        let (glyph, ink, base) = match state {
+            _ if is_current => ("✶", lit, lit),
+            Some(_) if entry.dir => ("◇", palette::AMBER, palette::SOFT),
+            None if entry.dir => ("◇", c.faint, palette::SOFT),
+            None => ("·", c.faint, palette::MUTED),
+        };
+        let base = if is_current {
+            base
+        } else if selected {
+            palette::TEXT
+        } else if entry.name.starts_with('.') {
+            mix(base, c.app, 0.3)
+        } else {
+            base
+        };
+        let name = with_hits(&entry.name, |j| hits.contains(&j), |_, s| paint(base, s));
+        let (glyph, name) = if is_current {
+            (bold(&paint(ink, glyph)), bold(&name))
+        } else {
+            (paint(ink, glyph), name)
+        };
+        let guides = paint(c.faint, &"│ ".repeat(entry.depth));
+        frame.print(
+            Rect::new(row.x, y, row.width - 1, 1),
+            0,
+            &format!("  {guides}{glyph} {name}"),
+        );
+        if selected {
+            frame.print(Rect::new(list.x, y, 1, 1), 0, &paint(palette::ROSE, "▎"));
+        }
+    }
+}
+
+fn with_hits(text: &str, hit: impl Fn(usize) -> bool, other: impl Fn(usize, &str) -> String) -> String {
+    let mut out = String::new();
+    let mut buf = [0; 4];
+    for (j, ch) in text.chars().enumerate() {
+        let s = ch.encode_utf8(&mut buf);
+        out.push_str(&if hit(j) {
+            bold(&paint(palette::ROSE, s))
+        } else {
+            other(j, s)
+        });
+    }
+    out
 }
 
 fn display_path(path: &Path) -> String {
