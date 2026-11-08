@@ -251,6 +251,28 @@ impl Explorer {
         }
     }
 
+    fn reload(&mut self) -> Action {
+        let keep = self.selected_path();
+        let mut fresh = HashMap::new();
+        match read(&self.root) {
+            Ok(entries) => fresh.insert(self.root.clone(), entries),
+            Err(e) => return Action::Error(format!("can't read this folder: {e}")),
+        };
+        self.expanded.retain(|d| match read(d) {
+            Ok(entries) => {
+                fresh.insert(d.clone(), entries);
+                true
+            }
+            Err(_) => false,
+        });
+        self.loaded = fresh;
+        self.rebuild();
+        if let Some(p) = keep {
+            self.select_path(&p);
+        }
+        Action::Nothing
+    }
+
     pub fn top(&self, rows: usize) -> usize {
         self.top.set(self.top.get().min(self.rows.len().saturating_sub(rows.max(1))));
         follow(&self.top, self.selected, rows)
