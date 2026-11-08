@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{bold, mix, paint, palette};
 
-use super::{Colors, icon, styled_line, vline};
+use super::{Colors, icon, styled_line, vline, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
 use crate::syntax::{self, State, Syntax};
@@ -124,6 +124,8 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         let name_start = path.rfind('/').map_or(0, |b| path[..b].chars().count() + 1);
         let file = &path[path.rfind('/').map_or(0, |b| b + 1)..];
         let (glyph, color) = icon(file, false);
+        let shown = with_hits(path, |j| hits.contains(&j), |j, s| {
+        });
         let room = list.width.saturating_sub(5);
         let skip = (tinsel::text::width(path) + 1).saturating_sub(room);
         frame.print(Rect::new(list.x + 4, y, room, 1), 0, &shown);
