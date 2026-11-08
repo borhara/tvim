@@ -10,6 +10,11 @@ fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colo
         frame.print(mid, 0, &message(m));
         return None;
     }
+    if x.is_filtering() {
+        let filter = x.filter().unwrap_or("");
+        frame.print(mid, 0, &format!("{} {filter}", paint(palette::ROSE, "/")));
+        return Some((mid.x + 2 + tinsel::text::width(filter), row.y));
+    }
     let path = display_path(x.root());
     let keys = [
         ("enter", "open"),
