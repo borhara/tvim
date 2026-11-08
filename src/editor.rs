@@ -790,6 +790,38 @@ impl Editor {
         self.explorer.is_some() && self.explorer_focused && !self.zen()
     }
 
+    pub(crate) fn file_dir(&self) -> PathBuf {
+        self.file.path.as_deref().map_or_else(|| PathBuf::from("."), |p| dir_of(p).to_path_buf())
+    }
+
+    // the working folder when the file is inside it, so its tree shows where the file sits
+    fn sidebar_root(&self) -> PathBuf {
+        let dir = self.file_dir();
+        let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).ok();
+        match (cwd, dir.canonicalize().ok()) {
+            (Some(cwd), Some(d)) if d.starts_with(&cwd) => cwd,
+            _ => dir,
+        }
+    }
+
+    pub fn toggle_explorer_focus(&mut self) {
+        if self.explorer.is_none() {
+            let dir = self.sidebar_root();
+            self.explore(&dir);
+        } else {
+            self.explorer_focused = !self.explorer_focused;
+        }
+    }
+
+    pub fn toggle_explorer(&mut self) {
+        if self.explorer.take().is_none() {
+            let dir = self.sidebar_root();
+            self.explore(&dir);
+        } else {
+            self.explorer_focused = false;
+        }
+    }
+
     pub fn explore(&mut self, dir: &Path) {
         match Explorer::open(dir, current.as_deref()) {
             Ok(x) => {
@@ -3011,6 +3043,10 @@ pub fn find_all(line: &str, pat: &str, ignore_case: bool) -> Vec<usize> {
 
 fn display_name(path: Option<&Path>) -> String {
     path.map_or_else(|| "[No Name]".to_string(), |p| p.display().to_string())
+}
+
+pub(crate) fn dir_of(path: &Path) -> &Path {
+    path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."))
 }
 
 pub(crate) fn cwd() -> PathBuf {
