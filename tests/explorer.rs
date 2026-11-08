@@ -160,3 +160,21 @@ fn filtering_looks_inside_open_folders() {
     e.keys(&parse("<CR>"));
     assert_eq!(e.text(), "inside");
 }
+
+#[test]
+fn q_hides_it_and_lex_toggles_it() {
+    let (mut e, _) = browse("close");
+    e.keys(&parse("q"));
+    assert!(e.explorer().is_none() && !e.should_quit());
+    e.keys(&parse(":Lex<CR>"));
+    assert!(e.explorer_focused());
+    e.keys(&parse(":Lex<CR>"));
+    assert!(e.explorer().is_none());
+}
+
+#[test]
+fn commands_work_from_the_browser() {
+    let (mut e, _) = browse("commands");
+    e.keys(&parse(":q<CR>"));
+    assert!(e.should_quit());
+}
