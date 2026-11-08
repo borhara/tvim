@@ -181,6 +181,48 @@ impl Explorer {
         self.select_path(path)
     }
 
+    fn activate(&mut self, toggle: bool) -> Action {
+        let Some((entry, _)) = self.rows.get(self.selected).cloned() else {
+            return Action::Nothing;
+        };
+        let filtered = !self.filter.is_empty();
+        if !entry.dir {
+            self.select_path(&entry.path);
+            return Action::Open(entry.path);
+        }
+        let open = self.expanded.contains(&entry.path);
+        if open && toggle && !filtered {
+            self.expanded.remove(&entry.path);
+        } else if let Err(e) = self.expand(&entry.path) {
+            self.select_path(&entry.path);
+            return Action::Error(format!("can't open that folder: {e}"));
+        }
+        self.rebuild();
+        self.select_path(&entry.path);
+        // l on an open folder steps into it
+        if open && !toggle && !filtered {
+            let child = self
+                .rows
+                .get(self.selected + 1)
+                .is_some_and(|(e, _)| e.depth > entry.depth);
+            self.selected += usize::from(child);
+        }
+        Action::Nothing
+    }
+
+    fn collapse(&mut self) {
+        let Some((entry, _)) = self.rows.get(self.selected).cloned() else {
+            return;
+        };
+        if entry.dir && self.expanded.contains(&entry.path) && self.filter.is_empty() {
+            self.expanded.remove(&entry.path);
+            self.rebuild();
+            self.select_path(&entry.path);
+        } else if let Some(parent) = entry.path.parent().filter(|_| entry.depth > 0) {
+            self.select_path(parent);
+        }
+    }
+
     pub fn top(&self, rows: usize) -> usize {
         self.top.set(self.top.get().min(self.rows.len().saturating_sub(rows.max(1))));
         follow(&self.top, self.selected, rows)
