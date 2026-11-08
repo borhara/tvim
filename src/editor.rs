@@ -206,6 +206,31 @@ impl Range {
 }
 
 #[derive(Default)]
+struct Doc {
+    id: usize,
+    buf: Buffer,
+    cursor: Pos,
+    want: usize,
+    last_visual: Option<(Pos, Pos, Mode)>,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+    version: u64,
+    saved: u64,
+    marks: HashMap<char, Pos>,
+    file: FileInfo,
+    saved_lines: Vec<String>,
+    top: usize,
+    left: usize,
+    states: RefCell<States>,
+}
+
+impl Doc {
+    fn modified(&self) -> bool {
+        self.version != self.saved
+    }
+}
+
+#[derive(Default)]
 pub(crate) struct States {
     version: u64,
     syntax: Option<Syntax>,
@@ -340,6 +365,7 @@ pub struct Editor {
     regex_cache: RefCell<Option<RegexCache>>,
     hits_cache: RefCell<Option<HitsCache>>,
     pub(crate) no_jumps: bool,
+    docs: Vec<Doc>,
     current: usize,
     pub(crate) buffer_id: usize,
     next_id: usize,
@@ -421,6 +447,7 @@ impl Editor {
             regex_cache: RefCell::new(None),
             hits_cache: RefCell::new(None),
             no_jumps: false,
+            docs: vec![Doc::default()],
             current: 0,
             buffer_id: 1,
             next_id: 2,
