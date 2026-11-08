@@ -125,3 +125,38 @@ fn moving_around() {
     e.keys(&parse("gk"));
     assert_eq!(selected(&e), 0);
 }
+
+#[test]
+fn filtering_by_letters_in_order() {
+    let (mut e, _) = browse("filter");
+    e.keys(&parse("/zd"));
+    assert!(e.explorer().unwrap().is_filtering());
+    assert_eq!(names(&e), ["Zed.md"]);
+    e.keys(&parse("<CR>"));
+    assert_eq!(e.text(), "# zed");
+    assert_eq!(names(&e).len(), 4, "the whole folder again once a file's open");
+    assert_eq!(names(&e)[selected(&e)], "Zed.md");
+    let (mut e, _) = browse("filter-esc");
+    e.keys(&parse("/xyz"));
+    assert!(names(&e).is_empty());
+    e.keys(&parse("<Esc>"));
+    assert_eq!(names(&e).len(), 4);
+    e.keys(&parse("/.h"));
+    assert_eq!(
+        names(&e),
+        [".hidden"],
+        "a filter starting with a dot finds hidden files"
+    );
+}
+
+#[test]
+fn filtering_looks_inside_open_folders() {
+    let (mut e, _) = browse("filter-tree");
+    e.keys(&parse("/inn"));
+    assert!(names(&e).is_empty(), "a folded folder isn't searched");
+    e.keys(&parse("<Esc>l/inn"));
+    assert_eq!(names(&e), ["sub", "inner.txt"], "the match under its folder");
+    assert_eq!(selected(&e), 1, "on the match, not the folder");
+    e.keys(&parse("<CR>"));
+    assert_eq!(e.text(), "inside");
+}
