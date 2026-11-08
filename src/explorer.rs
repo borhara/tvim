@@ -181,6 +181,34 @@ impl Explorer {
         self.select_path(path)
     }
 
+    fn reroot(&mut self, dir: PathBuf) -> Action {
+        if !self.loaded.contains_key(&dir) {
+            match read(&dir) {
+                Ok(entries) => {
+                    self.loaded.insert(dir.clone(), entries);
+                }
+                Err(e) => return Action::Error(format!("can't open that folder: {e}")),
+            }
+        }
+        let old = std::mem::replace(&mut self.root, dir);
+        // keep the old root expanded
+        if old.starts_with(&self.root) {
+            self.expanded.insert(old.clone());
+        }
+        self.rebuild();
+        if !self.select_path(&old) {
+            self.selected = 0;
+        }
+        Action::Nothing
+    }
+
+    fn up(&mut self) -> Action {
+        match self.root.parent().map(Path::to_path_buf) {
+            Some(parent) => self.reroot(parent),
+            None => Action::Nothing,
+        }
+    }
+
     fn activate(&mut self, toggle: bool) -> Action {
         let Some((entry, _)) = self.rows.get(self.selected).cloned() else {
             return Action::Nothing;
