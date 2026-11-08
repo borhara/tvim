@@ -114,6 +114,7 @@ impl Editor {
             let dir = match non_empty(arg) {
                 Some(d) => std::path::PathBuf::from(expand_home(d)),
             };
+            self.explore(&dir);
         } else if is("edit", 1) {
             self.edit(non_empty(arg), force);
         } else if is("read", 1) {

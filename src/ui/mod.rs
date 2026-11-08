@@ -76,6 +76,9 @@ impl App for Tvim {
     }
 
     fn title(&self) -> Option<String> {
+        if let Some(x) = self.editor.explorer().filter(|_| self.editor.explorer_focused()) {
+            return Some(format!("{} · tvim", display_path(x.root())));
+        }
         let name = file_name(self.editor.file().path.as_deref(), "[No Name]");
         let modified = if self.editor.is_modified() { " ●" } else { "" };
         Some(format!("{name}{modified} · tvim"))
@@ -264,11 +267,14 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     let mut typing_at = d.typing_at;
     if e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30 {
     }
+    if hints && !e.explorer_focused() {
+    }
     if let Some(f) = e.finder() {
         typing_at = overlays::finder(f, frame, d.panes, &c);
     }
         || e.finder().is_some()
         || matches!(e.mode(), Mode::Command | Mode::Search)
+        || e.explorer_focused();
     if let Some((x, y, shape)) = cursor {
         frame.set_cursor(x, y, shape);
     }
