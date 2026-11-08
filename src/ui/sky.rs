@@ -1,8 +1,38 @@
-use tinsel::app::{Frame, Rect};
+use tinsel::app::{Frame, Rect, hints};
 use tinsel::{paint, palette};
 
-use super::input;
+use super::{Colors, display_path, input};
 use crate::editor::{Editor, Mode};
+
+fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
+    let x = e.explorer().expect("in files");
+    if let Some(m) = e.message() {
+        frame.print(mid, 0, &message(m));
+        return None;
+    }
+    let path = display_path(x.root());
+    let keys = [
+        ("enter", "open"),
+        ("-", "up"),
+        ("/", "filter"),
+        (".", "hidden"),
+        ("q", "hide"),
+    ];
+    let path = if tinsel::text::width(&full) <= mid.width {
+        full
+    } else {
+    };
+    let path_w = tinsel::text::width(&path);
+    let keys = hints(&keys).to_string();
+    let keys_w = tinsel::text::width(&keys);
+    // the hints sit in the middle of the row, like the star line above, unless the path is in the way
+    let centred = (row.x + (row.width.saturating_sub(keys_w)) / 2).max(mid.x + path_w + 3);
+    frame.print(mid, 0, &path);
+    if centred + keys_w <= mid.x + mid.width {
+        frame.print(Rect::new(centred, row.y, keys_w, 1), 0, &keys);
+    }
+    None
+}
 
 fn typing_line(e: &Editor, frame: &mut Frame, mid: Rect) -> (usize, usize) {
     let cmd = e.cmdline();
