@@ -54,3 +54,65 @@ fn read(dir: &Path) -> io::Result<Vec<(String, bool)>> {
     entries.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())));
     Ok(entries)
 }
+
+impl Explorer {
+    pub fn open(dir: &Path, select: Option<&Path>) -> io::Result<Explorer> {
+        let root = std::fs::canonicalize(dir)?;
+        let mut x = Explorer {
+            loaded: HashMap::from([(root.clone(), read(&root)?)]),
+            root,
+            expanded: HashSet::new(),
+            rows: Vec::new(),
+            selected: 0,
+            filter: String::new(),
+            filtering: false,
+            show_hidden: false,
+            top: Cell::new(0),
+        };
+        x.rebuild();
+        if let Some(path) = select {
+        }
+        Ok(x)
+    }
+
+    fn shown(&self, name: &str) -> bool {
+        !name.starts_with('.') || self.show_hidden || self.filter.starts_with('.')
+    }
+
+    fn rebuild(&mut self) {
+        let mut rows = Vec::new();
+        if self.filter.is_empty() {
+            self.walk(&self.root, 0, &mut rows);
+        } else {
+            self.matches(&self.root, 0, &mut rows);
+        }
+        self.rows = rows;
+        self.selected = self.selected.min(self.rows.len().saturating_sub(1));
+    }
+
+    fn entry(dir: &Path, name: &str, is_dir: bool, depth: usize) -> Entry {
+        Entry {
+            name: name.to_string(),
+            dir: is_dir,
+            depth,
+            path: dir.join(name),
+        }
+    }
+
+    fn walk(&self, dir: &Path, depth: usize, out: &mut Vec<(Entry, Vec<usize>)>) {
+        let Some(kids) = self.loaded.get(dir) else { return };
+        for (name, is_dir) in kids {
+            if !self.shown(name) {
+                continue;
+            }
+            let entry = Self::entry(dir, name, *is_dir, depth);
+            let open = *is_dir && self.expanded.contains(&entry.path);
+            let path = entry.path.clone();
+            out.push((entry, Vec::new()));
+            if open {
+                self.walk(&path, depth + 1, out);
+            }
+        }
+    }
+
+}
