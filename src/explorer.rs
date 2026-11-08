@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
+use tinsel::app::Key;
+
 use crate::finder::follow;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -324,6 +326,77 @@ impl Explorer {
     pub fn top(&self, rows: usize) -> usize {
         self.top.set(self.top.get().min(self.rows.len().saturating_sub(rows.max(1))));
         follow(&self.top, self.selected, rows)
+    }
+
+    pub fn key(&mut self, key: Key, rows: usize) -> Action {
+        let last = self.rows.len().saturating_sub(1);
+        if self.filtering {
+            match key {
+                Key::Char(c) => self.set_filter(|f| f.push(c)),
+                Key::Backspace | Key::Ctrl('h') => {
+                    if self.filter.is_empty() {
+                        self.filtering = false;
+                    } else {
+                        self.set_filter(|f| {
+                            f.pop();
+                        });
+                    }
+                }
+                Key::Ctrl('u') => self.set_filter(String::clear),
+                Key::Esc | Key::Ctrl('c') => {
+                    let keep = self.selected_path();
+                    self.clear_filter();
+                    if !keep.is_some_and(|p| self.select_path(&p)) {
+                        self.selected = 0;
+                    }
+                }
+                Key::Enter => return self.activate(false),
+                Key::Down | Key::Ctrl('n') | Key::Tab => self.selected = (self.selected + 1).min(last),
+                Key::Up | Key::Ctrl('p') | Key::BackTab => self.selected = self.selected.saturating_sub(1),
+                _ => {}
+            }
+            return Action::Nothing;
+        }
+        let page = rows.max(2) / 2;
+        match key {
+            Key::Char('j') | Key::Down | Key::Ctrl('n') => self.selected = (self.selected + 1).min(last),
+            Key::Char('k') | Key::Up | Key::Ctrl('p') => self.selected = self.selected.saturating_sub(1),
+            Key::Char('g') | Key::Home => self.selected = 0,
+            Key::Char('G') | Key::End => self.selected = last,
+            Key::Ctrl('d') | Key::PageDown => self.selected = (self.selected + page).min(last),
+            Key::Ctrl('u') | Key::PageUp => self.selected = self.selected.saturating_sub(page),
+            Key::Enter | Key::Char('o') => return self.activate(true),
+            Key::Char('l') | Key::Right => return self.activate(false),
+            Key::Char('h') | Key::Left | Key::Backspace => self.collapse(),
+            Key::Char('-') => return self.up(),
+            Key::Char('~') => {
+                if let Some(home) = std::env::var_os("HOME").and_then(|h| std::fs::canonicalize(h).ok()) {
+                    return self.reroot(home);
+                }
+            }
+            Key::Char('.') => {
+                let keep = self.selected_path();
+                self.show_hidden = !self.show_hidden;
+                self.rebuild();
+                if let Some(p) = keep {
+                    self.select_path(&p);
+                }
+            }
+            Key::Char('/') => {
+                self.filtering = true;
+                self.set_filter(String::clear);
+            }
+            Key::Char('R') | Key::Ctrl('l') => return self.reload(),
+            Key::Char(':') => return Action::Command,
+            Key::Esc if !self.filter.is_empty() => {
+                self.clear_filter();
+                self.selected = 0;
+            }
+            Key::Char('q') => return Action::Close,
+            Key::Tab | Key::Esc | Key::Ctrl('c') => return Action::Leave,
+            _ => {}
+        }
+        Action::Nothing
     }
 
 }
