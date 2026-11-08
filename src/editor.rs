@@ -9,7 +9,7 @@ use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::Hunk;
-use crate::explorer::Explorer;
+use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -702,6 +702,7 @@ impl Editor {
             return self.find_files(None);
         }
         if self.explorer_focused() && self.mode != Mode::Command {
+            return self.explorer_input(input);
         }
         if self.mode == Mode::Normal && self.previews.contains_key(&self.focus) {
             if let Input::Key(k) = input {
@@ -855,6 +856,33 @@ impl Editor {
     pub fn explorer_rows(&self) -> usize {
         // less the sidebar's heading and the gap under it
         self.text_rows().saturating_sub(2).max(1)
+    }
+
+    fn explorer_input(&mut self, input: Input) {
+        let rows = self.explorer_rows();
+        let Some(x) = self.explorer.as_mut() else { return };
+        let key = match input {
+            Input::Paste(text) => return x.paste(&text),
+            Input::Key(k) => k,
+        };
+        self.message = None;
+        let root = x.root().to_path_buf();
+        let action = x.key(key, rows);
+        if self.explorer.as_ref().is_some_and(|x| x.root() != root) || matches!(key, Key::Char('R') | Key::Ctrl('l')) {
+        }
+        match action {
+            Action::Nothing => {}
+            Action::Error(e) => self.error(e),
+            Action::Command => self.begin_cmdline(':', String::new()),
+            Action::Close => {
+                self.explorer = None;
+                self.explorer_focused = false;
+            }
+            Action::Leave => self.explorer_focused = false,
+            Action::Open(path) => {
+                self.open_or_report(&path);
+            }
+        }
     }
 
     pub(crate) fn touch(&mut self) {
