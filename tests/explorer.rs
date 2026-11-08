@@ -44,3 +44,33 @@ fn folders_first_then_files_hidden_ones_left_out() {
     assert_eq!(names(&e), ["sub", ".hidden", "a.rs", "b.txt", "Zed.md"]);
     assert_eq!(selected(&e), 3, "still on b.txt");
 }
+
+#[test]
+fn enter_opens_a_file_and_the_browser_stays() {
+    let (mut e, root) = browse("open");
+    assert!(e.explorer_focused());
+    e.keys(&parse("j<CR>"));
+    assert_eq!(e.text(), "fn a() {}");
+    assert_eq!(e.file().path.as_deref(), Some(root.join("a.rs").as_path()));
+    assert!(e.explorer().is_some(), "still beside the file");
+    assert!(!e.explorer_focused(), "and typing goes to the file");
+    e.keys(&parse("x"));
+    assert_eq!(e.text(), "n a() {}");
+}
+
+#[test]
+fn tab_moves_between_the_file_and_the_browser() {
+    let (mut e, _) = browse("tab");
+    e.keys(&parse("j<CR>"));
+    e.keys(&parse("<Tab>"));
+    assert!(e.explorer_focused());
+    e.keys(&parse("j"));
+    assert_eq!(selected(&e), 2, "keys move the browser, not the text");
+    e.keys(&parse("<Tab>"));
+    assert!(!e.explorer_focused());
+    e.keys(&parse("<Tab><Esc>"));
+    assert!(!e.explorer_focused(), "Esc goes back to the file too");
+    let mut e = Editor::with_text("x");
+    e.keys(&parse("<Tab>"));
+    assert!(e.explorer_focused(), "Tab opens it when it's hidden");
+}
