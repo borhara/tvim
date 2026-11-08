@@ -75,11 +75,15 @@ impl Editor {
             self.write_all();
         } else if is("wq", 2) || is("xit", 1) || is("exit", 3) {
             let needed = is("wq", 2) || self.is_modified() || non_empty(arg).is_some();
+            if (!needed || self.write(non_empty(arg), force, range)) && !self.close_window() && self.others_saved(force)
             {
                 self.set_quit();
             }
         } else if is("quit", 1) || is("qall", 2) || is("quitall", 5) {
             let closed = is("quit", 1) && self.close_window();
+            if !closed && self.dirty_guard(force) && self.others_saved(force) {
+                self.set_quit();
+            }
         } else if is("close", 3) {
             if !self.close_window() {
                 self.error("E444: Cannot close last window");
@@ -258,6 +262,9 @@ impl Editor {
             self.error(format!("\"{}\" {e}", target.display()));
         }
         self.reset_after_reload();
+    }
+
+    fn others_saved(&mut self, force: bool) -> bool {
     }
 
     fn read_file(&mut self, path: &str, at: usize) {
