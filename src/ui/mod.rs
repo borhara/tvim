@@ -101,6 +101,24 @@ fn file_name(path: Option<&Path>, or: &str) -> String {
         .map_or_else(|| or.to_string(), |n| n.to_string_lossy().into_owned())
 }
 
+// keeps the end of a path, which is where the file's name is
+fn cut_left(s: &str, room: usize) -> String {
+    if tinsel::text::width(s) <= room {
+        return s.to_string();
+    }
+    let mut used = 1;
+    let start = s
+        .char_indices()
+        .rev()
+        .take_while(|(_, ch)| {
+            used += tinsel::text::char_width(*ch);
+            used <= room
+        })
+        .last()
+        .map_or(s.len(), |(i, _)| i);
+    format!("…{}", &s[start..])
+}
+
 fn run_effect(editor: &mut Editor, effect: Effect) {
     match effect {
         Effect::Shell(cmd) => {
