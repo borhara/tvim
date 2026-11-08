@@ -173,6 +173,16 @@ fn q_hides_it_and_lex_toggles_it() {
 }
 
 #[test]
+fn edit_with_a_folder_browses_it() {
+    let root = folder("edit-dir");
+    let mut e = Editor::with_text("");
+    e.ex(&format!("e {}", root.display()));
+    assert_eq!(e.explorer().unwrap().root(), root);
+    let e = Editor::open(&root).unwrap();
+    assert!(e.explorer().is_some());
+}
+
+#[test]
 fn commands_work_from_the_browser() {
     let (mut e, _) = browse("commands");
     e.keys(&parse(":q<CR>"));
