@@ -774,6 +774,52 @@ impl Editor {
         }
     }
 
+    fn stash(&mut self) -> Doc {
+        Doc {
+            id: self.buffer_id,
+            buf: std::mem::take(&mut self.buf),
+            cursor: self.cursor,
+            want: self.want,
+            last_visual: self.last_visual.take(),
+            undo: std::mem::take(&mut self.undo),
+            redo: std::mem::take(&mut self.redo),
+            version: self.version,
+            saved: self.saved,
+            marks: std::mem::take(&mut self.marks),
+            file: std::mem::take(&mut self.file),
+            saved_lines: std::mem::take(&mut self.saved_lines),
+            git: std::mem::take(&mut self.git),
+            top: self.top.get(),
+            left: self.left.get(),
+            states: std::mem::take(&mut self.states),
+            diffs: std::mem::take(&mut self.marks_cache),
+        }
+    }
+
+    fn unstash(&mut self, d: Doc) {
+        self.buffer_id = d.id;
+        self.buf = d.buf;
+        self.cursor = d.cursor;
+        self.want = d.want;
+        self.last_visual = d.last_visual;
+        self.undo = d.undo;
+        self.redo = d.redo;
+        self.version = d.version;
+        self.saved = d.saved;
+        self.marks = d.marks;
+        self.file = d.file;
+        self.saved_lines = d.saved_lines;
+        self.git = d.git;
+        self.top.set(d.top);
+        self.left.set(d.left);
+        self.changing = false;
+        self.states = d.states;
+        self.marks_cache = d.diffs;
+        self.mode = Mode::Normal;
+        self.pending.clear();
+        self.completion = None;
+    }
+
     fn open_or_report(&mut self, path: &Path) -> bool {
         let path = relative_to_cwd(path);
     }
