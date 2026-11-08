@@ -6,6 +6,7 @@ pub mod complete;
 pub mod diff;
 pub mod editor;
 mod ex;
+pub mod explorer;
 pub mod finder;
 pub mod keys;
 pub mod motion;
