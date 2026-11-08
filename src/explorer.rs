@@ -75,6 +75,26 @@ impl Explorer {
         Ok(x)
     }
 
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    pub fn shows_hidden(&self) -> bool {
+        self.show_hidden
+    }
+
+    pub fn is_expanded(&self, dir: &Path) -> bool {
+        self.expanded.contains(dir)
+    }
+
+    pub fn visible(&self) -> &[(Entry, Vec<usize>)] {
+        &self.rows
+    }
+
     fn shown(&self, name: &str) -> bool {
         !name.starts_with('.') || self.show_hidden || self.filter.starts_with('.')
     }
@@ -113,6 +133,11 @@ impl Explorer {
                 self.walk(&path, depth + 1, out);
             }
         }
+    }
+
+    pub fn top(&self, rows: usize) -> usize {
+        self.top.set(self.top.get().min(self.rows.len().saturating_sub(rows.max(1))));
+        follow(&self.top, self.selected, rows)
     }
 
 }
