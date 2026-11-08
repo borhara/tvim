@@ -71,6 +71,7 @@ impl Explorer {
         };
         x.rebuild();
         if let Some(path) = select {
+            x.reveal(path);
         }
         Ok(x)
     }
@@ -133,6 +134,51 @@ impl Explorer {
                 self.walk(&path, depth + 1, out);
             }
         }
+    }
+
+    fn selected_path(&self) -> Option<PathBuf> {
+        self.rows.get(self.selected).map(|(e, _)| e.path.clone())
+    }
+
+    fn select_path(&mut self, path: &Path) -> bool {
+        match self.rows.iter().position(|(e, _)| e.path == path) {
+            Some(i) => {
+                self.selected = i;
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn expand(&mut self, dir: &Path) -> io::Result<()> {
+        if !self.loaded.contains_key(dir) {
+            let entries = read(dir)?;
+            self.loaded.insert(dir.to_path_buf(), entries);
+        }
+        self.expanded.insert(dir.to_path_buf());
+        Ok(())
+    }
+
+    // false when outside the tree
+    pub fn reveal(&mut self, path: &Path) -> bool {
+        let Ok(rel) = path.strip_prefix(&self.root) else {
+            return false;
+        };
+        let mut dir = self.root.clone();
+        let parts: Vec<_> = rel.components().collect();
+        for part in &parts[..parts.len().saturating_sub(1)] {
+            dir.push(part);
+            if self.expand(&dir).is_err() {
+                return false;
+            }
+        }
+        self.filtering = false;
+        self.filter.clear();
+        if parts.iter().any(|p| p.as_os_str().to_string_lossy().starts_with('.')) {
+            self.show_hidden = true;
+        }
+        self.rebuild();
+        self.select_path(path)
     }
 
     pub fn top(&self, rows: usize) -> usize {
