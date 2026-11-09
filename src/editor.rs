@@ -230,6 +230,15 @@ impl Doc {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BufferInfo {
+    pub id: usize,
+    pub name: String,
+    pub path: Option<PathBuf>,
+    pub modified: bool,
+    pub current: bool,
+}
+
 #[derive(Default)]
 pub(crate) struct States {
     version: u64,
@@ -818,6 +827,28 @@ impl Editor {
         self.mode = Mode::Normal;
         self.pending.clear();
         self.completion = None;
+    }
+
+    pub fn buffers(&self) -> Vec<BufferInfo> {
+        self.docs
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let current = i == self.current;
+                let (id, path, modified) = if current {
+                    (self.buffer_id, self.file.path.clone(), self.is_modified())
+                } else {
+                    (d.id, d.file.path.clone(), d.modified())
+                };
+                BufferInfo {
+                    id,
+                    name: display_name(path.as_deref()),
+                    path,
+                    modified,
+                    current,
+                }
+            })
+            .collect()
     }
 
     fn open_or_report(&mut self, path: &Path) -> bool {
