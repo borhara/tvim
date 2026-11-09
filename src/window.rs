@@ -401,6 +401,20 @@ impl Editor {
         self.fit_screen();
     }
 
+    pub(crate) fn drop_orphan_windows(&mut self) {
+        let gone: Vec<usize> = self
+            .wins
+            .iter()
+            .filter(|w| w.id != self.focus && !self.has_buffer(w.buffer))
+            .map(|w| w.id)
+            .collect();
+        for id in gone {
+            self.layout.remove(id);
+            self.wins.retain(|w| w.id != id);
+        }
+        self.fit_screen();
+    }
+
     fn cycle_window(&mut self, by: isize) {
         let order = self.order();
         let n = order.len() as isize;
