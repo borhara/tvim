@@ -66,3 +66,33 @@ fn moving_between_them() {
     e.ex("b nope");
     assert!(e.message().unwrap().text.starts_with("E94"));
 }
+
+#[test]
+fn each_keeps_its_own_cursor_undo_and_changes() {
+    let paths = files("own");
+    let mut e = Editor::new();
+    open_all(&mut e, &paths[..2]);
+    e.keys(&parse("Aaa<Esc>"));
+    e.keys(&parse("gt"));
+    e.keys(&parse("x"));
+    assert_eq!(e.text(), "ne");
+    e.keys(&parse("gt"));
+    assert_eq!((e.text().as_str(), e.cursor().col), ("twoaa", 4));
+    e.keys(&parse("u"));
+    assert_eq!(e.text(), "two", "undo is per file");
+    e.keys(&parse("gtu"));
+    assert_eq!(e.text(), "one");
+}
+
+#[test]
+fn quitting_minds_every_file() {
+    let paths = files("quit");
+    let mut e = Editor::new();
+    open_all(&mut e, &paths[..2]);
+    e.keys(&parse("xgt"));
+    e.ex("q");
+    assert!(!e.should_quit());
+    assert!(e.message().unwrap().text.starts_with("E162"), "{:?}", e.message());
+    e.ex("q!");
+    assert!(e.should_quit());
+}
