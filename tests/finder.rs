@@ -80,6 +80,18 @@ fn nothing_matching() {
 }
 
 #[test]
+fn opening_keeps_the_changed_file_open() {
+    let root = project("dirty");
+    let mut e = Editor::with_text("mine");
+    e.keys(&parse("x"));
+    e.find_files_in(&root, "main");
+    e.keys(&parse("<CR>"));
+    assert_eq!(e.text(), "fn main() {}");
+    assert_eq!(e.buffers().len(), 2);
+    assert!(e.finder().is_none());
+}
+
+#[test]
 fn ctrl_p_and_find_open_it() {
     let mut e = Editor::with_text("x");
     e.keys(&parse("<C-p>"));
