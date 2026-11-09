@@ -874,6 +874,34 @@ impl Editor {
         self.switch_to(to);
     }
 
+    fn disposable(&self) -> bool {
+        let shown_elsewhere = self
+            .wins
+            .iter()
+            .any(|w| w.id != self.focus && w.buffer == self.buffer_id);
+        self.file.path.is_none()
+            && self.buf.is_empty()
+            && self.undo.is_empty()
+            && !self.is_modified()
+            && !shown_elsewhere
+    }
+
+    pub(crate) fn new_buffer(&mut self) {
+        let here = self.stash();
+        self.docs[self.current] = here;
+        self.docs.push(Doc::default());
+        self.current = self.docs.len() - 1;
+        self.fresh_doc();
+    }
+
+    fn fresh_doc(&mut self) {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.unstash(Doc { id, ..Doc::default() });
+        self.file.final_newline = true;
+        self.saved_lines = vec![String::new()];
+    }
+
     fn open_or_report(&mut self, path: &Path) -> bool {
         let path = relative_to_cwd(path);
     }

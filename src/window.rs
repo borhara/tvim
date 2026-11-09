@@ -372,6 +372,7 @@ impl Editor {
         self.layout.split(area, self.focus, id, across, false);
         self.focus = id;
         if fresh {
+            self.new_buffer();
         }
         self.fit_screen();
         self.sync_windows();
