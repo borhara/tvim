@@ -835,6 +835,16 @@ fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn long_paths_keep_their_end_in_columns() {
+        assert_eq!(cut_left("src/main.rs", 20), "src/main.rs");
+        assert_eq!(cut_left("src/main.rs", 8), "…main.rs");
+        assert_eq!(cut_left("文書/メモ.md", 8), "…メモ.md");
+        assert_eq!(cut_left("文書/メモ.md", 6), "…モ.md");
+        assert_eq!(cut_left("文書/メモ.md", 5), "….md");
+        assert_eq!(cut_left("abc", 0), "…");
+    }
+
+    #[test]
     fn icons_by_kind() {
         assert_eq!(icon("main.rs", false).0, "⊛");
         assert_eq!(icon("Cargo.toml", false).0, "≡");
