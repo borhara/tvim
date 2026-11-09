@@ -358,7 +358,7 @@ fn input(frame: &mut Frame, row: Rect, label: &str, text: &str, cursor: usize, i
     let at = tinsel::text::width(label) + tinsel::text::width(&before);
     let skip = (at + 1).saturating_sub(row.width);
     let text = ink.map_or_else(|| text.to_string(), |ink| paint(ink, text));
-    frame.print(row, 0, &format!("{label}{text}"));
+    frame.print_from(row, 0, &format!("{label}{text}"), skip);
     (row.x + at - skip, row.y)
 }
 
@@ -656,7 +656,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
 
         let kinds = v.text.highlight(row, e.options.syntax);
         let shown = styled_line(line, kinds.as_deref(), ts, c);
-        frame.print(Rect::new(body.x, y, body.width, 1), 0, &shown);
+        frame.print_from(Rect::new(body.x, y, body.width, 1), 0, &shown, left);
 
         if colored {
         }

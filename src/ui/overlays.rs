@@ -128,7 +128,7 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         });
         let room = list.width.saturating_sub(5);
         let skip = (tinsel::text::width(path) + 1).saturating_sub(room);
-        frame.print(Rect::new(list.x + 4, y, room, 1), 0, &shown);
+        frame.print_from(Rect::new(list.x + 4, y, room, 1), 0, &shown, skip);
     }
     if let Some(pane) = p.pane {
         if let Some((path, lines)) = f.preview() {
