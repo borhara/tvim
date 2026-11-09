@@ -95,6 +95,9 @@ impl Editor {
             if self.split_window(name.starts_with('v'), fresh && arg.is_empty()) {
                 if let Some(p) = non_empty(arg) {
                     let target = std::path::PathBuf::from(expand_home(p));
+                    if let Err(e) = self.open_path(&target) {
+                        self.error(format!("\"{}\" {e}", target.display()));
+                    }
                 }
             }
         } else if is("bnext", 2) {
@@ -253,6 +256,9 @@ impl Editor {
             let here = self.file().path.as_ref().and_then(|f| f.canonicalize().ok());
             let same = here.is_some() && target.canonicalize().ok() == here;
             if !same {
+                if let Err(e) = self.open_path(&target) {
+                    self.error(format!("\"{}\" {e}", target.display()));
+                }
                 return self.reset_after_reload();
             }
         }
