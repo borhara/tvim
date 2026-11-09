@@ -109,6 +109,7 @@ impl Editor {
         } else if is("blast", 2) {
             self.switch_to(self.buffers().len() - 1);
         } else if is("bdelete", 2) || is("bwipeout", 2) || is("bunload", 3) {
+            self.close_buffer(force);
         } else if is("buffers", 7) || is("ls", 2) {
         } else if is("buffer", 1) {
         } else if is("grep", 2) || is("Grep", 2) || is("vimgrep", 3) {
