@@ -973,6 +973,33 @@ impl Editor {
         self.drop_orphan_windows();
     }
 
+    pub(crate) fn unsaved_elsewhere(&self) -> Option<String> {
+        self.buffers()
+            .into_iter()
+            .find(|b| b.modified && !b.current)
+            .map(|b| b.name)
+    }
+
+    pub(crate) fn write_all(&mut self) -> bool {
+        let back = self.current;
+        let mut ok = true;
+        self.no_jumps = true;
+        for i in 0..self.docs.len() {
+            let modified = if i == self.current {
+                self.is_modified()
+            } else {
+                self.docs[i].modified()
+            };
+            if modified {
+                self.switch_to(i);
+                ok &= self.write(None, false, None);
+            }
+        }
+        self.switch_to(back);
+        self.no_jumps = false;
+        ok
+    }
+
     pub fn finder(&self) -> Option<&Finder> {
         self.finder.as_ref()
     }

@@ -278,6 +278,13 @@ impl Editor {
     }
 
     fn others_saved(&mut self, force: bool) -> bool {
+        match self.unsaved_elsewhere() {
+            Some(name) if !force => {
+                self.error(format!("E162: No write since last change for buffer \"{name}\""));
+                false
+            }
+            _ => true,
+        }
     }
 
     fn list_buffers(&mut self) {
