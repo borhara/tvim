@@ -1,5 +1,5 @@
 mod common;
-use common::{ed, text_after as t};
+use common::{ed, temp, text_after as t};
 use tvim::keys::parse;
 
 #[test]
@@ -57,6 +57,30 @@ fn the_word_being_typed_isnt_offered() {
     e.keys(&parse("A<C-n>"));
     assert!(e.completion().is_none());
     assert_eq!(e.message().unwrap().text, "Pattern not found");
+}
+
+fn two_files(name: &str, first: &str, second: &str) -> tvim::Editor {
+    let (a, b) = (temp(&format!("{name}-1.txt")), temp(&format!("{name}-2.txt")));
+    std::fs::write(&a, first).unwrap();
+    std::fs::write(&b, second).unwrap();
+    let mut e = ed("");
+    e.ex(&format!("e {}", a.display()));
+    e.ex(&format!("e {}", b.display()));
+    e
+}
+
+#[test]
+fn other_buffers_are_searched_too() {
+    let mut e = two_files("other", "elsewhere\n", "\n");
+    e.keys(&parse("iel<C-n><C-y><Esc>"));
+    assert_eq!(e.text(), "elsewhere");
+}
+
+#[test]
+fn the_current_buffer_comes_first() {
+    let mut e = two_files("first", "alpha\n", "x\n\n\n\nalpine\n");
+    e.keys(&parse("ial<C-n><C-y><Esc>"));
+    assert_eq!(e.buffer().line(0), "alpinex");
 }
 
 #[test]
