@@ -119,6 +119,7 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
             frame.tint(Rect::new(list.x, y, list.width, 1), c.picked);
         }
         if f.is_recent() {
+            recent_row(f, i, path, hits, frame, Rect::new(list.x, y, list.width, 1));
             continue;
         }
         let name_start = path.rfind('/').map_or(0, |b| path[..b].chars().count() + 1);
@@ -137,6 +138,32 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         }
     }
     Some(p.at)
+}
+
+// like the finder's rows, but the name first, its folder after, and the line it was left at
+fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Frame, row: Rect) {
+    let selected = i == f.selected();
+    let split = path.rfind('/').map_or(0, |b| b + 1);
+    let (dir, file) = path.split_at(split);
+    let name_start = dir.chars().count();
+    let (glyph, color) = icon(file, false);
+    let at = f.line(i).map_or(String::new(), |r| format!(":{}", r + 1));
+    let name = with_hits(file, |j| hits.contains(&(name_start + j)), |_, s| {
+    });
+    let dir = dir.trim_end_matches('/');
+    let home = std::env::var("HOME").ok().filter(|h| !h.is_empty());
+    let dir = match home.as_deref().and_then(|h| std::path::Path::new(dir).strip_prefix(h).ok()) {
+        Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
+        Some(rel) => format!("~/{}", rel.display()),
+        None => dir.to_string(),
+    };
+    let room = row.width.saturating_sub(at.len() + 7 + tinsel::text::width(file));
+    let dir = super::cut_left(&dir, room);
+    let mark = if selected {
+    } else {
+        " ".into()
+    };
+    let at_x = row.x + row.width.saturating_sub(at.len() + 1);
 }
 
 
