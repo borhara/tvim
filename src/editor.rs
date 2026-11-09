@@ -902,8 +902,53 @@ impl Editor {
         self.saved_lines = vec![String::new()];
     }
 
+    pub fn open_path(&mut self, path: &Path) -> std::io::Result<()> {
+        if path.is_dir() {
+            self.explore(path);
+            return Ok(());
+        }
+        let canon = |p: &Path| p.canonicalize().ok();
+        let want = canon(path);
+        if want.is_some() {
+            if self.file.path.as_deref().and_then(canon) == want {
+                return Ok(());
+            }
+            let open = (0..self.docs.len())
+                .find(|&i| i != self.current && self.docs[i].file.path.as_deref().and_then(canon) == want);
+            if let Some(i) = open {
+                self.switch_to(i);
+                return Ok(());
+            }
+        }
+        if self.disposable() {
+            self.load(path)?;
+            return Ok(());
+        }
+        let back = self.current;
+        let here = self.stash();
+        self.docs[self.current] = here;
+        self.docs.push(Doc::default());
+        self.current = self.docs.len() - 1;
+        self.fresh_doc();
+        if let Err(e) = self.load(path) {
+            self.docs.pop();
+            self.current = back;
+            let there = std::mem::take(&mut self.docs[back]);
+            self.unstash(there);
+            return Err(e);
+        }
+        Ok(())
+    }
+
     fn open_or_report(&mut self, path: &Path) -> bool {
         let path = relative_to_cwd(path);
+        match self.open_path(&path) {
+            Ok(()) => true,
+            Err(e) => {
+                self.error(format!("\"{}\" {e}", path.display()));
+                false
+            }
+        }
     }
 
     pub fn finder(&self) -> Option<&Finder> {
