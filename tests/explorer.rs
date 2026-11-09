@@ -201,6 +201,17 @@ fn q_hides_it_and_lex_toggles_it() {
 }
 
 #[test]
+fn unsaved_changes_stay_open_in_the_background() {
+    let (mut e, _) = browse("dirty");
+    e.keys(&parse("j<CR>x<Tab>j<CR>"));
+    assert_eq!(e.text(), "bee", "the other file opens");
+    assert_eq!(e.buffers().len(), 2);
+    assert!(e.buffers()[0].modified, "and the changed one is kept, still changed");
+    e.keys(&parse("gT"));
+    assert_eq!(e.text(), "n a() {}");
+}
+
+#[test]
 fn edit_with_a_folder_browses_it() {
     let root = folder("edit-dir");
     let mut e = Editor::with_text("");
