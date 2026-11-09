@@ -116,6 +116,34 @@ fn dash_makes_the_parent_the_root() {
 }
 
 #[test]
+fn the_open_files_folders_open_by_themselves() {
+    let root = folder("reveal");
+    std::fs::create_dir_all(root.join("sub/deep")).unwrap();
+    std::fs::write(root.join("sub/deep/far.txt"), "far\n").unwrap();
+    let mut e = Editor::open(&root.join("sub/deep/far.txt")).unwrap();
+    e.explore(&root);
+    assert_eq!(
+        names(&e),
+        ["sub", "deep", "far.txt", "inner.txt", "a.rs", "b.txt", "Zed.md"]
+    );
+    assert_eq!(selected(&e), 2, "with the file picked");
+
+    e.keys(&parse("<Tab>"));
+    e.ex(&format!("e {}", root.join("a.rs").display()));
+    e.keys(&parse("gT"));
+    assert_eq!(names(&e)[selected(&e)], "far.txt", "switching files follows along");
+    e.keys(&parse("gt"));
+    assert_eq!(names(&e)[selected(&e)], "a.rs");
+
+    e.keys(&parse(":Ex<CR>"));
+    assert_eq!(e.explorer().unwrap().root(), root, ":Ex opens the file's own folder");
+    e.ex(&format!("e {}", root.join("sub/inner.txt").display()));
+    e.keys(&parse(":Ex<CR>"));
+    assert_eq!(e.explorer().unwrap().root(), root.join("sub"));
+    assert_eq!(names(&e)[selected(&e)], "inner.txt", "with the file picked");
+}
+
+#[test]
 fn moving_around() {
     let (mut e, _) = browse("moving");
     e.keys(&parse("G"));
