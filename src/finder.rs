@@ -82,6 +82,10 @@ impl Finder {
         Finder::build(root, files, cut_short, query, format!("find in {name}"))
     }
 
+    pub fn from_list(root: &Path, files: Vec<String>, title: &str) -> Finder {
+        Finder::build(root.to_path_buf(), files, false, "", title.to_string())
+    }
+
     fn build(root: PathBuf, files: Vec<String>, cut_short: bool, query: &str, title: String) -> Finder {
         let mut f = Finder {
             root,
