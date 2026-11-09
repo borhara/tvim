@@ -820,6 +820,35 @@ fn display_path(path: &Path) -> String {
     path.display().to_string()
 }
 
+struct Tab {
+    name: String,
+    current: bool,
+    modified: bool,
+}
+
+fn tab_names(e: &Editor) -> Vec<Tab> {
+    let all = e.buffers();
+    let base = |b: &crate::editor::BufferInfo| file_name(b.path.as_deref(), "untitled");
+    all.iter()
+        .map(|b| {
+            let name = base(b);
+            let clash = all.iter().filter(|o| base(o) == name).count() > 1;
+            let shown = match (&b.path, clash) {
+                (Some(p), true) => p
+                    .parent()
+                    .and_then(|d| d.file_name())
+                    .map_or(name.clone(), |d| format!("{}/{name}", d.to_string_lossy())),
+                _ => name,
+            };
+            Tab {
+                name: shown,
+                current: b.current,
+                modified: b.modified,
+            }
+        })
+        .collect()
+}
+
 // on tvim's clock so it rests while unfocused
 fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
     if area.width == 0 || area.height == 0 {
