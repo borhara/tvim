@@ -98,9 +98,13 @@ impl Editor {
                 }
             }
         } else if is("bnext", 2) {
+            self.cycle_buffer(1);
         } else if is("bprevious", 2) || is("bNext", 2) {
+            self.cycle_buffer(-1);
         } else if is("bfirst", 2) || is("brewind", 2) {
+            self.switch_to(0);
         } else if is("blast", 2) {
+            self.switch_to(self.buffers().len() - 1);
         } else if is("bdelete", 2) || is("bwipeout", 2) || is("bunload", 3) {
         } else if is("buffers", 7) || is("ls", 2) {
         } else if is("buffer", 1) {

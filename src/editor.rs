@@ -851,6 +851,29 @@ impl Editor {
             .collect()
     }
 
+    pub fn buffer_index(&self) -> usize {
+        self.current
+    }
+
+    pub(crate) fn switch_to(&mut self, index: usize) {
+        if index == self.current || index >= self.docs.len() {
+            return;
+        }
+        let here = self.stash();
+        self.docs[self.current] = here;
+        let there = std::mem::take(&mut self.docs[index]);
+        self.unstash(there);
+        self.current = index;
+        self.clamp();
+        self.follow_file();
+    }
+
+    pub(crate) fn cycle_buffer(&mut self, by: isize) {
+        let n = self.docs.len() as isize;
+        let to = (self.current as isize + by).rem_euclid(n) as usize;
+        self.switch_to(to);
+    }
+
     fn open_or_report(&mut self, path: &Path) -> bool {
         let path = relative_to_cwd(path);
     }
@@ -1209,7 +1232,10 @@ impl Editor {
             Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
             Act::With(c, ch) => self.normal_with(c, ch, n),
             Act::G('t') => match cmd.count {
+                Some(k) => self.switch_to(k.saturating_sub(1)),
+                None => self.cycle_buffer(1),
             },
+            Act::G('T') => self.cycle_buffer(-(n as isize)),
             Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
             Act::Select { .. } => {}

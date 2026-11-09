@@ -324,6 +324,7 @@ impl Editor {
         if w.buffer != self.buffer_id {
             if let Some(i) = self.buffer_at(w.buffer) {
                 self.no_jumps = true;
+                self.switch_to(i);
                 self.no_jumps = false;
             }
         }
