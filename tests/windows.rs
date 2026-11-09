@@ -1,5 +1,5 @@
 mod common;
-use common::ed;
+use common::{ed, temp};
 use tinsel::app::Frame;
 use tvim::keys::parse;
 use tvim::ui::draw;
@@ -7,6 +7,12 @@ use tvim::{Editor, Pos};
 
 fn lines(n: usize) -> String {
     (1..=n).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n")
+}
+
+fn file(name: &str, text: &str) -> std::path::PathBuf {
+    let p = temp(name);
+    std::fs::write(&p, text).unwrap();
+    p
 }
 
 #[test]
@@ -124,6 +130,21 @@ fn edits_below_leave_the_other_window_alone() {
     e.ex("s/line/LINE/");
     e.keys(&parse("<C-w>k"));
     assert_eq!(e.cursor().row, 4, "a changed line above doesn't move it");
+}
+
+#[test]
+fn split_with_a_file() {
+    let a = file("win-a.txt", "alpha\n");
+    let b = file("win-b.txt", "beta\n");
+    let mut e = Editor::open(&a).unwrap();
+    e.set_screen(80, 24);
+    e.ex(&format!("vsplit {}", b.display()));
+    assert_eq!(e.text(), "beta");
+    e.keys(&parse("<C-w>l"));
+    assert_eq!(e.text(), "alpha");
+    e.ex(&format!("sp {}", a.display()));
+    assert_eq!(e.text(), "alpha", "the same file isn't reloaded");
+    assert_eq!(e.buffers().len(), 2);
 }
 
 #[test]
