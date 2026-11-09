@@ -96,3 +96,23 @@ fn quitting_minds_every_file() {
     e.ex("q!");
     assert!(e.should_quit());
 }
+
+#[test]
+fn write_all_and_quit_all() {
+    let paths = files("wall");
+    let mut e = Editor::new();
+    open_all(&mut e, &paths[..2]);
+    e.keys(&parse("A!<Esc>gtA?<Esc>"));
+    e.ex("wa");
+    assert_eq!(std::fs::read_to_string(&paths[0]).unwrap(), "one?\n");
+    assert_eq!(std::fs::read_to_string(&paths[1]).unwrap(), "two!\n");
+    assert!(e.buffers().iter().all(|b| !b.modified));
+    e.keys(&parse("x"));
+    e.ex("wqa");
+    assert!(e.should_quit());
+    assert_eq!(
+        std::fs::read_to_string(&paths[0]).unwrap(),
+        "one\n",
+        "x took the ? the cursor was on"
+    );
+}
