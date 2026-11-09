@@ -111,7 +111,9 @@ impl Editor {
         } else if is("bdelete", 2) || is("bwipeout", 2) || is("bunload", 3) {
             self.close_buffer(force);
         } else if is("buffers", 7) || is("ls", 2) {
+            self.list_buffers();
         } else if is("buffer", 1) {
+            self.pick_buffer(arg);
         } else if is("grep", 2) || is("Grep", 2) || is("vimgrep", 3) {
             let query = arg.trim_matches('/');
             self.grep(non_empty(query));
@@ -276,6 +278,40 @@ impl Editor {
     }
 
     fn others_saved(&mut self, force: bool) -> bool {
+    }
+
+    fn list_buffers(&mut self) {
+        let shown: Vec<String> = self
+            .buffers()
+            .iter()
+            .map(|b| {
+                let mark = if b.current { "%" } else { " " };
+                let changed = if b.modified { " +" } else { "" };
+                format!("{}{mark} {}{changed}", b.id, b.name)
+            })
+            .collect();
+        self.info(shown.join("   "));
+    }
+
+    fn pick_buffer(&mut self, arg: &str) {
+        let all = self.buffers();
+        if arg.is_empty() {
+            return;
+        }
+        let found = match arg.parse::<usize>() {
+            Ok(id) => all.iter().position(|b| b.id == id),
+            Err(_) => {
+                let hits: Vec<usize> = (0..all.len()).filter(|&i| all[i].name.contains(arg)).collect();
+                if hits.len() > 1 {
+                    return self.error(format!("E93: More than one match for {arg}"));
+                }
+                hits.first().copied()
+            }
+        };
+        match found {
+            Some(i) => self.switch_to(i),
+            None => self.error(format!("E94: No matching buffer for {arg}")),
+        }
     }
 
     fn read_file(&mut self, path: &str, at: usize) {
