@@ -951,6 +951,28 @@ impl Editor {
         }
     }
 
+    pub(crate) fn close_buffer(&mut self, force: bool) {
+        if self.is_modified() && !force {
+            let name = self.name();
+            return self.error(format!(
+                "E89: No write since last change for buffer \"{name}\" (add ! to override)"
+            ));
+        }
+        if self.docs.len() == 1 {
+            self.fresh_doc();
+            self.drop_orphan_windows();
+            return;
+        }
+        let gone = self.current;
+        let to = if gone + 1 < self.docs.len() { gone + 1 } else { gone - 1 };
+        self.switch_to(to);
+        self.docs.remove(gone);
+        if gone < self.current {
+            self.current -= 1;
+        }
+        self.drop_orphan_windows();
+    }
+
     pub fn finder(&self) -> Option<&Finder> {
         self.finder.as_ref()
     }
