@@ -148,6 +148,32 @@ fn split_with_a_file() {
 }
 
 #[test]
+fn new_splits_an_empty_buffer() {
+    let mut e = ed("hello");
+    e.ex("new");
+    assert_eq!(e.text(), "");
+    assert_eq!(e.buffers().len(), 2);
+    e.keys(&parse("<C-w>j"));
+    assert_eq!(e.text(), "hello");
+    e.keys(&parse("<C-w>n"));
+    assert_eq!(e.buffers().len(), 3);
+}
+
+#[test]
+fn deleting_a_buffer_closes_its_other_windows() {
+    let a = file("win-del-a.txt", "alpha\n");
+    let b = file("win-del-b.txt", "beta\n");
+    let mut e = Editor::open(&a).unwrap();
+    e.set_screen(80, 24);
+    e.ex(&format!("vs {}", b.display()));
+    e.ex("sp");
+    assert_eq!(e.window_count(), 3);
+    e.ex("bd");
+    assert_eq!(e.window_count(), 2);
+    assert_eq!(e.text(), "alpha");
+}
+
+#[test]
 fn substitute_still_reads_as_one() {
     let mut e = ed("aaa");
     e.ex("s/a/b/");
