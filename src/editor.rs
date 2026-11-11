@@ -1000,6 +1000,18 @@ impl Editor {
         ok
     }
 
+    pub fn pick_buffer_list(&mut self) {
+        let root = cwd();
+        let names: Vec<String> = self
+            .buffers()
+            .into_iter()
+            .filter_map(|b| b.path)
+            .map(|p| relative_to_cwd(&p.canonicalize().unwrap_or(p)).display().to_string())
+            .collect();
+        self.pending.clear();
+        self.finder = Some(Finder::from_list(&root, names, "open files"));
+    }
+
     pub fn finder(&self) -> Option<&Finder> {
         self.finder.as_ref()
     }
