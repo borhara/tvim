@@ -21,6 +21,7 @@ impl Editor {
         let rest = rest.trim_start();
         if rest.is_empty() {
             if let Some((_, last)) = range {
+                self.remember_jump();
                 let row = last.min(self.buf.last_row());
                 self.set_cursor(self.first_non_blank_pos(row));
                 self.land(false);
