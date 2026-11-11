@@ -21,10 +21,13 @@ pub struct JumpList {
 impl JumpList {
     pub fn push(&mut self, spot: Spot) {
         self.spots.truncate(self.at);
+        self.add(spot);
     }
 
     fn add(&mut self, spot: Spot) {
         self.spots
+            .retain(|s| !(s.buffer == spot.buffer && s.pos.row == spot.pos.row));
+        self.spots.push(spot);
         if self.spots.len() > MAX_JUMPS {
             self.spots.remove(0);
         }
@@ -68,4 +71,36 @@ impl JumpList {
     pub fn is_empty(&self) -> bool {
         self.spots.is_empty()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spot(row: usize) -> Spot {
+        Spot {
+            buffer: 1,
+            path: None,
+            pos: Pos::new(row, 0),
+        }
+    }
+
+    fn rows(j: &JumpList) -> Vec<usize> {
+        j.spots.iter().map(|s| s.pos.row).collect()
+    }
+
+    #[test]
+    fn back_and_forward() {
+        let mut j = JumpList::default();
+        j.push(spot(1));
+        j.push(spot(5));
+        assert_eq!(j.back(spot(9), 1), Some(spot(5)), "remembers where it left from");
+        assert_eq!(rows(&j), [1, 5, 9]);
+        assert_eq!(j.back(spot(5), 1), Some(spot(1)));
+        assert_eq!(j.back(spot(1), 1), None);
+        assert_eq!(j.forward(2), Some(spot(9)));
+        assert_eq!(j.forward(1), None);
+        assert!(!j.has_newer());
+    }
+
 }
