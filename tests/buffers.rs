@@ -116,3 +116,36 @@ fn write_all_and_quit_all() {
         "x took the ? the cursor was on"
     );
 }
+
+#[test]
+fn closing_a_buffer() {
+    let paths = files("close");
+    let mut e = Editor::new();
+    open_all(&mut e, &paths);
+    e.keys(&parse("2gt"));
+    e.ex("bd");
+    assert_eq!(e.buffers().len(), 2);
+    assert_eq!(e.text(), "three", "the next one comes forward");
+    e.keys(&parse("x"));
+    e.ex("bd");
+    assert!(e.message().unwrap().text.starts_with("E89"));
+    e.ex("bd!");
+    e.ex("bd");
+    assert_eq!(e.buffers().len(), 1);
+    assert!(
+        e.text().is_empty() && e.file().path.is_none(),
+        "closing the last leaves an empty one"
+    );
+}
+
+#[test]
+fn listing_them() {
+    let paths = files("ls");
+    let mut e = Editor::new();
+    open_all(&mut e, &paths[..2]);
+    e.keys(&parse("x"));
+    e.ex("ls");
+    let text = e.message().unwrap().text.clone();
+    assert!(text.contains("1  ") && text.contains("one.txt"), "{text}");
+    assert!(text.contains("2% ") && text.contains("two.txt +"), "{text}");
+}
