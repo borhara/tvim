@@ -8,10 +8,10 @@ use tinsel::app::Key;
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
-use crate::diff::Hunk;
+use crate::diff::{Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
-use crate::jumps::JumpList;
+use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::regex::Regex;
@@ -862,6 +862,7 @@ impl Editor {
         if index == self.current || index >= self.docs.len() {
             return;
         }
+        self.push_jump(self.cursor);
         let here = self.stash();
         self.docs[self.current] = here;
         let there = std::mem::take(&mut self.docs[index]);
@@ -927,6 +928,7 @@ impl Editor {
             self.load(path)?;
             return Ok(());
         }
+        self.push_jump(self.cursor);
         let back = self.current;
         let here = self.stash();
         self.docs[self.current] = here;
@@ -1547,11 +1549,30 @@ impl Editor {
         col_at(line, self.want, self.options.tab_stop).min(max)
     }
 
+    fn is_jump(m: Motion) -> bool {
+        matches!(
+            m,
+            Motion::FirstLine
+                | Motion::LastLine
+                | Motion::Bracket
+                | Motion::SearchNext(_)
+                | Motion::Mark(..)
+                | Motion::ScreenTop
+                | Motion::ScreenMiddle
+                | Motion::ScreenBottom
+                | Motion::ParagraphForward
+                | Motion::ParagraphBack
+                | Motion::Hunk(_)
+        )
+    }
+
     fn move_cursor(&mut self, m: Motion, count: Option<usize>) {
         let Some((to, _)) = self.target(m, count, false) else {
             return;
         };
+        let jump = Self::is_jump(m);
         if jump {
+            self.jump_from(self.cursor);
         }
         self.cursor = to;
         match m {
@@ -1653,6 +1674,9 @@ impl Editor {
                 let Some((to, kind)) = self.target(m, count, true) else {
                     return;
                 };
+                if Self::is_jump(m) {
+                    self.jump_from(self.cursor);
+                }
                 self.range_to(to, kind)
             }
         };
@@ -2913,6 +2937,7 @@ impl Editor {
             self.search_shown = true;
             match self.find(&pat, self.cmd.origin, prompt == '/', true) {
                 Some(p) => {
+                    self.jump_from(self.cmd.origin);
                     self.cursor = p;
                     self.set_want();
                     self.land(true);
@@ -3038,6 +3063,7 @@ impl Editor {
         let Some(at) = self.find(&pat, Pos::new(start.row, col), forward, true) else {
             return;
         };
+        self.jump_from(start);
         self.cursor = at;
         self.set_want();
         self.land(true);
@@ -3252,6 +3278,30 @@ impl Editor {
 
     pub(crate) fn push_effect(&mut self, e: Effect) {
         self.effects.push(e);
+    }
+
+    pub(crate) fn remember_jump(&mut self) {
+        self.jump_from(self.cursor);
+    }
+
+    fn jump_from(&mut self, from: Pos) {
+        self.marks.insert('\'', from);
+        self.push_jump(from);
+    }
+
+    fn push_jump(&mut self, pos: Pos) {
+        if self.no_jumps {
+            return;
+        }
+        self.jumps.push(Spot { pos, ..self.here() });
+    }
+
+    fn here(&self) -> Spot {
+        Spot {
+            buffer: self.buffer_id,
+            path: self.file.path.clone(),
+            pos: self.cursor,
+        }
     }
 
     pub(crate) fn marks(&self) -> &HashMap<char, Pos> {
