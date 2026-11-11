@@ -1453,6 +1453,10 @@ impl Editor {
             Key::Ctrl('g') => self.file_info(),
             Key::Ctrl('l') => self.message = None,
             Key::Ctrl('z') => self.effects.push(Effect::Suspend),
+            Key::Ctrl('o') => self.jump_older(n),
+            Key::Ctrl('i') => self.jump_newer(n),
+            // a terminal sends Tab for Ctrl-i
+            Key::Tab if self.jumps.has_newer() => self.jump_newer(n),
             Key::Ctrl('p') => self.find_files(None),
             _ => {}
         }
@@ -3302,6 +3306,54 @@ impl Editor {
             path: self.file.path.clone(),
             pos: self.cursor,
         }
+    }
+
+    fn jump_older(&mut self, mut n: usize) {
+        let mut here = self.here();
+        while let Some(spot) = self.jumps.back(here.clone(), n) {
+            if self.go_to_spot(spot) {
+                return;
+            }
+            here = self.here();
+            n = 1;
+        }
+    }
+
+    fn jump_newer(&mut self, mut n: usize) {
+        while let Some(spot) = self.jumps.forward(n) {
+            if self.go_to_spot(spot) {
+                return;
+            }
+            n = 1;
+        }
+    }
+
+    fn go_to_spot(&mut self, spot: Spot) -> bool {
+        self.no_jumps = true;
+        let found = if spot.buffer == self.buffer_id {
+            true
+        } else if let Some(i) = (0..self.docs.len()).find(|&i| i != self.current && self.docs[i].id == spot.buffer) {
+            self.switch_to(i);
+            true
+        } else if let Some(path) = &spot.path {
+            match self.open_path(path) {
+                Ok(()) => true,
+                Err(e) => {
+                    self.error(format!("\"{}\" {e}", path.display()));
+                    false
+                }
+            }
+        } else {
+            false
+        };
+        self.no_jumps = false;
+        if found {
+            self.leave_visual_if_any();
+            self.mode = Mode::Normal;
+            self.cursor = self.clamp_pos(spot.pos);
+            self.set_want();
+        }
+        found
     }
 
     pub(crate) fn marks(&self) -> &HashMap<char, Pos> {
