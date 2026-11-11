@@ -103,4 +103,28 @@ mod tests {
         assert!(!j.has_newer());
     }
 
+    #[test]
+    fn a_new_jump_drops_the_newer_ones_and_lines_are_kept_once() {
+        let mut j = JumpList::default();
+        for r in [1, 2, 3] {
+            j.push(spot(r));
+        }
+        j.back(spot(4), 3);
+        assert!(j.has_newer());
+        j.push(spot(1));
+        assert_eq!(rows(&j), [1]);
+        j.push(spot(7));
+        j.push(spot(1));
+        assert_eq!(rows(&j), [7, 1]);
+    }
+
+    #[test]
+    fn it_is_capped() {
+        let mut j = JumpList::default();
+        for r in 0..150 {
+            j.push(spot(r));
+        }
+        assert_eq!(j.len(), MAX_JUMPS);
+        assert_eq!(rows(&j)[0], 50);
+    }
 }
