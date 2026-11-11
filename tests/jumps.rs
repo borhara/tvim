@@ -63,3 +63,11 @@ fn the_list_is_capped() {
         "only the last hundred are kept, counting where it left from"
     );
 }
+
+#[test]
+fn back_to_the_last_jump_with_quotes() {
+    assert_eq!(at(LINES, "G''"), (0, 0));
+    assert_eq!(at(LINES, "G''''"), (6, 0));
+    assert_eq!(at(LINES, "jlllG``"), (1, 3));
+    assert_eq!(at(LINES, "G<C-o>''"), (6, 0), "not where it already is");
+}
