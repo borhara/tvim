@@ -1,5 +1,6 @@
 mod common;
-use common::{cursor_after as at, ed};
+use common::{cursor_after as at, ed, temp};
+use tvim::Editor;
 use tvim::keys::parse;
 
 const LINES: &str = "one\ntwo foo\n\nthree\nfoo four\n\nfive";
@@ -70,4 +71,54 @@ fn back_to_the_last_jump_with_quotes() {
     assert_eq!(at(LINES, "G''''"), (6, 0));
     assert_eq!(at(LINES, "jlllG``"), (1, 3));
     assert_eq!(at(LINES, "G<C-o>''"), (6, 0), "not where it already is");
+}
+
+fn two_files(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let a = temp(&format!("{name}-a.txt"));
+    let b = temp(&format!("{name}-b.txt"));
+    std::fs::write(&a, "a1\na2\na3\n").unwrap();
+    std::fs::write(&b, "b1\nb2\n").unwrap();
+    (a, b)
+}
+
+#[test]
+fn across_files() {
+    let (a, b) = two_files("across");
+    let mut e = Editor::new();
+    e.ex(&format!("e {}", a.display()));
+    e.keys(&parse("jj"));
+    e.ex(&format!("e {}", b.display()));
+    e.keys(&parse("G"));
+    e.keys(&parse("<C-o>"));
+    assert_eq!((e.text().as_str(), e.cursor().row), ("b1\nb2", 0));
+    e.keys(&parse("<C-o>"));
+    assert_eq!((e.text().as_str(), e.cursor().row), ("a1\na2\na3", 2));
+    e.keys(&parse("<C-i>"));
+    assert_eq!((e.text().as_str(), e.cursor().row), ("b1\nb2", 0));
+    e.keys(&parse("<C-i>"));
+    assert_eq!(e.cursor().row, 1);
+    e.keys(&parse("gt"));
+    assert_eq!(e.text(), "a1\na2\na3");
+    e.keys(&parse("<C-o>"));
+    assert_eq!(
+        (e.text().as_str(), e.cursor().row),
+        ("b1\nb2", 1),
+        "switching buffers is a jump"
+    );
+}
+
+#[test]
+fn a_closed_file_is_opened_again() {
+    let (a, b) = two_files("reopen");
+    let mut e = Editor::new();
+    e.ex(&format!("e {}", a.display()));
+    e.keys(&parse("j"));
+    e.ex(&format!("e {}", b.display()));
+    e.keys(&parse("gT"));
+    e.ex("bd");
+    assert_eq!(e.buffers().len(), 1);
+    assert_eq!(e.text(), "b1\nb2");
+    e.keys(&parse("<C-o>"));
+    assert_eq!((e.text().as_str(), e.cursor().row), ("a1\na2\na3", 1));
+    assert_eq!(e.buffers().len(), 2);
 }
