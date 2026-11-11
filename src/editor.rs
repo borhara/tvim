@@ -11,6 +11,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::{Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
+use crate::grep::Grep;
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -369,6 +370,7 @@ pub struct Editor {
     explorer: Option<Explorer>,
     explorer_focused: bool,
     pub(crate) finder: Option<Finder>,
+    grep: Option<Grep>,
     saved_lines: Vec<String>,
     git_history: Vec<String>,
     states: RefCell<States>,
