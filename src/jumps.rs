@@ -53,4 +53,19 @@ impl JumpList {
         self.at + 1 < self.spots.len()
     }
 
+    pub fn latest_elsewhere(&self, buffer: usize, row: usize) -> Option<Pos> {
+        self.spots
+            .iter()
+            .rev()
+            .find(|s| s.buffer == buffer && s.pos.row != row)
+            .map(|s| s.pos)
+    }
+
+    pub fn len(&self) -> usize {
+        self.spots.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.spots.is_empty()
+    }
 }
