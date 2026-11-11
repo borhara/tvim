@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::cell::Cell;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use tinsel::app::Waker;
@@ -8,6 +9,13 @@ use crate::sync::lock;
 
 const MAX_FILE: u64 = 1_000_000;
 const MAX_TOTAL: usize = 100_000_000;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hit {
+    pub file: usize,
+    pub row: usize,
+    pub col: usize,
+}
 
 struct File {
     path: String,
@@ -22,6 +30,49 @@ struct Loaded {
     files: Vec<File>,
     done: bool,
     cut_short: bool,
+}
+
+pub struct Grep {
+    root: PathBuf,
+    loaded: Arc<Mutex<Loaded>>,
+    query: String,
+    hits: Vec<Hit>,
+    searched: usize,
+    capped: bool,
+    selected: usize,
+    top: Cell<usize>,
+}
+
+impl Grep {
+    pub fn new(root: &Path, query: &str) -> Grep {
+        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let loaded = Arc::new(Mutex::new(Loaded::default()));
+        let shared = loaded.clone();
+        let from = root.clone();
+        let waker = Waker::new();
+        std::thread::spawn(move || read_all(&from, &shared, &waker));
+        let mut g = Grep {
+            root,
+            loaded,
+            query: query.to_string(),
+            hits: Vec::new(),
+            searched: 0,
+            capped: false,
+            selected: 0,
+            top: Cell::new(0),
+        };
+        g.refresh();
+        g
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Loaded> {
+        lock(&self.loaded)
+    }
+
+    pub fn wait(&mut self) {
+        self.refresh();
+    }
+
 }
 
 fn read_all(root: &Path, loaded: &Arc<Mutex<Loaded>>, waker: &Waker) {
