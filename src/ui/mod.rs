@@ -297,7 +297,11 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if let Some(f) = e.finder() {
         typing_at = overlays::finder(f, frame, d.panes, &c);
     }
+    if let Some(g) = e.grep_picker() {
+        typing_at = overlays::grep(g, frame, d.panes, &c);
+    }
         || e.finder().is_some()
+        || e.grep_picker().is_some()
         || matches!(e.mode(), Mode::Command | Mode::Search)
         || e.explorer_focused();
     if let Some((x, y, shape)) = cursor {

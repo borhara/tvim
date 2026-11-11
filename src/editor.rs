@@ -737,6 +737,7 @@ impl Editor {
             return self.finder_input(input);
         }
         if self.grep.is_some() {
+            return self.grep_input(input);
         }
         let filtering = self.explorer.as_ref().is_some_and(Explorer::is_filtering);
         if input == Input::Key(Key::Ctrl('p')) && self.explorer_focused() && !filtering && self.mode == Mode::Normal {
@@ -1005,6 +1006,31 @@ impl Editor {
         self.switch_to(back);
         self.no_jumps = false;
         ok
+    }
+
+    pub fn grep_picker(&self) -> Option<&Grep> {
+        self.grep.as_ref()
+    }
+
+    pub fn grep(&mut self, query: Option<&str>) {
+        let root = cwd();
+        self.grep_in(&root, query.unwrap_or(""));
+    }
+
+    pub fn grep_in(&mut self, root: &Path, query: &str) {
+        self.reset_for_picker();
+        self.grep = Some(Grep::new(root, query));
+    }
+
+    fn grep_input(&mut self, input: Input) {
+        let Some(g) = self.grep.as_mut() else { return };
+        let key = match input {
+            Input::Paste(text) => return g.paste(&text),
+            Input::Key(k) => k,
+        };
+        self.message = None;
+        match g.key(key) {
+        }
     }
 
     pub fn pick_buffer_list(&mut self) {
