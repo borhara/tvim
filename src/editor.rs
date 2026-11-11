@@ -11,6 +11,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::Hunk;
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
+use crate::jumps::JumpList;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::regex::Regex;
@@ -373,6 +374,7 @@ pub struct Editor {
     states: RefCell<States>,
     regex_cache: RefCell<Option<RegexCache>>,
     hits_cache: RefCell<Option<HitsCache>>,
+    jumps: JumpList,
     pub(crate) no_jumps: bool,
     docs: Vec<Doc>,
     current: usize,
@@ -455,6 +457,7 @@ impl Editor {
             marks_cache: RefCell::new(None),
             regex_cache: RefCell::new(None),
             hits_cache: RefCell::new(None),
+            jumps: JumpList::default(),
             no_jumps: false,
             docs: vec![Doc::default()],
             current: 0,

@@ -8,6 +8,7 @@ pub mod editor;
 mod ex;
 pub mod explorer;
 pub mod finder;
+pub mod jumps;
 pub mod keys;
 pub mod motion;
 pub mod object;
