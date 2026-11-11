@@ -4,8 +4,8 @@ mod sky;
 use std::io::Write;
 use std::path::Path;
 
-use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles};
-use tinsel::{ColorMode, Rgb, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
+use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles, Toasts};
+use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
 
 use crate::buffer::Buffer;
 use crate::buffer::Pos;
@@ -21,6 +21,7 @@ const SIDE_DIM: f32 = 0.35;
 
 pub struct Tvim {
     pub editor: Editor,
+    toasts: Toasts,
     pending_since: Option<f32>,
 }
 
@@ -28,6 +29,7 @@ impl Tvim {
     pub fn new(editor: Editor) -> Tvim {
         Tvim {
             editor,
+            toasts: Toasts::new().life(3.0),
             pending_since: None,
         }
     }
@@ -43,6 +45,7 @@ impl Tvim {
             .message()
             .filter(|m| !m.error && m.text.ends_with(" written"));
         if let Some(m) = written {
+            self.toasts.push(Tone::Success, text);
             self.editor.clear_message();
         }
     }
@@ -55,6 +58,7 @@ impl App for Tvim {
         let area = frame.area();
         if area.height > 4 {
             let room = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height - 2);
+            frame.render(room, &self.toasts);
         }
     }
 
