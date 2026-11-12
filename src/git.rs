@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use tinsel::app::Waker;
+
 use crate::editor::dir_of;
 use crate::sync::{lock, wait_until};
 
@@ -49,6 +51,49 @@ impl Git {
         wait_until(|| !self.busy());
     }
 
+    pub fn probe(&self, path: Option<&Path>) {
+        let mut s = lock(&self.shared);
+        s.ticket += 1;
+        if s.path.as_deref() != path {
+            let seq = s.found.seq + 1;
+            s.found = Found {
+                seq,
+                ..Found::default()
+            };
+            s.path = path.map(Path::to_path_buf);
+        }
+        let Some(path) = path else {
+            s.busy = false;
+            return;
+        };
+        s.busy = true;
+        let ticket = s.ticket;
+        drop(s);
+        let shared = self.shared.clone();
+        let path = path.to_path_buf();
+        let waker = Waker::new();
+        std::thread::spawn(move || {
+            let (branch, head, base) = look(&path);
+            let upstream = upstream(&path);
+            let mut s = lock(&shared);
+            if s.ticket != ticket {
+                return;
+            }
+            s.busy = false;
+            if s.found.upstream != upstream {
+                s.found.upstream = upstream;
+                waker.wake();
+            }
+            if s.found.branch != branch || s.found.head != head || s.found.base != base {
+                s.found.branch = branch;
+                s.found.head = head;
+                s.found.base = base;
+                s.found.seq += 1;
+                drop(s);
+                waker.wake();
+            }
+        });
+    }
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<(i32, Vec<u8>)> {
@@ -70,6 +115,12 @@ fn trimmed(out: Vec<u8>) -> Option<String> {
 
 fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
     git(dir, args).filter(|(code, _)| *code == 0).and_then(|(_, out)| trimmed(out))
+}
+
+fn upstream(path: &Path) -> Option<(usize, usize)> {
+    let text = git_line(dir_of(path), &["rev-list", "--left-right", "--count", "HEAD...@{u}"])?;
+    let mut n = text.split_whitespace().map(|n| n.parse().ok());
+    Some((n.next()??, n.next()??))
 }
 
 fn look(path: &Path) -> (Option<String>, Option<String>, Base) {
