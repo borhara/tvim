@@ -8,10 +8,10 @@ use tinsel::app::Key;
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
-use crate::diff::{Hunk, Mark};
+use crate::diff::{self, Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
-use crate::git::Git;
+use crate::git::{Base, Git};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
@@ -226,6 +226,7 @@ struct Doc {
     top: usize,
     left: usize,
     states: RefCell<States>,
+    diffs: RefCell<Option<DiffCache>>,
 }
 
 impl Doc {
@@ -266,6 +267,7 @@ pub(crate) struct Text<'a> {
     git: &'a Git,
     saved_lines: &'a [String],
     states: &'a RefCell<States>,
+    diffs: &'a RefCell<Option<DiffCache>>,
 }
 
 impl Text<'_> {
@@ -307,6 +309,37 @@ impl Text<'_> {
         cache.states[row.min(cache.states.len() - 1)]
     }
 
+    fn diffed(&self) -> DiffCache {
+        let key = (self.version, self.git.with(|f| f.seq));
+        if self.diffs.borrow().as_ref().is_none_or(|c| c.0 != key) {
+            let lines = self.buf.lines();
+            let (hunks, untracked) = self.git.with(|f| {
+                let hunks = match &f.base {
+                Base::Head(old) => diff::hunks(old, lines),
+                Base::Untracked if self.buf.is_empty() => Vec::new(),
+                Base::Untracked => vec![Hunk {
+                    old: 0..0,
+                    new: 0..lines.len(),
+                }],
+                Base::Outside if self.modified || self.saved_lines != lines => diff::hunks(self.saved_lines, lines),
+                Base::Outside => Vec::new(),
+                };
+                (hunks, matches!(f.base, Base::Untracked))
+            });
+            // the sidebar's ? already says the whole file is new
+            let marks = if untracked {
+                vec![None; lines.len()]
+            } else {
+                diff::marks_from(&hunks, lines.len())
+            };
+            *self.diffs.borrow_mut() = Some((key, hunks.into(), marks.into()));
+        }
+        self.diffs.borrow().clone().expect("just filled")
+    }
+
+    pub fn change_marks(&self) -> Rc<[Option<Mark>]> {
+        self.diffed().2
+    }
 }
 
 pub(crate) struct View<'a> {
@@ -322,6 +355,7 @@ pub(crate) struct View<'a> {
 type RegexCache = (String, (bool, bool), Rc<Regex>);
 // keyed on (buffer version, git answer)
 type HitsCache = (usize, u64, Rc<Regex>, Rc<[Pos]>);
+type DiffCache = ((u64, u64), Rc<[Hunk]>, Rc<[Option<Mark>]>);
 
 const MAX_UNDO: usize = 1000;
 const MAX_HISTORY: usize = 100;
@@ -378,6 +412,7 @@ pub struct Editor {
     git: Git,
     git_history: Vec<String>,
     states: RefCell<States>,
+    marks_cache: RefCell<Option<DiffCache>>,
     regex_cache: RefCell<Option<RegexCache>>,
     hits_cache: RefCell<Option<HitsCache>>,
     jumps: JumpList,
@@ -605,6 +640,14 @@ impl Editor {
             .iter()
             .enumerate()
             .position(|(i, d)| i != self.current && d.id == id)
+    }
+
+    pub fn change_marks(&self) -> Rc<[Option<Mark>]> {
+        self.shown_text().change_marks()
+    }
+
+    pub fn change_hunks(&self) -> Rc<[Hunk]> {
+        self.shown_text().diffed().1
     }
 
     pub fn selection(&self) -> Option<Range> {
@@ -1670,6 +1713,207 @@ impl Editor {
             (at != p).then_some(at)
         };
         Some(match m {
+            Motion::Left => {
+                if p.col == 0 {
+                    return None;
+                }
+                (Pos::new(p.row, p.col.saturating_sub(n)), Exclusive)
+            }
+            Motion::Right => {
+                let max = if for_op || self.mode.is_visual() {
+                    len
+                } else {
+                    len.saturating_sub(1)
+                };
+                if p.col >= max {
+                    return None;
+                }
+                (Pos::new(p.row, (p.col + n).min(max)), Exclusive)
+            }
+            Motion::Up => {
+                if p.row == 0 {
+                    return None;
+                }
+                let row = p.row.saturating_sub(n);
+                (Pos::new(row, self.col_for_want(row)), Linewise)
+            }
+            Motion::Down => {
+                if p.row >= b.last_row() {
+                    return None;
+                }
+                let row = (p.row + n).min(b.last_row());
+                (Pos::new(row, self.col_for_want(row)), Linewise)
+            }
+            Motion::LineStart => (Pos::new(p.row, 0), Exclusive),
+            Motion::FirstNonBlank => (fnb(p.row), Exclusive),
+            Motion::LineEnd => {
+                let row = (p.row + n - 1).min(b.last_row());
+                (Pos::new(row, b.line_len(row).saturating_sub(1)), Inclusive)
+            }
+            Motion::LastNonBlank => {
+                let row = (p.row + n - 1).min(b.last_row());
+                let line = b.line(row);
+                let end = char_count(line.trim_end_matches([' ', '\t']));
+                (Pos::new(row, end.saturating_sub(1)), Inclusive)
+            }
+            Motion::WordForward(big) => {
+                let mut at = p;
+                let mut prev = p;
+                for _ in 0..n {
+                    prev = at;
+                    let next = motion::word_forward(b, at, big);
+                    if next == at {
+                        break;
+                    }
+                    at = next;
+                }
+                if for_op {
+                    // vim: dw on the last word stops at the end of the line
+                    if at.row > prev.row && (at.col == 0 || at.col <= first_non_blank(b.line(at.row))) {
+                        let mut row = at.row - 1;
+                        while row > prev.row && b.line(row).trim().is_empty() {
+                            row -= 1;
+                        }
+                        at = Pos::new(row, b.line_len(row));
+                    }
+                    if at == p {
+                        return None;
+                    }
+                } else if at == p {
+                    return None;
+                } else if at.col >= b.line_len(at.row) && at.col > 0 {
+                    at.col = b.line_len(at.row).saturating_sub(1);
+                }
+                (at, Exclusive)
+            }
+            Motion::WordBack(big) => (repeat(motion::word_back, big)?, Exclusive),
+            Motion::WordEnd(big) => (repeat(motion::word_end, big)?, Inclusive),
+            Motion::WordEndBack(big) => {
+                let mut at = p;
+                for _ in 0..n {
+                    match motion::word_end_back(b, at, big) {
+                        Some(q) => at = q,
+                        None => {
+                            at = Pos::new(0, 0);
+                            break;
+                        }
+                    }
+                }
+                (at, Inclusive)
+            }
+            Motion::FirstLine => (fnb(count.map_or(0, |c| c - 1).min(b.last_row())), Linewise),
+            Motion::LastLine => (fnb(count.map_or(b.last_row(), |c| c - 1).min(b.last_row())), Linewise),
+            Motion::CountLine => (fnb((p.row + n - 1).min(b.last_row())), Linewise),
+            Motion::NextLine => {
+                if p.row >= b.last_row() {
+                    return None;
+                }
+                (fnb((p.row + n).min(b.last_row())), Linewise)
+            }
+            Motion::PrevLine => {
+                if p.row == 0 {
+                    return None;
+                }
+                (fnb(p.row.saturating_sub(n)), Linewise)
+            }
+            Motion::Column => {
+                let col = col_at(b.line(p.row), n - 1, self.options.tab_stop).min(len.saturating_sub(1));
+                (Pos::new(p.row, col), Exclusive)
+            }
+            Motion::Find(f) => {
+                self.last_find = Some(f);
+                let col = motion::find_in_line(b.line(p.row), p.col, f, n, false)?;
+                (Pos::new(p.row, col), if f.forward { Inclusive } else { Exclusive })
+            }
+            Motion::RepeatFind(reverse) => {
+                let f = self.last_find?;
+                let f = if reverse { f.reversed() } else { f };
+                let col = motion::find_in_line(b.line(p.row), p.col, f, n, true)?;
+                (Pos::new(p.row, col), if f.forward { Inclusive } else { Exclusive })
+            }
+            Motion::Bracket => {
+                if let Some(c) = count {
+                    let row = ((c.min(100) * b.len()).div_ceil(100)).saturating_sub(1);
+                    return Some((fnb(row), Linewise));
+                }
+                (motion::match_bracket(b, p)?, Inclusive)
+            }
+            Motion::ParagraphForward => {
+                let mut at = p;
+                for _ in 0..n {
+                    at = motion::paragraph_forward(b, at);
+                }
+                if !for_op && at.col > 0 {
+                    at.col -= 1;
+                }
+                (at, Exclusive)
+            }
+            Motion::ParagraphBack => {
+                let mut at = p;
+                for _ in 0..n {
+                    at = motion::paragraph_back(b, at);
+                }
+                (at, Exclusive)
+            }
+            Motion::ScreenTop | Motion::ScreenMiddle | Motion::ScreenBottom => {
+                let top = self.top.get();
+                let rows = self.text_rows();
+                let bottom = (top + rows - 1).min(b.last_row());
+                let so = self.scroll_off();
+                let row = match m {
+                    Motion::ScreenTop => {
+                        let off = if top == 0 { 0 } else { so };
+                        (top + (n - 1).max(off)).min(bottom)
+                    }
+                    Motion::ScreenBottom => {
+                        let off = if bottom == b.last_row() { 0 } else { so };
+                        bottom.saturating_sub((n - 1).max(off)).max(top)
+                    }
+                    _ => top + (bottom - top) / 2,
+                };
+                (fnb(row), Linewise)
+            }
+            Motion::SearchNext(reverse) => {
+                let Some(pat) = self.last_search.clone() else {
+                    self.error("E35: No previous regular expression");
+                    return None;
+                };
+                let forward = self.search_backward == reverse;
+                let mut at = p;
+                for _ in 0..n {
+                    at = self.find(&pat, at, forward, true)?;
+                }
+                self.search_shown = true;
+                (at, Exclusive)
+            }
+            Motion::Hunk(forward) => {
+                let rows = self.change_hunks().iter().map(Hunk::row).collect::<Vec<_>>();
+                // like vim: no wrapping, and a big count stops at the last one
+                let row = if forward {
+                    rows.iter().filter(|&&r| r > p.row).take(n).last()
+                } else {
+                    rows.iter().rev().filter(|&&r| r < p.row).take(n).last()
+                };
+                (fnb((*row?).min(b.last_row())), Linewise)
+            }
+            Motion::Mark(c, exact) => {
+                let c = if c == '`' { '\'' } else { c };
+                let mut mark = self.marks.get(&c).copied();
+                // '' where we already are goes to the last jump from somewhere else
+                if c == '\'' && mark.is_none_or(|m| m.row == p.row && (!exact || m.col == p.col)) {
+                    mark = self.jumps.latest_elsewhere(self.buffer_id, p.row).or(mark);
+                }
+                let Some(at) = mark else {
+                    self.error("E20: Mark not set");
+                    return None;
+                };
+                let at = self.clamp_pos(at);
+                if exact {
+                    (at, Exclusive)
+                } else {
+                    (fnb(at.row), Linewise)
+                }
+            }
         })
     }
 
