@@ -290,3 +290,49 @@ fn read_all(root: &Path, loaded: &Arc<Mutex<Loaded>>, waker: &Waker) {
     }
     flush(&mut batch, true, cut_short);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn project(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("tvim-grep-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(root.join("target")).unwrap();
+        std::fs::write(root.join("src/a.rs"), "fn alpha() {}\nlet Beta = 2;\nalpha();\n").unwrap();
+        std::fs::write(root.join("notes.md"), "# alpha notes\n").unwrap();
+        std::fs::write(root.join("target/built.rs"), "alpha\n").unwrap();
+        std::fs::write(root.join("logo.png"), [0u8, 159, 146, 150]).unwrap();
+        root
+    }
+
+    fn grep(root: &Path, query: &str) -> Grep {
+        let mut g = Grep::new(root, query);
+        g.wait();
+        g
+    }
+
+    #[test]
+    fn finds_every_line_in_every_file() {
+        let g = grep(&project("all"), "alpha");
+        let found: Vec<(String, usize, usize)> = g.hits().iter().map(|h| (g.path(h), h.row, h.col)).collect();
+        assert_eq!(
+            found,
+            [
+                ("notes.md".into(), 0, 2),
+                ("src/a.rs".into(), 0, 3),
+                ("src/a.rs".into(), 2, 0)
+            ]
+        );
+        assert_eq!(g.files_hit(), 2);
+        assert_eq!(g.line(&g.hits()[1]), "fn alpha() {}");
+        assert_eq!(
+            g.line(&g.hits()[2]),
+            "alpha();",
+            "the last line comes without its line break"
+        );
+        assert!(!g.loading());
+    }
+
+}
