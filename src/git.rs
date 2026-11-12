@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use crate::sync::{lock, wait_until};
@@ -47,4 +48,25 @@ impl Git {
         wait_until(|| !self.busy());
     }
 
+}
+
+fn git(dir: &Path, args: &[&str]) -> Option<(i32, Vec<u8>)> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    Some((out.status.code().unwrap_or(-1), out.stdout))
+}
+
+fn trimmed(out: Vec<u8>) -> Option<String> {
+    let s = String::from_utf8(out).ok()?.trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
+    git(dir, args).filter(|(code, _)| *code == 0).and_then(|(_, out)| trimmed(out))
 }
