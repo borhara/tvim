@@ -12,6 +12,7 @@ use crate::buffer::Pos;
 use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
 use crate::explorer::Explorer;
+use crate::git::FileState;
 use crate::syntax::Kind;
 use crate::text::{caret, cell_width, char_count, is_word, vcol};
 
@@ -767,6 +768,11 @@ fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Co
             frame.tint(inside, mix(c.app, palette::ROSE, tint));
         }
         let state = tree.with(|t| {
+            if entry.dir {
+                (t.dir_changed(&entry.path) || t.file(&entry.path).is_some()).then_some(FileState::Modified)
+            } else {
+                t.file(&entry.path)
+            }
         });
         let (glyph, ink, base) = match state {
             _ if is_current => ("✶", lit, lit),
