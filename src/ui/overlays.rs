@@ -1,9 +1,10 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{bold, mix, paint, palette};
 
-use super::{Colors, icon, styled_line, vline, with_hits};
+use super::{Colors, file_name, icon, styled_line, vline, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
+use crate::grep::Grep;
 use crate::syntax::{self, State, Syntax};
 
 pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
@@ -166,6 +167,67 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
     let at_x = row.x + row.width.saturating_sub(at.len() + 1);
 }
 
+
+pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
+    let hits = g.hits();
+    let reading = if g.loading() {
+        format!("reading {} files… ", g.file_count())
+    } else {
+        String::new()
+    };
+    let count = match (hits.len(), g.query().trim().is_empty()) {
+        (_, true) if g.loading() => reading.trim_end().to_string(),
+        (_, true) => format!("{} files", g.file_count()),
+        (0, false) => format!("{reading}no matches"),
+        (n, false) => {
+            let more = if g.capped() { "+" } else { "" };
+            format!("{reading}{n}{more} in {} files", g.files_hit())
+        }
+    };
+    let root = file_name(Some(g.root()), "/");
+    let split = |w: usize| (w >= 90 && !hits.is_empty()).then_some(w / 2);
+    let p = picker(frame, area, (140, 30), panel, g.query(), split, c)?;
+    let list = p.list;
+    if hits.is_empty() {
+        let note = if g.query().trim().is_empty() {
+            "type to search every file"
+        } else {
+            "nothing matches"
+        };
+        return Some(p.at);
+    }
+    let query_len = g.query().trim().chars().count();
+    let top = g.top(list.height);
+    for (i, hit) in hits.iter().enumerate().skip(top).take(list.height) {
+        let y = list.y + i - top;
+        let selected = i == g.selected();
+        if selected {
+            frame.tint(Rect::new(list.x, y, list.width, 1), c.picked);
+        }
+        let path = g.path(hit);
+        let path = path.as_str();
+        let file = &path[path.rfind('/').map_or(0, |b| b + 1)..];
+        let (glyph, color) = icon(file, false);
+        let place_width = tinsel::text::width(path) + 1 + (hit.row + 1).to_string().len();
+        let line = g.line(hit);
+        let line = line.as_str();
+        let lead = line.len() - line.trim_start().len();
+        let col = hit.col.saturating_sub(line[..lead].chars().count());
+        let x = list.x + 4 + place_width + 2;
+        if x + 4 < list.x + list.width {
+            // keep the match in view on a long line
+            let room = list.x + list.width - x;
+            let skip = (col + query_len + 2).saturating_sub(room);
+            frame.print_from(Rect::new(x, y, room, 1), 0, &shown, skip);
+        }
+    }
+    if let Some((pane, hit)) = p.pane.zip(hits.get(g.selected())) {
+        let at = (hit.row, hit.col, query_len);
+        let lines = g.lines(hit, 0, hit.row + pane.height);
+        preview_lines(&g.path(hit), &lines, Some(at), frame, pane, c);
+    }
+    Some(p.at)
+}
 
 fn preview_lines(
     path: &str,
