@@ -33,6 +33,16 @@ fn typing_searches_every_file_and_enter_jumps_to_the_line() {
 }
 
 #[test]
+fn escape_closes_it_and_nothing_changes() {
+    let root = project("esc");
+    let mut e = Editor::with_text("mine");
+    e.grep_in(&root, "needle");
+    e.keys(&parse("<Esc>"));
+    assert!(e.grep_picker().is_none());
+    assert_eq!(e.text(), "mine");
+}
+
+#[test]
 fn space_is_the_leader() {
     let mut e = Editor::with_text("x");
     e.keys(&parse(" g"));
@@ -49,6 +59,18 @@ fn space_is_the_leader() {
         "anything else after space does nothing"
     );
     assert_eq!(e.cursor().col, 0, "and space no longer moves right");
+}
+
+#[test]
+fn grep_command_starts_with_a_query() {
+    let mut e = Editor::with_text("x");
+    e.ex("grep fn scroll");
+    e.wait_for_grep();
+    assert_eq!(e.grep_picker().unwrap().query(), "fn scroll");
+    assert!(
+        !e.grep_picker().unwrap().hits().is_empty(),
+        "run from the crate, so it searches tvim's own files"
+    );
 }
 
 #[test]
