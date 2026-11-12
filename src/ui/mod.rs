@@ -730,6 +730,27 @@ fn word_at(line: &str, col: usize) -> Option<String> {
     Some(chars[start..end].iter().collect())
 }
 
+fn explorer_header(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect) {
+    let root = x.root();
+    let name = file_name(Some(root), &root.display().to_string());
+    let span = area.width.saturating_sub(4);
+    let name = tinsel::text::truncate(&name, span.saturating_sub(6));
+    let named = tinsel::text::width(&name) + 2;
+    let rule = span.saturating_sub(named + 2);
+    let ink = palette::LINE;
+    let head = format!(
+        "{}{}{}",
+        paint(ink, &format!("╭{}", "─".repeat(rule / 2))),
+        format_args!(" {} ", bold(&paint(palette::TEXT, &name))),
+        paint(ink, &format!("{}╮", "─".repeat(rule - rule / 2))),
+    );
+    frame.print(Rect::new(area.x + 2, area.y, span, 1), 0, &head);
+    if let Some(info) = sky::branch_info(e).filter(|i| tinsel::text::width(i) <= span) {
+        let w = tinsel::text::width(&info);
+        frame.print(Rect::new(area.x + 2 + (span - w) / 2, area.y + 1, w, 1), 0, &info);
+    }
+}
+
 fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Colors, lit: Rgb) {
     if area.height == 0 || area.width < 6 {
         return;
@@ -737,6 +758,7 @@ fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Co
     let tree = e.tree();
     let mut list = area;
     if area.height >= 5 {
+        explorer_header(e, x, frame, area);
         list = Rect::new(area.x, area.y + 2, area.width, area.height - 2);
     }
     let shown = x.visible();
@@ -778,6 +800,7 @@ fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Co
             _ if is_current => ("✶", lit, lit),
             Some(_) if entry.dir => ("◇", palette::AMBER, palette::SOFT),
             None if entry.dir => ("◇", c.faint, palette::SOFT),
+            Some(s) => ("⋆", file_state_color(s), palette::SOFT),
             None => ("·", c.faint, palette::MUTED),
         };
         let base = if is_current {
@@ -819,6 +842,15 @@ fn with_hits(text: &str, hit: impl Fn(usize) -> bool, other: impl Fn(usize, &str
         });
     }
     out
+}
+
+fn file_state_color(state: FileState) -> Rgb {
+    match state {
+        FileState::Modified => palette::AMBER,
+        FileState::Added => palette::SAGE,
+        FileState::Untracked => palette::MUTED,
+        FileState::Deleted => palette::RED,
+    }
 }
 
 fn display_path(path: &Path) -> String {
