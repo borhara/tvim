@@ -11,6 +11,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::{Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
+use crate::git::Git;
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
@@ -221,6 +222,7 @@ struct Doc {
     marks: HashMap<char, Pos>,
     file: FileInfo,
     saved_lines: Vec<String>,
+    git: Git,
     top: usize,
     left: usize,
     states: RefCell<States>,
@@ -261,6 +263,7 @@ pub(crate) struct Text<'a> {
     pub path: Option<&'a Path>,
     pub modified: bool,
     pub version: u64,
+    git: &'a Git,
     saved_lines: &'a [String],
     states: &'a RefCell<States>,
 }
@@ -372,6 +375,7 @@ pub struct Editor {
     pub(crate) finder: Option<Finder>,
     grep: Option<Grep>,
     saved_lines: Vec<String>,
+    git: Git,
     git_history: Vec<String>,
     states: RefCell<States>,
     regex_cache: RefCell<Option<RegexCache>>,
@@ -453,6 +457,7 @@ impl Editor {
             finder: None,
             grep: None,
             saved_lines: vec![String::new()],
+            git: Git::default(),
             git_menu: None,
             git_history: Vec::new(),
             states: RefCell::default(),

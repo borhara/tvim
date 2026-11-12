@@ -8,6 +8,7 @@ pub mod editor;
 mod ex;
 pub mod explorer;
 pub mod finder;
+pub mod git;
 pub mod grep;
 pub mod jumps;
 pub mod keys;
