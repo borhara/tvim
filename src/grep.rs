@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use tinsel::app::Waker;
 
 use crate::finder::{follow, walk};
-use crate::sync::lock;
+use crate::sync::{lock, wait_until};
 
 const MAX_FILE: u64 = 1_000_000;
 const MAX_TOTAL: usize = 100_000_000;
@@ -79,6 +79,7 @@ impl Grep {
     }
 
     pub fn wait(&mut self) {
+        wait_until(|| self.lock().done);
         self.refresh();
     }
 
