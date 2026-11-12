@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -93,6 +94,60 @@ impl Git {
                 waker.wake();
             }
         });
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileState {
+    Modified,
+    Added,
+    Untracked,
+    Deleted,
+}
+
+impl FileState {
+    pub fn letter(self) -> char {
+        match self {
+            FileState::Modified => 'M',
+            FileState::Added => 'A',
+            FileState::Untracked => '?',
+            FileState::Deleted => 'D',
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Statuses {
+    files: HashMap<PathBuf, FileState>,
+    // every folder from a changed path up to the repo's top
+    dirs: HashSet<PathBuf>,
+}
+
+impl Statuses {
+    pub fn file(&self, path: &Path) -> Option<FileState> {
+        self.files
+            .get(path)
+            .copied()
+            .or_else(|| self.untracked_above(path).then_some(FileState::Untracked))
+    }
+
+    pub fn dir_changed(&self, path: &Path) -> bool {
+        self.dirs.contains(path) || self.untracked_above(path)
+    }
+
+    // git lists an untracked folder once, not the files in it
+    fn untracked_above(&self, path: &Path) -> bool {
+        path.ancestors()
+            .skip(1)
+            .any(|d| self.files.get(d) == Some(&FileState::Untracked))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    pub fn changed_under(&self, dir: &Path) -> usize {
+        self.files.keys().filter(|p| p.starts_with(dir)).count()
     }
 }
 
