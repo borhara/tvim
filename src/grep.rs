@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use tinsel::app::Waker;
 
-use crate::finder::walk;
+use crate::finder::{follow, walk};
 use crate::sync::lock;
 
 const MAX_FILE: u64 = 1_000_000;
@@ -74,6 +74,38 @@ impl Grep {
         self.refresh();
     }
 
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    pub fn hits(&self) -> &[Hit] {
+        &self.hits
+    }
+
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    pub fn loading(&self) -> bool {
+        !self.lock().done
+    }
+
+    pub fn capped(&self) -> bool {
+        self.capped || self.lock().cut_short
+    }
+
+    pub fn file_count(&self) -> usize {
+        self.lock().files.len()
+    }
+
+    pub fn files_hit(&self) -> usize {
+        self.hits.chunk_by(|a, b| a.file == b.file).count()
+    }
+
     fn ignores_case(&self) -> bool {
         !self.query.chars().any(char::is_uppercase)
     }
@@ -81,6 +113,7 @@ impl Grep {
         let before = self.hits.len();
         let query = self.query.trim().to_string();
         if query.is_empty() || self.capped {
+            self.searched = self.file_count();
             return false;
         }
         let ic = self.ignores_case();
@@ -105,6 +138,10 @@ impl Grep {
         }
         self.searched = loaded.files.len();
         self.hits.len() != before
+    }
+
+    pub fn top(&self, rows: usize) -> usize {
+        follow(&self.top, self.selected, rows)
     }
 
 }
