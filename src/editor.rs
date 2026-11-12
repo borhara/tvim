@@ -1011,6 +1011,17 @@ impl Editor {
     pub fn grep_picker(&self) -> Option<&Grep> {
         self.grep.as_ref()
     }
+    pub fn tick(&mut self) {
+        if let Some(g) = self.grep.as_mut() {
+            g.refresh();
+        }
+    }
+
+    pub fn wait_for_grep(&mut self) {
+        if let Some(g) = self.grep.as_mut() {
+            g.wait();
+        }
+    }
 
     pub fn grep(&mut self, query: Option<&str>) {
         let root = cwd();
