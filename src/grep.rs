@@ -237,6 +237,10 @@ impl Grep {
         Jump::Nothing
     }
 
+    pub fn paste(&mut self, text: &str) {
+        self.query.push_str(text.lines().next().unwrap_or(""));
+        self.search_again();
+    }
 }
 
 fn read_all(root: &Path, loaded: &Arc<Mutex<Loaded>>, waker: &Waker) {
