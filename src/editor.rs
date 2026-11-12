@@ -873,6 +873,7 @@ impl Editor {
         self.file = d.file;
         self.saved_lines = d.saved_lines;
         self.git = d.git;
+        self.git.probe(self.file.path.as_deref());
         self.top.set(d.top);
         self.left.set(d.left);
         self.changing = false;
@@ -3490,6 +3491,7 @@ impl Editor {
         }
         self.cursor = Pos::default();
         self.saved_lines = self.buf.lines().to_vec();
+        self.git.probe(self.file.path.as_deref());
         self.undo.clear();
         self.redo.clear();
         self.versions += 1;
@@ -3554,6 +3556,7 @@ impl Editor {
             self.saved_lines = self.buf.lines().to_vec();
             *self.marks_cache.borrow_mut() = None;
             self.file.new = false;
+            self.git.probe(self.file.path.as_deref());
         }
         let lines = if contents.is_empty() {
             0
