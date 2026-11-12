@@ -336,6 +336,14 @@ mod tests {
     }
 
     #[test]
+    fn case_is_ignored_until_a_capital_is_typed() {
+        let root = project("case");
+        assert_eq!(grep(&root, "beta").hits().len(), 1);
+        assert_eq!(grep(&root, "Beta").hits().len(), 1);
+        assert_eq!(grep(&root, "BETA").hits().len(), 0);
+    }
+
+    #[test]
     fn typing_narrows_and_enter_jumps() {
         let mut g = grep(&project("keys"), "");
         assert!(g.hits().is_empty());
@@ -354,4 +362,11 @@ mod tests {
         assert_eq!(g.key(Key::Esc), Jump::Close);
     }
 
+    #[test]
+    fn wide_characters_before_a_match_count_once() {
+        let root = project("wide");
+        std::fs::write(root.join("w.txt"), "héllo wörld\n").unwrap();
+        let g = grep(&root, "wörld");
+        assert_eq!(g.hits()[0].col, 6);
+    }
 }
