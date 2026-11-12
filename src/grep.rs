@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use tinsel::app::Waker;
+use tinsel::app::{Key, Waker};
 
 use crate::finder::{follow, walk};
 use crate::sync::{lock, wait_until};
@@ -16,6 +16,18 @@ pub struct Hit {
     pub file: usize,
     pub row: usize,
     pub col: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Jump {
+    Nothing,
+    Open {
+        path: PathBuf,
+        row: usize,
+        col: usize,
+        query: String,
+    },
+    Close,
 }
 
 struct File {
@@ -165,8 +177,64 @@ impl Grep {
         self.hits.len() != before
     }
 
+    fn search_again(&mut self) {
+        self.hits.clear();
+        self.searched = 0;
+        self.capped = false;
+        self.selected = 0;
+        self.top.set(0);
+        self.refresh();
+    }
+
     pub fn top(&self, rows: usize) -> usize {
         follow(&self.top, self.selected, rows)
+    }
+
+    pub fn key(&mut self, key: Key) -> Jump {
+        let last = self.hits.len().saturating_sub(1);
+        match key {
+            Key::Esc | Key::Ctrl('c') => return Jump::Close,
+            Key::Enter => {
+                return match self.hits.get(self.selected) {
+                    Some(h) => Jump::Open {
+                        path: self.root.join(self.path(h)),
+                        row: h.row,
+                        col: h.col,
+                        query: self.query.trim().to_string(),
+                    },
+                    None => Jump::Nothing,
+                };
+            }
+            Key::Down | Key::Ctrl('n') | Key::Ctrl('j') | Key::Tab => self.selected = (self.selected + 1).min(last),
+            Key::Up | Key::Ctrl('p') | Key::Ctrl('k') | Key::BackTab => self.selected = self.selected.saturating_sub(1),
+            Key::PageDown | Key::Ctrl('d') => self.selected = (self.selected + 10).min(last),
+            Key::PageUp => self.selected = self.selected.saturating_sub(10),
+            Key::Char(c) => {
+                self.query.push(c);
+                self.search_again();
+            }
+            Key::Backspace | Key::Ctrl('h') => {
+                if self.query.pop().is_none() {
+                    return Jump::Close;
+                }
+                self.search_again();
+            }
+            Key::Ctrl('w') => {
+                let keep = self
+                    .query
+                    .trim_end()
+                    .rfind(|c: char| !c.is_alphanumeric() && c != '_')
+                    .map_or(0, |i| i + 1);
+                self.query.truncate(keep);
+                self.search_again();
+            }
+            Key::Ctrl('u') => {
+                self.query.clear();
+                self.search_again();
+            }
+            _ => {}
+        }
+        Jump::Nothing
     }
 
 }
