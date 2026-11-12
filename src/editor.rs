@@ -11,7 +11,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::{Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
-use crate::grep::Grep;
+use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -1030,6 +1030,22 @@ impl Editor {
         };
         self.message = None;
         match g.key(key) {
+            Jump::Nothing => {}
+            Jump::Close => self.grep = None,
+            Jump::Open { path, row, col, query } => {
+                if self.open_or_report(&path) {
+                    self.grep = None;
+                    self.remember_jump();
+                    self.cursor = Pos::new(row.min(self.buf.last_row()), col);
+                    self.clamp();
+                    self.set_want();
+                    self.top.set(row.saturating_sub(self.text_rows() / 3));
+                    self.land(true);
+                    self.last_search = Some(crate::regex::escape(&query));
+                    self.search_backward = false;
+                    self.search_shown = true;
+                }
+            }
         }
     }
 
