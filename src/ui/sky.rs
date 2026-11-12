@@ -1,8 +1,24 @@
 use tinsel::app::{Frame, Rect, hints};
 use tinsel::{paint, palette};
 
-use super::{Colors, display_path, input};
+use super::{Colors, LILAC, diff_totals, display_path, input};
 use crate::editor::{Editor, Mode};
+
+pub(super) fn branch_info(e: &Editor) -> Option<String> {
+    let mut parts = vec![paint(LILAC, &b)];
+    if let Some((ahead, behind)) = e.upstream().filter(|u| *u != (0, 0)) {
+        let mut s = Vec::new();
+        if ahead > 0 {
+            s.push(format!("↑{ahead}"));
+        }
+        if behind > 0 {
+            s.push(format!("↓{behind}"));
+        }
+        parts.push(paint(palette::MUTED, &s.join(" ")));
+    }
+    parts.extend(diff_totals(e));
+    Some(parts.join("  "))
+}
 
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
     let x = e.explorer().expect("in files");
