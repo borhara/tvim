@@ -9,6 +9,7 @@ use crate::sync::lock;
 
 const MAX_FILE: u64 = 1_000_000;
 const MAX_TOTAL: usize = 100_000_000;
+const MAX_HITS: usize = 2_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hit {
@@ -71,6 +72,39 @@ impl Grep {
 
     pub fn wait(&mut self) {
         self.refresh();
+    }
+
+    fn ignores_case(&self) -> bool {
+        !self.query.chars().any(char::is_uppercase)
+    }
+    pub fn refresh(&mut self) -> bool {
+        let before = self.hits.len();
+        let query = self.query.trim().to_string();
+        if query.is_empty() || self.capped {
+            return false;
+        }
+        let ic = self.ignores_case();
+        let needle = if ic { query.to_ascii_lowercase() } else { query };
+        let loaded = lock(&self.loaded);
+        for (i, f) in loaded.files.iter().enumerate().skip(self.searched) {
+            let hay = if ic { &f.lower } else { &f.text };
+            let mut from = 0;
+            while let Some(at) = hay[from..].find(&needle) {
+                let at = from + at;
+                let row = f.starts.partition_point(|&s| s <= at) - 1;
+                let col = f.text[f.starts[row]..at].chars().count();
+                if self.hits.len() == MAX_HITS {
+                    self.capped = true;
+                    self.searched = loaded.files.len();
+                    return self.hits.len() != before;
+                }
+                self.hits.push(Hit { file: i, row, col });
+                // one hit per line
+                from = f.starts.get(row + 1).copied().unwrap_or(hay.len());
+            }
+        }
+        self.searched = loaded.files.len();
+        self.hits.len() != before
     }
 
 }
