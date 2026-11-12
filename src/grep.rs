@@ -26,6 +26,14 @@ struct File {
     starts: Vec<usize>,
 }
 
+impl File {
+    fn line(&self, row: usize) -> &str {
+        let start = self.starts[row];
+        let end = self.starts.get(row + 1).map_or(self.text.len(), |e| e - 1);
+        self.text[start..end].trim_end_matches(['\r', '\n'])
+    }
+}
+
 #[derive(Default)]
 struct Loaded {
     files: Vec<File>,
@@ -104,6 +112,22 @@ impl Grep {
 
     pub fn files_hit(&self) -> usize {
         self.hits.chunk_by(|a, b| a.file == b.file).count()
+    }
+
+    pub fn path(&self, hit: &Hit) -> String {
+        self.lock().files[hit.file].path.clone()
+    }
+
+    pub fn line(&self, hit: &Hit) -> String {
+        self.lock().files[hit.file].line(hit.row).to_string()
+    }
+
+    pub fn lines(&self, hit: &Hit, first: usize, count: usize) -> Vec<String> {
+        let loaded = self.lock();
+        let f = &loaded.files[hit.file];
+        (first..(first + count).min(f.starts.len()))
+            .map(|r| f.line(r).to_string())
+            .collect()
     }
 
     fn ignores_case(&self) -> bool {
