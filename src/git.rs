@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use crate::editor::dir_of;
 use crate::sync::{lock, wait_until};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -69,4 +70,36 @@ fn trimmed(out: Vec<u8>) -> Option<String> {
 
 fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
     git(dir, args).filter(|(code, _)| *code == 0).and_then(|(_, out)| trimmed(out))
+}
+
+fn look(path: &Path) -> (Option<String>, Option<String>, Base) {
+    let dir = dir_of(path);
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return (None, None, Base::Outside);
+    };
+    // 0 on a branch, 1 when detached, anything else and we're not in a repo
+    let branch = match git(dir, &["symbolic-ref", "--short", "-q", "HEAD"]) {
+        Some((0, out)) => trimmed(out),
+        Some((1, _)) => git_line(dir, &["rev-parse", "--short", "HEAD"]),
+        _ => return (None, None, Base::Outside),
+    };
+    let head = git_line(dir, &["rev-parse", "-q", "--verify", "HEAD"]);
+    // cat-file skips textconv and filters, so this is the committed text as is
+    let base = match git(dir, &["cat-file", "blob", &format!("HEAD:./{name}")]) {
+        Some((0, bytes)) => match String::from_utf8(bytes) {
+            Ok(text) => Base::Head(lines(&text)),
+            Err(_) => Base::Outside,
+        },
+        _ => match git(dir, &["check-ignore", "-q", "--", name]) {
+            Some((1, _)) => Base::Untracked,
+            _ => Base::Outside,
+        },
+    };
+    (branch, head, base)
+}
+
+fn lines(text: &str) -> Vec<String> {
+    let text = text.replace("\r\n", "\n");
+    let body = text.strip_suffix('\n').unwrap_or(&text);
+    body.split('\n').map(str::to_string).collect()
 }
