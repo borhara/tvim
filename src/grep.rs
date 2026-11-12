@@ -335,4 +335,23 @@ mod tests {
         assert!(!g.loading());
     }
 
+    #[test]
+    fn typing_narrows_and_enter_jumps() {
+        let mut g = grep(&project("keys"), "");
+        assert!(g.hits().is_empty());
+        for c in "alpha(".chars() {
+            g.key(Key::Char(c));
+        }
+        assert_eq!(g.hits().len(), 2);
+        g.key(Key::Down);
+        match g.key(Key::Enter) {
+            Jump::Open { path, row, col, query } => {
+                assert!(path.ends_with("src/a.rs"));
+                assert_eq!((row, col, query.as_str()), (2, 0, "alpha("));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(g.key(Key::Esc), Jump::Close);
+    }
+
 }
