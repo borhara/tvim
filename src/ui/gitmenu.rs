@@ -248,3 +248,39 @@ fn entries(m: &GitMenu, frame: &mut Frame, list: Rect, c: &Colors) {
         frame.print(row, 0, &text);
     }
 }
+
+fn diff_line(l: &str) -> String {
+    let head = [
+        "diff ",
+        "index ",
+        "+++",
+        "---",
+        "new file",
+        "deleted file",
+        "similarity",
+        "rename ",
+    ];
+    if head.iter().any(|h| l.starts_with(h)) {
+        bold(&paint(palette::MUTED, l))
+    } else if l.starts_with("@@") {
+        paint(mix(palette::MUTED, LILAC, 0.45), l)
+    } else if l.starts_with('+') {
+        paint(palette::SAGE, l)
+    } else if l.starts_with('-') {
+        paint(palette::RED, l)
+    } else if l.starts_with("commit ") {
+        bold(&paint(palette::AMBER, l))
+    } else if let Some((file, bar)) = l.split_once(" | ") {
+        let bar: String = bar
+            .chars()
+            .map(|ch| match ch {
+                '+' => paint(palette::SAGE, "+"),
+                '-' => paint(palette::RED, "-"),
+                _ => paint(palette::MUTED, &ch.to_string()),
+            })
+            .collect();
+        format!("{}{}{bar}", paint(palette::TEXT, file), paint(palette::LINE, " | "))
+    } else {
+        paint(palette::SOFT, l)
+    }
+}
