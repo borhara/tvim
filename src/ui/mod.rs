@@ -130,6 +130,13 @@ fn run_effect(editor: &mut Editor, effect: Effect) {
         Effect::Shell(cmd) => {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
             let result = app::suspend(|| {
+                let mut out = std::io::stdout();
+                let _ = writeln!(out);
+                let status = std::process::Command::new(&shell).arg("-c").arg(&cmd).status();
+                let _ = write!(out, "\n{}", paint(palette::MUTED, "press enter to go back to tvim"));
+                let _ = out.flush();
+                let _ = std::io::stdin().read_line(&mut String::new());
+                status
             });
             match result {
                 Ok(Ok(status)) if status.success() => {}

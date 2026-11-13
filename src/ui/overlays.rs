@@ -100,6 +100,7 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
     } else {
         format!("{} of {}", f.match_count(), f.total())
     };
+    let panel = Panel::new(f.title()).status(count);
     let p = picker(frame, area, (120, 26), panel, f.query(), |w| (w >= 80).then(|| w * 2 / 5), c)?;
     let list = p.list;
     if f.match_count() == 0 {
@@ -185,6 +186,7 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         }
     };
     let root = file_name(Some(g.root()), "/");
+    let panel = Panel::new(format!("search in {root}")).status(count);
     let split = |w: usize| (w >= 90 && !hits.is_empty()).then_some(w / 2);
     let p = picker(frame, area, (140, 30), panel, g.query(), split, c)?;
     let list = p.list;
