@@ -151,6 +151,50 @@ impl Statuses {
     }
 }
 
+#[derive(Default)]
+struct TreeShared {
+    found: Statuses,
+    ticket: u64,
+    busy: bool,
+}
+
+#[derive(Default)]
+pub struct Tree {
+    shared: Arc<Mutex<TreeShared>>,
+}
+
+impl Tree {
+    pub fn with<R>(&self, f: impl FnOnce(&Statuses) -> R) -> R {
+        f(&lock(&self.shared).found)
+    }
+
+    pub fn wait(&self) {
+        wait_until(|| !lock(&self.shared).busy);
+    }
+
+    pub fn refresh(&self, dir: &Path) {
+        let mut s = lock(&self.shared);
+        s.ticket += 1;
+        s.busy = true;
+        let ticket = s.ticket;
+        drop(s);
+        let shared = self.shared.clone();
+        let dir = dir.to_path_buf();
+        let waker = Waker::new();
+        std::thread::spawn(move || {
+            let found = statuses(&dir);
+            let mut s = lock(&shared);
+            if s.ticket != ticket {
+                return;
+            }
+            s.found = found;
+            s.busy = false;
+            drop(s);
+            waker.wake();
+        });
+    }
+}
+
 fn statuses(dir: &Path) -> Statuses {
     let out = Statuses::default();
     let Some(root) = git_line(dir, &["rev-parse", "--show-toplevel"]).and_then(|r| std::fs::canonicalize(r).ok())
