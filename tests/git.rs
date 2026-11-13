@@ -1,8 +1,66 @@
 mod common;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
+use common::temp;
 use tvim::Editor;
+use tvim::clipboard::Memory;
 use tvim::diff::Mark::*;
 use tvim::keys::parse;
+
+fn git(dir: &Path, args: &[&str]) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+// a repo on branch trunk with one committed file, or None without git
+fn repo(name: &str, committed: &str) -> Option<PathBuf> {
+    let dir = temp(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    if !git(&dir, &["init", "-q"]) {
+        eprintln!("no git, skipping");
+        return None;
+    }
+    git(&dir, &["symbolic-ref", "HEAD", "refs/heads/trunk"]);
+    std::fs::write(dir.join("a.txt"), committed).unwrap();
+    assert!(git(&dir, &["add", "a.txt"]));
+    assert!(git(&dir, &["commit", "-q", "-m", "first"]));
+    Some(dir)
+}
+
+fn open(path: &Path) -> Editor {
+    let mut e = Editor::open(path).unwrap();
+    e.set_clipboard(Box::new(Memory::default()));
+    e.set_screen(80, 24);
+    e.wait_for_git();
+    e
+}
+
+#[test]
+fn marks_compare_against_head() {
+    let Some(dir) = repo("head", "a\nb\nc\n") else { return };
+    let file = dir.join("a.txt");
+    std::fs::write(&file, "a\nB\nc\nd\n").unwrap();
+    let mut e = open(&file);
+    assert!(!e.is_modified());
+    assert_eq!(e.change_marks().to_vec(), [None, Some(Changed), None, Some(Added)]);
+    e.keys(&parse("jdd"));
+    assert_eq!(e.change_marks().to_vec(), [Some(Removed), None, Some(Added)]);
+    assert_eq!(e.branch().as_deref(), Some("trunk"));
+}
 
 #[test]
 fn bracket_c_walks_the_hunks_without_wrapping() {
