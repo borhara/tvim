@@ -239,6 +239,10 @@ impl GitMenu {
         }
     }
 
+    pub fn confirming(&self) -> Option<&Change> {
+        self.confirm.as_ref()
+    }
+
     pub fn note(&self) -> Option<&Note> {
         self.note.as_ref()
     }
@@ -340,6 +344,7 @@ impl GitMenu {
         }
         if let Some(change) = self.confirm.take() {
             if key == Key::Char('y') {
+                self.discard(change);
             } else {
                 self.note = Some(info("kept as it was"));
             }
@@ -456,6 +461,29 @@ impl GitMenu {
                 changed(git(root, &["add", "-A", "--", &c.path]), &format!("staged {}", c.path))
             });
         }
+    }
+
+    fn discard(&mut self, c: Change) {
+        self.start("discarding", move |root| {
+            // a rename goes back to its old name
+            if let Some(from) = &c.from {
+                let _ = git(root, &["restore", "--source=HEAD", "--staged", "--worktree", "--", from]);
+            }
+            let out = match c.group {
+                Group::Untracked => git(root, &["clean", "-f", "-q", "--", &c.path]),
+                Group::Changes => git(root, &["restore", "--", &c.path]),
+                Group::Staged if git(root, &["cat-file", "-e", &format!("HEAD:{}", c.path)]).0 == 0 => git(
+                    root,
+                    &["restore", "--source=HEAD", "--staged", "--worktree", "--", &c.path],
+                ),
+                Group::Staged => {
+                    let out = git(root, &["rm", "-q", "-f", "--cached", "--", &c.path]);
+                    let _ = std::fs::remove_file(root.join(&c.path));
+                    out
+                }
+            };
+            changed(out, &format!("discarded {}", c.path))
+        });
     }
 
 }
