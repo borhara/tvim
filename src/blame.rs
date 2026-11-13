@@ -67,3 +67,31 @@ impl Blame {
         self.lines.is_empty()
     }
 }
+
+pub fn ago(seconds: i64) -> String {
+    let s = seconds.max(0);
+    let (n, unit) = match s {
+        0..60 => return "just now".to_string(),
+        60..3_600 => (s / 60, "minute"),
+        3_600..86_400 => (s / 3_600, "hour"),
+        86_400..604_800 => (s / 86_400, "day"),
+        604_800..2_629_800 => (s / 604_800, "week"),
+        2_629_800..31_557_600 => (s / 2_629_800, "month"),
+        _ => (s / 31_557_600, "year"),
+    };
+    format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" })
+}
+
+pub fn describe(c: &Commit, me: Option<&str>, now: i64) -> String {
+    let who = if me.is_some_and(|m| !m.is_empty() && m.eq_ignore_ascii_case(&c.email)) {
+        "you"
+    } else {
+        c.author.as_str()
+    };
+    let when = ago(now - c.time);
+    if c.summary.is_empty() {
+        format!("{who}, {when}")
+    } else {
+        format!("{who}, {when} · {}", c.summary)
+    }
+}
