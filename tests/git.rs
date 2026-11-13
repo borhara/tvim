@@ -167,3 +167,36 @@ fn space_h_r_resets_the_hunk_under_the_cursor() {
     e.keys(&parse("gg<Space>hr"));
     assert_eq!(e.text(), "a\nB\nB2\nc", "nothing to reset off a hunk");
 }
+
+#[test]
+fn the_sidebar_status_follows_saves() {
+    let Some(dir) = repo("sidebar-save", "a\n") else { return };
+    let mut e = open(&dir.join("a.txt"));
+    e.ex("Explore");
+    e.wait_for_git();
+    let path = dir.canonicalize().unwrap().join("a.txt");
+    assert_eq!(e.tree().with(|t| t.file(&path)), None);
+    e.keys(&parse("<Tab>ox<Esc>"));
+    e.ex("w");
+    e.wait_for_git();
+    assert_eq!(e.tree().with(|t| t.file(&path)), Some(tvim::git::FileState::Modified));
+}
+
+#[test]
+fn files_in_an_untracked_folder_count_as_untracked() {
+    let Some(dir) = repo("untracked-dir", "1\n") else {
+        return;
+    };
+    std::fs::create_dir_all(dir.join("new/deeper")).unwrap();
+    std::fs::write(dir.join("new/deeper/x.rs"), "fn x() {}\n").unwrap();
+    let tree = tvim::git::Tree::default();
+    tree.refresh(&dir);
+    tree.wait();
+    let file = dir.join("new/deeper/x.rs").canonicalize().unwrap();
+    let root = dir.canonicalize().unwrap();
+    tree.with(|s| {
+        let found = s.file(&file).or_else(|| s.file(&root.join("new/deeper/x.rs")));
+        assert_eq!(found, Some(tvim::git::FileState::Untracked));
+        assert!(s.dir_changed(&root.join("new/deeper")) || s.dir_changed(&dir.join("new/deeper")));
+    });
+}
