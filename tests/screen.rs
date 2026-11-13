@@ -46,6 +46,27 @@ fn long_lines_scroll_sideways() {
 }
 
 #[test]
+fn lines_changed_since_saving_are_marked() {
+    let path = common::temp("marks.txt");
+    std::fs::write(&path, "one\ntwo\nthree\n").unwrap();
+    let mut e = Editor::open(&path).unwrap();
+    let marks = |e: &Editor| e.change_marks().to_vec();
+    assert_eq!(marks(&e), [None, None, None]);
+    e.keys(&parse("jAx<Esc>Gonew<Esc>"));
+    use tvim::diff::Mark::*;
+    assert_eq!(marks(&e), [None, Some(Changed), None, Some(Added)]);
+    e.keys(&parse("ggdd"));
+    assert_eq!(
+        marks(&e),
+        [Some(Changed), None, Some(Added)],
+        "the changed line moved up, and one went above it"
+    );
+    e.keys(&parse("u"));
+    e.keys(&parse(":w<CR>"));
+    assert!(marks(&e).iter().all(Option::is_none), "saving clears them");
+}
+
+#[test]
 fn colouring_carries_over_lines() {
     let path = common::temp("carry.rs");
     std::fs::write(&path, "/* a\nb */ fn x() {}\n").unwrap();
