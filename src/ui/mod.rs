@@ -67,6 +67,7 @@ impl App for Tvim {
     fn event(&mut self, event: &Event) -> Flow {
         match event {
             Event::Key(k) => self.editor.key(*k),
+            Event::Paste(text) => self.editor.paste(text),
             Event::Wake | Event::Tick => {
                 self.editor.tick();
                 return Flow::Continue;
