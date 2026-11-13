@@ -146,3 +146,26 @@ fn space_capital_g_opens_the_menu_with_grouped_changes() {
         assert!(screen.contains(want), "{want}\n{screen}");
     }
 }
+
+#[test]
+fn discard_asks_first() {
+    let Some(dir) = repo("discard", "a\n") else { return };
+    let file = dir.join("a.txt");
+    std::fs::write(&file, "oops\n").unwrap();
+    let mut e = open(&file);
+    assert_eq!(e.text(), "oops");
+    menu(&mut e, "<Space>Gd");
+    assert!(e.git_menu().unwrap().confirming().is_some());
+    menu(&mut e, "n");
+    assert!(e.git_menu().unwrap().confirming().is_none());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "oops\n", "n keeps it");
+    menu(&mut e, "dy");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "a\n");
+    assert_eq!(groups(&e), []);
+    assert_eq!(e.text(), "a", "the clean buffer is read again");
+
+    std::fs::write(dir.join("junk.txt"), "x\n").unwrap();
+    menu(&mut e, "r");
+    menu(&mut e, "dy");
+    assert!(!dir.join("junk.txt").exists(), "untracked files are removed");
+}
