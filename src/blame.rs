@@ -1,8 +1,12 @@
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+
+use tinsel::app::Waker;
 
 use crate::editor::dir_of;
+use crate::sync::{lock, wait_until};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Commit {
@@ -97,6 +101,53 @@ pub fn describe(c: &Commit, me: Option<&str>, now: i64) -> String {
         format!("{who}, {when}")
     } else {
         format!("{who}, {when} · {}", c.summary)
+    }
+}
+
+type Key = (PathBuf, String);
+
+#[derive(Default)]
+struct Shared {
+    done: HashMap<Key, Arc<Blame>>,
+    running: HashSet<Key>,
+}
+
+#[derive(Default)]
+pub struct Blamer {
+    shared: Arc<Mutex<Shared>>,
+}
+
+impl Blamer {
+    pub fn get(&self, path: &Path, head: &str) -> Option<Arc<Blame>> {
+        let key = (path.to_path_buf(), head.to_string());
+        let mut s = lock(&self.shared);
+        if let Some(b) = s.done.get(&key) {
+            return Some(b.clone());
+        }
+        if !s.running.insert(key.clone()) {
+            return None;
+        }
+        drop(s);
+        let shared = self.shared.clone();
+        let waker = Waker::new();
+        std::thread::spawn(move || {
+            let blame = Arc::new(run(&key.0, &key.1));
+            let mut s = lock(&shared);
+            s.running.remove(&key);
+            s.done.retain(|(p, _), _| *p != key.0);
+            s.done.insert(key, blame);
+            drop(s);
+            waker.wake();
+        });
+        None
+    }
+
+    pub fn busy(&self) -> bool {
+        !lock(&self.shared).running.is_empty()
+    }
+
+    pub fn wait(&self) {
+        wait_until(|| !self.busy());
     }
 }
 
