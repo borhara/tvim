@@ -35,6 +35,15 @@ pub struct Status {
     pub changes: Vec<Change>,
 }
 
+fn first_line(s: &str) -> String {
+    let s = s.trim();
+    let line = s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    line.strip_prefix("error: ")
+        .or_else(|| line.strip_prefix("fatal: "))
+        .unwrap_or(line)
+        .to_string()
+}
+
 fn git(root: &Path, args: &[&str]) -> (i32, String, String) {
     let mut cmd = Command::new("git");
     #[cfg(unix)]
@@ -73,6 +82,31 @@ fn without_terminal(cmd: &mut Command) {
             Ok(())
         });
     }
+}
+
+fn read_status(start: &Path) -> Result<Status, String> {
+    let (code, top, _) = git(start, &["rev-parse", "--show-toplevel"]);
+    if code != 0 || top.trim().is_empty() {
+        return Err("not in a git repository".into());
+    }
+    let root = PathBuf::from(top.trim());
+    let (code, out, err) = git(
+        &root,
+        &["status", "--porcelain=v1", "-b", "-z", "--untracked-files=all"],
+    );
+    if code != 0 {
+        return Err(first_line(&err));
+    }
+    let (mut branch, upstream, changes) = parse_status(&out);
+    if branch.is_empty() {
+        branch = git(&root, &["rev-parse", "--short", "HEAD"]).1.trim().to_string();
+    }
+    Ok(Status {
+        root,
+        branch,
+        upstream,
+        changes,
+    })
 }
 
 fn parse_status(out: &str) -> (String, Option<(usize, usize)>, Vec<Change>) {
