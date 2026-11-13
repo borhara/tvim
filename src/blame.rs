@@ -178,3 +178,54 @@ fn run(path: &Path, head: &str) -> Blame {
     ]);
     Blame::parse(&text.unwrap_or_default(), me)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = "\
+1111111111111111111111111111111111111111 1 1 2
+author Ada
+author-mail <ada@x.org>
+author-time 1000
+summary first one
+filename a.txt
+\tline one
+1111111111111111111111111111111111111111 2 2
+\tline two
+2222222222222222222222222222222222222222 3 3 1
+author Bo
+author-mail <bo@x.org>
+author-time 2000
+summary second
+filename a.txt
+\tline three
+";
+
+    #[test]
+    fn porcelain_is_read_line_by_line() {
+        let b = Blame::parse(SAMPLE, Some("bo@x.org".into()));
+        assert_eq!(b.len(), 3);
+        assert_eq!(b.line(1).unwrap().author, "Ada");
+        assert_eq!(b.line(2).unwrap().summary, "second");
+        assert_eq!(b.line(3), None);
+        assert_eq!(
+            describe(b.line(0).unwrap(), b.me.as_deref(), 1000 + 3 * 86_400),
+            "Ada, 3 days ago · first one"
+        );
+        assert_eq!(
+            describe(b.line(2).unwrap(), b.me.as_deref(), 2030),
+            "you, just now · second"
+        );
+    }
+
+    #[test]
+    fn ages_read_naturally() {
+        assert_eq!(ago(5), "just now");
+        assert_eq!(ago(60), "1 minute ago");
+        assert_eq!(ago(7_200), "2 hours ago");
+        assert_eq!(ago(86_400 * 8), "1 week ago");
+        assert_eq!(ago(86_400 * 70), "2 months ago");
+        assert_eq!(ago(86_400 * 800), "2 years ago");
+    }
+}
