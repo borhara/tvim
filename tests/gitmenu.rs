@@ -1,7 +1,19 @@
 mod common;
 
 use common::temp;
+use tvim::Editor;
+use tvim::gitmenu::Group;
 use tvim::keys::parse;
+
+fn menu(e: &mut Editor, keys: &str) {
+    e.keys(&parse(keys));
+    e.wait_for_git_menu();
+}
+
+fn groups(e: &Editor) -> Vec<(Group, String)> {
+    let m = e.git_menu().unwrap();
+    m.changes().iter().map(|c| (c.group, c.path.clone())).collect()
+}
 
 #[test]
 fn the_lens_hides_while_typing_and_when_off() {
@@ -26,5 +38,42 @@ fn the_lens_hides_while_typing_and_when_off() {
     e.wait_for_blame();
     if git(outside.parent().unwrap(), &["rev-parse"]).is_none() {
         assert_eq!(e.lens(), None, "no lens outside a repo");
+    }
+}
+
+#[test]
+fn space_capital_g_opens_the_menu_with_grouped_changes() {
+    let Some(dir) = repo("open", "a\n") else { return };
+    std::fs::write(dir.join("a.txt"), "changed\n").unwrap();
+    std::fs::write(dir.join("b.txt"), "staged\n").unwrap();
+    std::fs::write(dir.join("c.txt"), "new\n").unwrap();
+    git(&dir, &["add", "b.txt"]).unwrap();
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>G");
+    let m = e.git_menu().expect("open");
+    assert!(m.ready());
+    assert_eq!(m.status().unwrap().branch, "trunk");
+    assert_eq!(
+        groups(&e),
+        [
+            (Group::Staged, "b.txt".into()),
+            (Group::Changes, "a.txt".into()),
+            (Group::Untracked, "c.txt".into()),
+        ]
+    );
+    assert_eq!(e.lens(), None, "no lens under the menu");
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>G");
+    let screen = shown(e, 110, 30);
+    for want in [
+        "⎇  trunk",
+        "Staged 1",
+        "Changes 1",
+        "Untracked 1",
+        "+staged",
+        "s stage",
+        "c commit",
+    ] {
+        assert!(screen.contains(want), "{want}\n{screen}");
     }
 }
