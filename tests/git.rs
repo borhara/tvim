@@ -63,6 +63,43 @@ fn marks_compare_against_head() {
 }
 
 #[test]
+fn untracked_files_are_all_new() {
+    let Some(dir) = repo("untracked", "a\n") else { return };
+    let file = dir.join("new.txt");
+    std::fs::write(&file, "x\ny\n").unwrap();
+    let e = open(&file);
+    assert_eq!(
+        e.change_marks().to_vec(),
+        [None, None],
+        "no gutter bars; the sidebar's ? says it's new"
+    );
+    std::fs::write(dir.join(".gitignore"), "skip.txt\n").unwrap();
+    let skipped = dir.join("skip.txt");
+    std::fs::write(&skipped, "x\n").unwrap();
+    assert_eq!(
+        open(&skipped).change_marks().to_vec(),
+        [None],
+        "ignored files fall back to the save"
+    );
+}
+
+#[test]
+fn outside_a_repo_the_save_is_the_base() {
+    let dir = temp("outside");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("plain.txt");
+    std::fs::write(&file, "a\nb\n").unwrap();
+    let mut e = open(&file);
+    assert_eq!(e.change_marks().to_vec(), [None, None]);
+    assert_eq!(e.branch(), None);
+    e.keys(&parse("ox<Esc>"));
+    assert_eq!(e.change_marks().to_vec(), [None, Some(Added), None]);
+    e.ex("w");
+    assert_eq!(e.change_marks().to_vec(), [None, None, None]);
+}
+
+#[test]
 fn bracket_c_walks_the_hunks_without_wrapping() {
     let Some(dir) = repo("walk", "1\n2\n3\n4\n5\n6\n7\n8\n9\n") else {
         return;
