@@ -1,4 +1,4 @@
-use tinsel::app::{Frame, Rect};
+use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{Rgb, Spinner, bold, mix, paint, palette};
 
 use super::{Colors, LILAC, icon, vline};
@@ -25,6 +25,9 @@ fn letter_color(l: char) -> Rgb {
 
 pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Option<(usize, usize)> {
     let area = frame.area();
+    if !m.ready() || area.width < 24 || area.height < 8 {
+        return None;
+    }
     let t = frame.time();
     frame.dim(area);
     let width = area.width.saturating_sub(6).clamp(24, 132);
@@ -48,6 +51,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         Tab::Log => "recent commits".to_string(),
         Tab::Branches => "branches".to_string(),
     };
+    let panel = Panel::new(m.repo_name()).status(status).focused(true);
     if inner.height < 6 || inner.width < 20 {
         return None;
     }
@@ -86,6 +90,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
 }
 
 fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32) {
+    let Some(s) = m.status() else { return };
     let mut text = format!(
         "{}  {}",
         paint(palette::ROSE, "⎇"),

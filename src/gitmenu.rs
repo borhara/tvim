@@ -197,6 +197,28 @@ impl GitMenu {
         m
     }
 
+    pub fn ready(&self) -> bool {
+        self.status.is_some()
+    }
+
+    pub fn failed(&self) -> Option<&str> {
+        self.failed.as_deref()
+    }
+
+    pub fn status(&self) -> Option<&Status> {
+        self.status.as_ref()
+    }
+
+    pub fn root(&self) -> Option<&Path> {
+        self.status.as_ref().map(|s| s.root.as_path())
+    }
+
+    pub fn repo_name(&self) -> String {
+        self.root()
+            .and_then(Path::file_name)
+            .map_or_else(|| "git".into(), |n| n.to_string_lossy().into_owned())
+    }
+
     pub fn note(&self) -> Option<&Note> {
         self.note.as_ref()
     }
