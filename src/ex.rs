@@ -124,6 +124,7 @@ impl Editor {
             self.toggle_explorer();
         } else if is("preview", 4) {
         } else if is("git", 3) || is("Git", 3) {
+            self.open_git_menu(non_empty(arg));
         } else if is("recent", 3) {
         } else if is("zen", 3) {
         } else if is("Explore", 2) || is("explore", 3) {
