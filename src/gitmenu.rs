@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
-use tinsel::app::Waker;
+use tinsel::app::{Key, Waker};
 
 use crate::sync::lock;
 
@@ -127,6 +128,67 @@ impl<T: Send + 'static> Slot<T> {
         self.waiting = false;
         Some(out)
     }
+}
+
+pub struct GitMenu {
+    start: PathBuf,
+    status: Option<Status>,
+    failed: Option<String>,
+    tab: Tab,
+    selected: usize,
+    log: Vec<Entry>,
+    branches: Vec<Entry>,
+    peeks: HashMap<String, Vec<String>>,
+    peek_scroll: usize,
+    typing: Option<(Typing, String, usize)>,
+    confirm: Option<Change>,
+    output: Option<Output>,
+    busy: Option<String>,
+    job: Slot<Done>,
+    peeking: Option<String>,
+    pub(crate) history: Vec<String>,
+    recall: Option<usize>,
+    queued: Option<String>,
+    // typed before the first status came back, played once it has
+    pub(crate) early: Vec<Key>,
+    opened: Option<f32>,
+}
+
+impl GitMenu {
+    pub fn open(start: &Path, history: Vec<String>, command: Option<String>) -> GitMenu {
+        let mut m = GitMenu {
+            start: start.to_path_buf(),
+            status: None,
+            failed: None,
+            tab: Tab::Files,
+            selected: 0,
+            log: Vec::new(),
+            branches: Vec::new(),
+            peeks: HashMap::new(),
+            peek_scroll: 0,
+            typing: None,
+            confirm: None,
+            output: None,
+            note: None,
+            busy: None,
+            job: Slot::default(),
+            peek: Slot::default(),
+            peeking: None,
+            history,
+            recall: None,
+            queued: command.filter(|c| !c.trim().is_empty()),
+            early: Vec::new(),
+            opened: None,
+        };
+        let start = m.start.clone();
+        m.busy = Some("reading".into());
+        m.job.run(move || Done {
+            status: Some(read_status(&start)),
+            ..Done::default()
+        });
+        m
+    }
+
 }
 
 fn first_line(s: &str) -> String {
