@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use tinsel::app::Key;
 
+use crate::blame::Blamer;
 use crate::buffer::{Buffer, Pos};
 use crate::clipboard::{Clipboard, System};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
@@ -411,6 +412,7 @@ pub struct Editor {
     saved_lines: Vec<String>,
     git: Git,
     tree: Tree,
+    blamer: Blamer,
     git_history: Vec<String>,
     states: RefCell<States>,
     marks_cache: RefCell<Option<DiffCache>>,
@@ -495,6 +497,7 @@ impl Editor {
             saved_lines: vec![String::new()],
             git: Git::default(),
             tree: Tree::default(),
+            blamer: Blamer::default(),
             git_menu: None,
             git_history: Vec::new(),
             states: RefCell::default(),
