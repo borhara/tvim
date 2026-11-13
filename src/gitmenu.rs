@@ -71,6 +71,12 @@ pub struct Output {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Note {
+    pub text: String,
+    pub error: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Want {
     Nothing,
     Close,
@@ -82,6 +88,7 @@ struct Done {
     status: Option<Result<Status, String>>,
     log: Option<Vec<Entry>>,
     branches: Option<Vec<Entry>>,
+    note: Option<Note>,
     output: Option<Output>,
 }
 
@@ -143,6 +150,7 @@ pub struct GitMenu {
     typing: Option<(Typing, String, usize)>,
     confirm: Option<Change>,
     output: Option<Output>,
+    note: Option<Note>,
     busy: Option<String>,
     job: Slot<Done>,
     peeking: Option<String>,
@@ -189,6 +197,24 @@ impl GitMenu {
         m
     }
 
+    pub fn note(&self) -> Option<&Note> {
+        self.note.as_ref()
+    }
+
+}
+
+fn info(text: impl Into<String>) -> Note {
+    Note {
+        text: text.into(),
+        error: false,
+    }
+}
+
+fn error(text: impl Into<String>) -> Note {
+    Note {
+        text: text.into(),
+        error: true,
+    }
 }
 
 fn first_line(s: &str) -> String {
