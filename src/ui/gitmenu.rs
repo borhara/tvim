@@ -45,6 +45,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
     ] {
         frame.dim(under.intersect(area));
     }
+    let changes = m.changes();
     let status = match m.tab() {
         Tab::Files if changes.is_empty() => "clean".to_string(),
         Tab::Files => format!("{} changed", changes.len()),
@@ -144,6 +145,7 @@ fn mark_row(frame: &mut Frame, row: Rect, c: &Colors) {
 }
 
 fn files(m: &GitMenu, frame: &mut Frame, list: Rect, c: &Colors) {
+    let changes = m.changes();
     if changes.is_empty() {
         frame.print(list, 0, &paint(palette::MUTED, "  ✦ nothing to commit"));
         frame.print(list, 1, &paint(palette::MUTED, "    the tree is clean"));

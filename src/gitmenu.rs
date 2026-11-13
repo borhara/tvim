@@ -219,8 +219,41 @@ impl GitMenu {
             .map_or_else(|| "git".into(), |n| n.to_string_lossy().into_owned())
     }
 
+    pub fn tab(&self) -> Tab {
+        self.tab
+    }
+
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    pub fn changes(&self) -> &[Change] {
+        self.status.as_ref().map_or(&[], |s| &s.changes)
+    }
+
+    pub fn entries(&self) -> &[Entry] {
+        match self.tab {
+            Tab::Log => &self.log,
+            _ => &self.branches,
+        }
+    }
+
     pub fn note(&self) -> Option<&Note> {
         self.note.as_ref()
+    }
+
+    fn len(&self) -> usize {
+        match self.tab {
+            Tab::Files => self.changes().len(),
+            Tab::Log => self.log.len(),
+            Tab::Branches => self.branches.len(),
+        }
+    }
+
+    pub fn current(&self) -> Option<&Change> {
+        (self.tab == Tab::Files)
+            .then(|| self.changes().get(self.selected))
+            .flatten()
     }
 
 }
