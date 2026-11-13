@@ -1095,6 +1095,7 @@ impl Editor {
         if let Some(g) = self.grep.as_mut() {
             g.refresh();
         }
+        self.git_menu_tick();
     }
 
     pub fn wait_for_grep(&mut self) {
@@ -1605,6 +1606,35 @@ impl Editor {
     fn close_git_menu(&mut self) {
         if let Some(m) = self.git_menu.take() {
             self.git_history = m.history;
+        }
+    }
+
+    pub fn wait_for_git_menu(&mut self) {
+        crate::sync::wait_until(|| {
+            self.tick();
+            !self.git_menu.as_ref().is_some_and(GitMenu::working)
+        });
+        self.git.wait();
+    }
+
+    fn git_menu_tick(&mut self) {
+        let Some(m) = self.git_menu.as_mut() else { return };
+        let changed = m.tick();
+        if let Some(why) = m.failed().map(str::to_string) {
+            self.close_git_menu();
+            self.error(why);
+            return;
+        }
+        if changed {
+        }
+        let early = match self.git_menu.as_mut() {
+            Some(m) if m.ready() => std::mem::take(&mut m.early),
+            _ => Vec::new(),
+        };
+        for k in early {
+            if self.git_menu.is_some() {
+                self.git_menu_input(Input::Key(k));
+            }
         }
     }
 
