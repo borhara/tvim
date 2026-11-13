@@ -687,6 +687,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         }
 
         if let Some(text) = lens.as_deref().filter(|_| on_cursor) {
+            draw_lens(e, frame, Rect::new(body.x, y, body.width, 1), line, left, text, c);
         }
     }
     if let Some(y) = sky_from {
@@ -718,6 +719,25 @@ fn whole_words<'a>(line: &'a str, w: &'a str) -> impl Iterator<Item = (usize, us
         .into_iter()
         .map(|at| (at, at + char_count(w)))
         .filter(move |&(at, end)| whole(at.checked_sub(1)) && whole(Some(end)))
+}
+
+fn draw_lens(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, text: &str, c: &Colors) {
+    const GAP: usize = 4;
+    let end = vcol(line, char_count(line), e.options.tab_stop);
+    let Some(x) = (end + GAP).checked_sub(left) else { return };
+    let room = row.width.saturating_sub(x);
+    let short = text.split(" · ").next().unwrap_or(text);
+    let Some(shown) = [text, short].into_iter().find(|t| tinsel::text::width(t) <= room) else {
+        return;
+    };
+    let key = format!("{}:{}", e.buffer_id, e.cursor().row);
+    let fade = e.anim.lens(&key, frame.time());
+    if fade <= 0.0 {
+        return;
+    }
+    let color = mix(c.app, mix(palette::MUTED, palette::BLUSH, 0.15), fade);
+    let w = tinsel::text::width(shown);
+    frame.print(Rect::new(row.x + x, row.y, w, 1), 0, &italic(&paint(color, shown)));
 }
 
 fn word_at(line: &str, col: usize) -> Option<String> {
