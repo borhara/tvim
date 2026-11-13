@@ -1,5 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+
+use tinsel::app::Waker;
+
+use crate::sync::lock;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Group {
@@ -69,6 +74,59 @@ pub enum Want {
     Nothing,
     Close,
     Open(PathBuf),
+}
+
+#[derive(Default)]
+struct Done {
+    status: Option<Result<Status, String>>,
+    log: Option<Vec<Entry>>,
+    branches: Option<Vec<Entry>>,
+    output: Option<Output>,
+}
+
+struct Slot<T> {
+    shared: Arc<Mutex<(u64, Option<T>)>>,
+    ticket: u64,
+    waiting: bool,
+}
+
+impl<T> Default for Slot<T> {
+    fn default() -> Self {
+        Slot {
+            shared: Arc::new(Mutex::new((0, None))),
+            ticket: 0,
+            waiting: false,
+        }
+    }
+}
+
+impl<T: Send + 'static> Slot<T> {
+    fn run(&mut self, work: impl FnOnce() -> T + Send + 'static) {
+        self.ticket += 1;
+        self.waiting = true;
+        let ticket = self.ticket;
+        let shared = self.shared.clone();
+        let waker = Waker::new();
+        std::thread::spawn(move || {
+            let out = work();
+            let mut s = lock(&shared);
+            if ticket >= s.0 {
+                *s = (ticket, Some(out));
+            }
+            drop(s);
+            waker.wake();
+        });
+    }
+
+    fn take(&mut self) -> Option<T> {
+        let mut s = lock(&self.shared);
+        if s.0 != self.ticket {
+            return None;
+        }
+        let out = s.1.take()?;
+        self.waiting = false;
+        Some(out)
+    }
 }
 
 fn first_line(s: &str) -> String {
