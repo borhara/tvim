@@ -7,6 +7,8 @@ use tinsel::app::{Key, Waker};
 
 use crate::sync::lock;
 
+const LOG_LENGTH: usize = 30;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Group {
     Staged,
@@ -330,6 +332,16 @@ impl GitMenu {
         self.busy = Some(label.to_string());
         self.note = None;
         self.job.run(move || {
+            let mut done = work(&root);
+            if done.status.is_none() {
+                done.status = Some(read_status(&root));
+            }
+            match tab {
+                Tab::Log if done.log.is_none() => done.log = Some(read_log(&root)),
+                Tab::Branches if done.branches.is_none() => done.branches = Some(read_branches(&root)),
+                _ => {}
+            }
+            done
         });
         true
     }
@@ -390,6 +402,12 @@ impl GitMenu {
                 self.typing = Some((Typing::Command, String::new(), 0));
                 self.recall = None;
             }
+            Key::Char('l') => self.switch_tab(if self.tab == Tab::Log { Tab::Files } else { Tab::Log }),
+            Key::Char('b') => self.switch_tab(if self.tab == Tab::Branches {
+                Tab::Files
+            } else {
+                Tab::Branches
+            }),
             Key::Char('s') if files => self.toggle_stage(),
             Key::Char('a') if files => {
                 self.start("staging", |root| {
@@ -439,6 +457,26 @@ impl GitMenu {
         if at != self.selected {
             self.selected = at;
             self.peek_scroll = 0;
+        }
+    }
+
+    fn switch_tab(&mut self, tab: Tab) {
+        self.tab = tab;
+        self.selected = 0;
+        self.peek_scroll = 0;
+        match tab {
+            Tab::Log => {
+                self.start("reading the log", |root| Done {
+                    log: Some(read_log(root)),
+                    ..Done::default()
+                });
+            }
+            Tab::Branches => {
+                self.start("reading branches", |root| Done {
+                    branches: Some(read_branches(root)),
+                    ..Done::default()
+                });
+            }
         }
     }
 
@@ -648,4 +686,45 @@ fn parse_status(out: &str) -> (String, Option<(usize, usize)>, Vec<Change>) {
     }
     changes.sort_by(|a, b| (a.group, &a.path).cmp(&(b.group, &b.path)));
     (branch, upstream, changes)
+}
+
+fn read_log(root: &Path) -> Vec<Entry> {
+    let n = format!("-n{LOG_LENGTH}");
+    let (_, out, _) = git(root, &["log", &n, "--format=%h%x1f%an%x1f%ar%x1f%s"]);
+    out.lines()
+        .filter_map(|l| {
+            let mut f = l.split('\x1f');
+            let (id, who, when, subject) = (f.next()?, f.next()?, f.next()?, f.next().unwrap_or(""));
+            Some(Entry {
+                id: id.to_string(),
+                title: subject.to_string(),
+                detail: format!("{who}, {when}"),
+                current: false,
+            })
+        })
+        .collect()
+}
+
+fn read_branches(root: &Path) -> Vec<Entry> {
+    let (_, out, _) = git(
+        root,
+        &[
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(HEAD)%1f%(refname:short)%1f%(committerdate:relative)%1f%(contents:subject)",
+            "refs/heads",
+        ],
+    );
+    out.lines()
+        .filter_map(|l| {
+            let mut f = l.split('\x1f');
+            let (head, name, when, subject) = (f.next()?, f.next()?, f.next()?, f.next().unwrap_or(""));
+            Some(Entry {
+                id: name.to_string(),
+                title: subject.to_string(),
+                detail: when.to_string(),
+                current: head == "*",
+            })
+        })
+        .collect()
 }
