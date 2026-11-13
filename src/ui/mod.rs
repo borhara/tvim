@@ -895,6 +895,27 @@ fn tab_names(e: &Editor) -> Vec<Tab> {
         .collect()
 }
 
+fn diff_totals(e: &Editor) -> Option<String> {
+    let (mut added, mut changed, mut removed) = (0, 0, 0);
+    for h in e.change_hunks().iter() {
+        let (old, new) = (h.old.len(), h.new.len());
+        let both = old.min(new);
+        changed += both;
+        added += new - both;
+        removed += old - both;
+    }
+    let parts: Vec<String> = [
+        (added, "+", palette::SAGE),
+        (changed, "~", palette::AMBER),
+        (removed, "-", palette::RED),
+    ]
+    .into_iter()
+    .filter(|(n, _, _)| *n > 0)
+    .map(|(n, sign, color)| paint(color, &format!("{sign}{n}")))
+    .collect();
+    (!parts.is_empty()).then(|| parts.join(" "))
+}
+
 // on tvim's clock so it rests while unfocused
 fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
     if area.width == 0 || area.height == 0 {
