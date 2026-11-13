@@ -298,3 +298,29 @@ fn lines(text: &str) -> Vec<String> {
     let body = text.strip_suffix('\n').unwrap_or(&text);
     body.split('\n').map(str::to_string).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn porcelain_status() {
+        let root = Path::new("/r");
+        let raw = b" M src/a.rs\0A  b.rs\0?? new/\0 D gone.rs\0R  to.rs\0from.rs\0!! skip\0";
+        let s = parse_status(root, raw);
+        assert_eq!(s.file(&root.join("src/a.rs")), Some(FileState::Modified));
+        assert_eq!(s.file(&root.join("b.rs")), Some(FileState::Added));
+        assert_eq!(s.file(&root.join("new")), Some(FileState::Untracked));
+        assert_eq!(s.file(&root.join("gone.rs")), Some(FileState::Deleted));
+        assert_eq!(s.file(&root.join("to.rs")), Some(FileState::Modified));
+        assert_eq!(
+            s.file(&root.join("from.rs")),
+            None,
+            "a rename's old name isn't an entry"
+        );
+        assert_eq!(s.file(&root.join("skip")), None);
+        assert!(s.dir_changed(&root.join("src")) && s.dir_changed(root));
+        assert!(!s.dir_changed(&root.join("new")));
+        assert_eq!(FileState::Untracked.letter(), '?');
+    }
+}
