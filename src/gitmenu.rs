@@ -330,6 +330,47 @@ impl GitMenu {
         true
     }
 
+    pub fn key(&mut self, key: Key, unsaved: bool) -> Want {
+        if self.status.is_none() {
+            if matches!(key, Key::Esc | Key::Ctrl('c')) {
+                return Want::Close;
+            }
+            self.early.push(key);
+            return Want::Nothing;
+        }
+        if let Some(change) = self.confirm.take() {
+            if key == Key::Char('y') {
+            } else {
+                self.note = Some(info("kept as it was"));
+            }
+            return Want::Nothing;
+        }
+        if self.typing.is_some() {
+            return Want::Nothing;
+        }
+        if let Some(o) = self.output.as_mut() {
+            let max = o.lines.len().saturating_sub(1);
+            match key {
+                Key::Char('j') | Key::Down => o.scroll = (o.scroll + 1).min(max),
+                Key::Char('k') | Key::Up => o.scroll = o.scroll.saturating_sub(1),
+                Key::Ctrl('d') | Key::PageDown => o.scroll = (o.scroll + 10).min(max),
+                Key::Ctrl('u') | Key::PageUp => o.scroll = o.scroll.saturating_sub(10),
+                Key::Char('g') => o.scroll = 0,
+                Key::Char('G') => o.scroll = max,
+                Key::Esc | Key::Char('q') => self.output = None,
+            }
+            return Want::Nothing;
+        }
+    }
+
+    fn select(&mut self, at: usize) {
+        let at = at.min(self.len().saturating_sub(1));
+        if at != self.selected {
+            self.selected = at;
+            self.peek_scroll = 0;
+        }
+    }
+
 }
 
 fn info(text: impl Into<String>) -> Note {
