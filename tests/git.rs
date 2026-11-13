@@ -100,6 +100,30 @@ fn outside_a_repo_the_save_is_the_base() {
 }
 
 #[test]
+fn saving_picks_up_a_new_commit() {
+    let Some(dir) = repo("commit", "a\nb\n") else { return };
+    let file = dir.join("a.txt");
+    let mut e = open(&file);
+    e.keys(&parse("Gox<Esc>"));
+    e.ex("w");
+    e.wait_for_git();
+    assert_eq!(e.change_marks().to_vec(), [None, None, Some(Added)], "still differs from HEAD");
+    assert!(git(&dir, &["commit", "-q", "-am", "second"]));
+    e.ex("w");
+    e.wait_for_git();
+    assert_eq!(e.change_marks().to_vec(), [None, None, None]);
+}
+
+#[test]
+fn detached_head_shows_a_short_sha() {
+    let Some(dir) = repo("detached", "a\n") else { return };
+    assert!(git(&dir, &["checkout", "-q", "--detach"]));
+    let e = open(&dir.join("a.txt"));
+    let b = e.branch().unwrap();
+    assert!(b.len() >= 4 && b.chars().all(|c| c.is_ascii_hexdigit()), "{b}");
+}
+
+#[test]
 fn bracket_c_walks_the_hunks_without_wrapping() {
     let Some(dir) = repo("walk", "1\n2\n3\n4\n5\n6\n7\n8\n9\n") else {
         return;
