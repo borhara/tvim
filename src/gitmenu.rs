@@ -90,6 +90,7 @@ struct Done {
     branches: Option<Vec<Entry>>,
     note: Option<Note>,
     output: Option<Output>,
+    changed: bool,
 }
 
 struct Slot<T> {
@@ -269,8 +270,13 @@ impl GitMenu {
     }
 
     pub fn tick(&mut self) -> bool {
+        let mut changed = false;
         if let Some(done) = self.job.take() {
             self.busy = None;
+            changed = done.changed;
+            if changed {
+                self.peeks.clear();
+            }
             match done.status {
                 Some(Ok(s)) => {
                     if self.status.is_none() {
@@ -305,6 +311,23 @@ impl GitMenu {
             self.peeking = None;
             self.peeks.insert(key, lines);
         }
+        changed
+    }
+
+    fn start(&mut self, label: &str, work: impl FnOnce(&Path) -> Done + Send + 'static) -> bool {
+        if self.job.waiting {
+            self.note = Some(error("still busy, one moment"));
+            return false;
+        }
+        let Some(root) = self.root().map(Path::to_path_buf) else {
+            return false;
+        };
+        let tab = self.tab;
+        self.busy = Some(label.to_string());
+        self.note = None;
+        self.job.run(move || {
+        });
+        true
     }
 
 }
@@ -330,6 +353,19 @@ fn first_line(s: &str) -> String {
         .or_else(|| line.strip_prefix("fatal: "))
         .unwrap_or(line)
         .to_string()
+}
+
+fn changed((code, out, err): (i32, String, String), done: &str) -> Done {
+    let note = if code == 0 {
+        info(done)
+    } else {
+        error(first_line(if err.trim().is_empty() { &out } else { &err }))
+    };
+    Done {
+        note: Some(note),
+        changed: true,
+        ..Done::default()
+    }
 }
 
 fn git(root: &Path, args: &[&str]) -> (i32, String, String) {
