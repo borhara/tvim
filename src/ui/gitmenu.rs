@@ -212,3 +212,39 @@ fn files(m: &GitMenu, frame: &mut Frame, list: Rect, c: &Colors) {
         frame.print(Rect::new(row.x + 1, row.y, row.width - 1, 1), 0, text);
     }
 }
+
+fn entries(m: &GitMenu, frame: &mut Frame, list: Rect, c: &Colors) {
+    let all = m.entries();
+    if all.is_empty() {
+        let note = if m.busy().is_some() {
+            "  reading…"
+        } else {
+            "  nothing here yet"
+        };
+        frame.print(list, 0, &paint(palette::MUTED, note));
+        return;
+    }
+    let top = (m.selected() + 1).saturating_sub(list.height);
+    for (i, en) in all.iter().enumerate().skip(top).take(list.height) {
+        let row = Rect::new(list.x, list.y + i - top, list.width, 1);
+        if i == m.selected() {
+            mark_row(frame, row, c);
+        }
+        let text = if m.tab() == Tab::Log {
+            format!(
+                "  {} {}",
+                paint(palette::AMBER, &en.id),
+                paint(palette::TEXT, &en.title)
+            )
+        } else if en.current {
+            format!(
+                "  {} {}",
+                paint(palette::ROSE, "✦"),
+                bold(&paint(palette::PETAL, &en.id))
+            )
+        } else {
+            format!("  {} {}", paint(palette::MUTED, "·"), paint(palette::BLUSH, &en.id))
+        };
+        frame.print(row, 0, &text);
+    }
+}
