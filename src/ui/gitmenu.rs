@@ -1,9 +1,17 @@
 use tinsel::app::{Frame, Rect};
-use tinsel::{paint, palette};
+use tinsel::{Rgb, Spinner, bold, paint, palette};
 
-use super::{Colors, vline};
+use super::{Colors, LILAC, vline};
 use crate::editor::Editor;
-use crate::gitmenu::{GitMenu, Tab};
+use crate::gitmenu::{GitMenu, Group, Tab};
+
+fn group_color(g: Group) -> Rgb {
+    match g {
+        Group::Staged => palette::SAGE,
+        Group::Changes => palette::AMBER,
+        Group::Untracked => LILAC,
+    }
+}
 
 pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Option<(usize, usize)> {
     let area = frame.area();
@@ -33,6 +41,8 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
     if inner.height < 6 || inner.width < 20 {
         return None;
     }
+
+    header(m, frame, Rect::new(inner.x, inner.y, inner.width, 1), t);
     let list_width = (inner.width * 2 / 5).clamp(20, 48).min(inner.width);
     let split = inner.x + list_width;
     let rule = |frame: &mut Frame, y: usize, joint: &str| {
@@ -63,4 +73,52 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         frame.dim(rect);
     }
     at
+}
+
+fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32) {
+    let mut text = format!(
+        "{}  {}",
+        paint(palette::ROSE, "⎇"),
+        bold(&paint(palette::PETAL, &s.branch))
+    );
+    match s.upstream {
+        Some((0, 0)) => text.push_str(&paint(palette::MUTED, "  up to date")),
+        Some((ahead, behind)) => {
+            if ahead > 0 {
+                text.push_str(&paint(palette::SAGE, &format!("  ↑{ahead}")));
+            }
+            if behind > 0 {
+                text.push_str(&paint(palette::AMBER, &format!("  ↓{behind}")));
+            }
+        }
+        None => text.push_str(&paint(palette::MUTED, "  no upstream")),
+    }
+    frame.print(row, 0, &text);
+    let right = match m.busy() {
+        Some(what) => working(what, t),
+        None => {
+            let count = |g: Group| s.changes.iter().filter(|c| c.group == g).count();
+            [Group::Staged, Group::Changes, Group::Untracked]
+                .into_iter()
+                .filter(|g| count(*g) > 0)
+                .map(|g| {
+                    let what = match g {
+                        Group::Staged => "staged",
+                        Group::Changes => "changed",
+                        Group::Untracked => "untracked",
+                    };
+                    paint(group_color(g), &format!("{} {what}", count(g)))
+                })
+                .collect::<Vec<_>>()
+                .join(&paint(palette::LINE, " · "))
+        }
+    };
+    let w = tinsel::text::width(&right);
+    if w + tinsel::text::width(&text) + 2 <= row.width {
+        frame.print(Rect::new(row.x + row.width - w, row.y, w, 1), 0, &right);
+    }
+}
+
+fn working(what: &str, t: f32) -> String {
+    format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::BLUSH, &format!("{what}…")))
 }
