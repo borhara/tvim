@@ -358,9 +358,74 @@ impl GitMenu {
                 Key::Char('g') => o.scroll = 0,
                 Key::Char('G') => o.scroll = max,
                 Key::Esc | Key::Char('q') => self.output = None,
+                _ => return self.menu_key(key, unsaved),
             }
             return Want::Nothing;
         }
+        self.menu_key(key, unsaved)
+    }
+
+    fn menu_key(&mut self, key: Key, unsaved: bool) -> Want {
+        let files = self.tab == Tab::Files;
+        match key {
+            Key::Esc | Key::Char('q') | Key::Ctrl('c') => return Want::Close,
+            Key::Char('j') | Key::Down => self.select(self.selected + 1),
+            Key::Char('k') | Key::Up => self.select(self.selected.saturating_sub(1)),
+            Key::Char('g') | Key::Home => self.select(0),
+            Key::Char('G') | Key::End => self.select(usize::MAX),
+            Key::Char('J') | Key::Ctrl('d') | Key::PageDown => {
+                let max = self.peek().map_or(0, |p| p.len().saturating_sub(1));
+                self.peek_scroll = (self.peek_scroll + 10).min(max);
+            }
+            Key::Char('K') | Key::Ctrl('u') | Key::PageUp => self.peek_scroll = self.peek_scroll.saturating_sub(10),
+            Key::Char('r') => {
+                self.start("refreshing", |_| Done::default());
+            }
+            Key::Char(':' | '!') => {
+                self.typing = Some((Typing::Command, String::new(), 0));
+                self.recall = None;
+            }
+            Key::Char('a') if files => {
+                self.start("staging", |root| {
+                    changed(git(root, &["add", "-A"]), "staged everything")
+                });
+            }
+            Key::Char('u') if files => {
+                self.start("unstaging", |root| {
+                    let mut out = git(root, &["reset", "-q"]);
+                    if out.0 != 0 {
+                        out = git(root, &["rm", "-r", "-q", "--cached", "."]);
+                    }
+                    changed(out, "unstaged everything")
+                });
+            }
+            Key::Char('d') if files => {
+                if let Some(c) = self.current().cloned() {
+                    self.confirm = Some(c);
+                }
+            }
+            Key::Char('c') if files => {
+                if self.changes().iter().any(|c| c.group == Group::Staged) {
+                    self.typing = Some((Typing::Commit, String::new(), 0));
+                } else {
+                    self.note = Some(error("nothing staged: s stages a file, a stages them all"));
+                }
+            }
+            Key::Enter => match self.tab {
+                Tab::Files => {
+                    if let (Some(root), Some(c)) = (self.root(), self.current()) {
+                        let path = root.join(&c.path);
+                        if path.is_file() {
+                            return Want::Open(path);
+                        }
+                        self.note = Some(error(format!("{} isn't there to open", c.path)));
+                    }
+                }
+                Tab::Log => {}
+            },
+            _ => {}
+        }
+        Want::Nothing
     }
 
     fn select(&mut self, at: usize) {
