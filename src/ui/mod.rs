@@ -302,6 +302,11 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if let Some(g) = e.grep_picker() {
         typing_at = overlays::grep(g, frame, d.panes, &c);
     }
+    if let Some(m) = e.git_menu() {
+        typing_at = gitmenu::draw(m, e, frame, &c);
+    }
+
+    let typing = e.git_menu().is_some()
         || e.finder().is_some()
         || e.grep_picker().is_some()
         || matches!(e.mode(), Mode::Command | Mode::Search)

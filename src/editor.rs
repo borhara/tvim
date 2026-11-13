@@ -13,7 +13,7 @@ use crate::diff::{self, Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
 use crate::git::{Base, Git, Tree};
-use crate::gitmenu::GitMenu;
+use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
@@ -810,6 +810,7 @@ impl Editor {
 
     fn input(&mut self, input: Input) {
         if self.git_menu.is_some() {
+            return self.git_menu_input(input);
         }
         if self.finder.is_some() {
             return self.finder_input(input);
@@ -1585,6 +1586,44 @@ impl Editor {
         self.git.wait();
         let _ = self.lens();
         self.blamer.wait();
+    }
+
+    pub fn git_menu(&self) -> Option<&GitMenu> {
+        self.git_menu.as_ref()
+    }
+
+    pub fn open_git_menu(&mut self, command: Option<&str>) {
+        self.reset_for_picker();
+        let start = match &self.file.path {
+            Some(_) => self.file_dir(),
+            None => cwd(),
+        };
+        let history = std::mem::take(&mut self.git_history);
+        self.git_menu = Some(GitMenu::open(&start, history, command.map(str::to_string)));
+    }
+
+    fn close_git_menu(&mut self) {
+        if let Some(m) = self.git_menu.take() {
+            self.git_history = m.history;
+        }
+    }
+
+    fn git_menu_input(&mut self, input: Input) {
+        let unsaved = self.is_modified() || self.docs.iter().enumerate().any(|(i, d)| i != self.current && d.modified());
+        let Some(m) = self.git_menu.as_mut() else { return };
+        let key = match input {
+            Input::Paste(text) => return m.paste(&text),
+            Input::Key(k) => k,
+        };
+        match m.key(key, unsaved) {
+            Want::Nothing => {}
+            Want::Close => self.close_git_menu(),
+            Want::Open(path) => {
+                if self.open_or_report(&path) {
+                    self.close_git_menu();
+                }
+            }
+        }
     }
 
     fn normal_key(&mut self, key: Key, count: Option<usize>, register: Option<char>) {
