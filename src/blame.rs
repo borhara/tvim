@@ -1,4 +1,8 @@
 use std::collections::HashMap;
+use std::path::Path;
+use std::process::{Command, Stdio};
+
+use crate::editor::dir_of;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Commit {
@@ -94,4 +98,32 @@ pub fn describe(c: &Commit, me: Option<&str>, now: i64) -> String {
     } else {
         format!("{who}, {when} · {}", c.summary)
     }
+}
+
+fn run(path: &Path, head: &str) -> Blame {
+    let dir = dir_of(path);
+    let Some(name) = path.file_name() else {
+        return Blame::default();
+    };
+    let out = |args: &[&std::ffi::OsStr]| {
+        Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    };
+    let me = out(&["config".as_ref(), "user.email".as_ref()]).map(|s| s.trim().to_string());
+    let text = out(&[
+        "blame".as_ref(),
+        "--porcelain".as_ref(),
+        head.as_ref(),
+        "--".as_ref(),
+        name,
+    ]);
+    Blame::parse(&text.unwrap_or_default(), me)
 }
