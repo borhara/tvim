@@ -385,6 +385,7 @@ impl GitMenu {
                 self.typing = Some((Typing::Command, String::new(), 0));
                 self.recall = None;
             }
+            Key::Char('s') if files => self.toggle_stage(),
             Key::Char('a') if files => {
                 self.start("staging", |root| {
                     changed(git(root, &["add", "-A"]), "staged everything")
@@ -433,6 +434,27 @@ impl GitMenu {
         if at != self.selected {
             self.selected = at;
             self.peek_scroll = 0;
+        }
+    }
+
+    fn toggle_stage(&mut self) {
+        let Some(c) = self.current().cloned() else { return };
+        if c.group == Group::Staged {
+            self.start("unstaging", move |root| {
+                // a rename is unstaged from both ends
+                if let Some(from) = &c.from {
+                    let _ = git(root, &["restore", "--staged", "--", from]);
+                }
+                let mut out = git(root, &["restore", "--staged", "--", &c.path]);
+                if out.0 != 0 {
+                    out = git(root, &["rm", "-q", "--cached", "--", &c.path]);
+                }
+                changed(out, &format!("unstaged {}", c.path))
+            });
+        } else {
+            self.start("staging", move |root| {
+                changed(git(root, &["add", "-A", "--", &c.path]), &format!("staged {}", c.path))
+            });
         }
     }
 
