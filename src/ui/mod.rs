@@ -1,3 +1,4 @@
+mod gitmenu;
 mod overlays;
 mod sky;
 
