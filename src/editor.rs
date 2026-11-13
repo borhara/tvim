@@ -1509,11 +1509,37 @@ impl Editor {
             Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
             Act::Select { .. } => {}
+            Act::Hunk(_) => self.reset_hunk(),
             Act::Window(k) => self.window_key(k, cmd.count),
         }
         if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
             self.dot = self.building.take();
         }
+    }
+
+    fn reset_hunk(&mut self) {
+        let row = self.cursor.row;
+        let Some(h) = self
+            .change_hunks()
+            .iter()
+            .find(|h| h.new.contains(&row) || h.new.is_empty() && h.row() == row)
+            .cloned()
+        else {
+            return;
+        };
+        let old = self.git.with(|f| match &f.base {
+            Base::Head(lines) => lines.get(h.old.clone()).map(<[String]>::to_vec),
+            Base::Untracked => Some(Vec::new()),
+            Base::Outside => self.saved_lines.get(h.old.clone()).map(<[String]>::to_vec),
+        });
+        let Some(old) = old else { return };
+        self.touch();
+        let mut lines = self.buf.lines().to_vec();
+        lines.splice(h.new.clone(), old);
+        self.buf.replace_all(lines);
+        self.cursor = self.first_non_blank_pos(h.new.start.min(self.buf.last_row()));
+        self.set_want();
+        self.end_change();
     }
 
     fn normal_key(&mut self, key: Key, count: Option<usize>, register: Option<char>) {
