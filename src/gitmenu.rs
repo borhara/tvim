@@ -35,6 +35,42 @@ pub struct Status {
     pub changes: Vec<Change>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    pub id: String,
+    pub title: String,
+    pub detail: String,
+    pub current: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tab {
+    Files,
+    Log,
+    Branches,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Typing {
+    Commit,
+    Command,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Output {
+    pub title: String,
+    pub lines: Vec<String>,
+    pub code: i32,
+    pub scroll: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Want {
+    Nothing,
+    Close,
+    Open(PathBuf),
+}
+
 fn first_line(s: &str) -> String {
     let s = s.trim();
     let line = s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
