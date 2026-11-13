@@ -11,7 +11,7 @@ use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
 use crate::diff::{self, Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
-use crate::git::{Base, Git};
+use crate::git::{Base, Git, Tree};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
@@ -410,6 +410,7 @@ pub struct Editor {
     grep: Option<Grep>,
     saved_lines: Vec<String>,
     git: Git,
+    tree: Tree,
     git_history: Vec<String>,
     states: RefCell<States>,
     marks_cache: RefCell<Option<DiffCache>>,
@@ -493,6 +494,7 @@ impl Editor {
             grep: None,
             saved_lines: vec![String::new()],
             git: Git::default(),
+            tree: Tree::default(),
             git_menu: None,
             git_history: Vec::new(),
             states: RefCell::default(),
