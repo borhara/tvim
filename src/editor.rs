@@ -13,6 +13,7 @@ use crate::diff::{self, Hunk, Mark};
 use crate::explorer::{Action, Explorer};
 use crate::finder::{Finder, Pick};
 use crate::git::{Base, Git, Tree};
+use crate::gitmenu::GitMenu;
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
@@ -413,6 +414,7 @@ pub struct Editor {
     git: Git,
     tree: Tree,
     blamer: Blamer,
+    git_menu: Option<GitMenu>,
     git_history: Vec<String>,
     states: RefCell<States>,
     marks_cache: RefCell<Option<DiffCache>>,
