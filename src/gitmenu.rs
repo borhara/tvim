@@ -74,3 +74,64 @@ fn without_terminal(cmd: &mut Command) {
         });
     }
 }
+
+fn parse_status(out: &str) -> (String, Option<(usize, usize)>, Vec<Change>) {
+    let mut branch = String::new();
+    let mut upstream = None;
+    let mut changes = Vec::new();
+    let mut parts = out.split('\0');
+    while let Some(part) = parts.next() {
+        if let Some(head) = part.strip_prefix("## ") {
+            let head = head.strip_prefix("No commits yet on ").unwrap_or(head);
+            let (names, counts) = head.split_once(" [").unwrap_or((head, ""));
+            match names.split_once("...") {
+                Some((b, _)) => {
+                    branch = b.to_string();
+                    let count = |what: &str| {
+                        counts
+                            .split([',', ']'])
+                            .find_map(|c| c.trim().strip_prefix(what)?.trim().parse().ok())
+                            .unwrap_or(0)
+                    };
+                    upstream = (!counts.starts_with("gone")).then(|| (count("ahead"), count("behind")));
+                }
+                None if names.starts_with("HEAD (") => {}
+                None => branch = names.to_string(),
+            }
+            continue;
+        }
+        if part.len() < 4 {
+            continue;
+        }
+        let (x, y) = (part.as_bytes()[0] as char, part.as_bytes()[1] as char);
+        let path = part[3..].to_string();
+        let from = matches!(x, 'R' | 'C').then(|| parts.next()).flatten();
+        if x == '?' {
+            changes.push(Change {
+                path,
+                group: Group::Untracked,
+                letter: 'U',
+                from: None,
+            });
+            continue;
+        }
+        if x != ' ' && x != '!' {
+            changes.push(Change {
+                path: path.clone(),
+                group: Group::Staged,
+                letter: x,
+                from: from.filter(|_| x == 'R').map(str::to_string),
+            });
+        }
+        if y != ' ' && y != '!' {
+            changes.push(Change {
+                path,
+                group: Group::Changes,
+                letter: y,
+                from: None,
+            });
+        }
+    }
+    changes.sort_by(|a, b| (a.group, &a.path).cmp(&(b.group, &b.path)));
+    (branch, upstream, changes)
+}
