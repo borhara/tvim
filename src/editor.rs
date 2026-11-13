@@ -1542,6 +1542,46 @@ impl Editor {
         self.end_change();
     }
 
+    pub fn lens(&self) -> Option<String> {
+        let quiet = self.mode != Mode::Normal
+            || !self.pending.is_empty()
+            || self.explorer_focused()
+            || self.finder.is_some()
+            || self.grep.is_some()
+            || self.git_menu.is_some()
+        if !self.options.gitlens || quiet {
+            return None;
+        }
+        let path = self.file.path.as_deref()?;
+        let row = self.cursor.row;
+        let head = self.git.with(|f| match &f.base {
+            Base::Head(_) => f.head.clone().map(Some),
+            Base::Untracked => Some(None),
+            Base::Outside => None,
+        })?;
+        let Some(head) = head else {
+            return Some("not committed yet".into());
+        };
+        let mut old = row;
+        for h in self.change_hunks().iter() {
+            if h.new.contains(&row) {
+                return Some("not committed yet".into());
+            }
+            if h.new.end <= row {
+                old = old + h.old.len() - h.new.len();
+            }
+        }
+        let blame = self.blamer.get(path, &head)?;
+        let commit = blame.line(old)?;
+        Some(crate::blame::describe(commit, blame.me.as_deref(), crate::time::now()))
+    }
+
+    pub fn wait_for_blame(&self) {
+        self.git.wait();
+        let _ = self.lens();
+        self.blamer.wait();
+    }
+
     fn normal_key(&mut self, key: Key, count: Option<usize>, register: Option<char>) {
         let n = count.unwrap_or(1);
         let op = |e: &mut Self, op: Op, m: Motion| e.operate(op, Target::Motion(m), count, register);
