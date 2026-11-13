@@ -10,6 +10,7 @@ mod ex;
 pub mod explorer;
 pub mod finder;
 pub mod git;
+pub mod gitmenu;
 pub mod grep;
 pub mod jumps;
 pub mod keys;
