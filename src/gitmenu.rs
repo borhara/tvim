@@ -242,6 +242,18 @@ impl GitMenu {
         self.note.as_ref()
     }
 
+    pub fn busy(&self) -> Option<&str> {
+        self.busy.as_deref()
+    }
+
+    pub fn working(&self) -> bool {
+        self.job.waiting || self.peek.waiting
+    }
+
+    pub fn opened(&self) -> Option<f32> {
+        self.opened
+    }
+
     fn len(&self) -> usize {
         match self.tab {
             Tab::Files => self.changes().len(),
@@ -254,6 +266,45 @@ impl GitMenu {
         (self.tab == Tab::Files)
             .then(|| self.changes().get(self.selected))
             .flatten()
+    }
+
+    pub fn tick(&mut self) -> bool {
+        if let Some(done) = self.job.take() {
+            self.busy = None;
+            match done.status {
+                Some(Ok(s)) => {
+                    if self.status.is_none() {
+                        self.opened = Some(tinsel::app::time());
+                    }
+                    if self.status.as_ref() != Some(&s) {
+                        self.peeks.clear();
+                    }
+                    self.status = Some(s);
+                }
+                Some(Err(e)) if self.status.is_none() => self.failed = Some(e),
+                Some(Err(e)) => self.note = Some(error(e)),
+                None => {}
+            }
+            if let Some(log) = done.log {
+                self.log = log;
+            }
+            if let Some(b) = done.branches {
+                self.branches = b;
+            }
+            if let Some(n) = done.note {
+                self.note = Some(n);
+            }
+            if let Some(o) = done.output {
+                self.output = Some(o);
+            }
+            self.selected = self.selected.min(self.len().saturating_sub(1));
+            if let Some(cmd) = self.queued.take().filter(|_| self.status.is_some()) {
+            }
+        }
+        if let Some((key, lines)) = self.peek.take() {
+            self.peeking = None;
+            self.peeks.insert(key, lines);
+        }
     }
 
 }
