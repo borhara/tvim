@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Rect};
-use tinsel::{Rgb, Spinner, bold, paint, palette};
+use tinsel::{Rgb, Spinner, bold, mix, paint, palette};
 
-use super::{Colors, LILAC, vline};
+use super::{Colors, LILAC, icon, vline};
 use crate::editor::Editor;
 use crate::gitmenu::{GitMenu, Group, Tab};
 
@@ -10,6 +10,16 @@ fn group_color(g: Group) -> Rgb {
         Group::Staged => palette::SAGE,
         Group::Changes => palette::AMBER,
         Group::Untracked => LILAC,
+    }
+}
+
+fn letter_color(l: char) -> Rgb {
+    match l {
+        'A' => palette::SAGE,
+        'D' => palette::RED,
+        'R' | 'C' => palette::BLUSH,
+        'U' => LILAC,
+        _ => palette::AMBER,
     }
 }
 
@@ -121,4 +131,77 @@ fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32) {
 
 fn working(what: &str, t: f32) -> String {
     format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::BLUSH, &format!("{what}…")))
+}
+
+fn mark_row(frame: &mut Frame, row: Rect, c: &Colors) {
+    frame.tint(row, mix(c.bar, palette::ROSE, 0.22));
+    frame.print(Rect::new(row.x, row.y, 1, 1), 0, &paint(palette::ROSE, "▌"));
+}
+
+fn files(m: &GitMenu, frame: &mut Frame, list: Rect, c: &Colors) {
+    if changes.is_empty() {
+        frame.print(list, 0, &paint(palette::MUTED, "  ✦ nothing to commit"));
+        frame.print(list, 1, &paint(palette::MUTED, "    the tree is clean"));
+        return;
+    }
+    // headers sit between the groups, so rows and changes aren't one to one
+    let mut rows: Vec<(Option<usize>, String)> = Vec::new();
+    for g in [Group::Staged, Group::Changes, Group::Untracked] {
+        let n = changes.iter().filter(|ch| ch.group == g).count();
+        if n == 0 {
+            continue;
+        }
+        let color = group_color(g);
+        rows.push((
+            None,
+            format!(
+                " {} {} {}",
+                paint(color, "▾"),
+                bold(&paint(color, g.name())),
+                paint(palette::MUTED, &n.to_string())
+            ),
+        ));
+        for (i, ch) in changes.iter().enumerate().filter(|(_, ch)| ch.group == g) {
+            let (dir, name) = match ch.path.rsplit_once('/') {
+                Some((d, n)) => (format!(" {d}/"), n),
+                None => (String::new(), ch.path.as_str()),
+            };
+            let (glyph, gc) = icon(name, false);
+            let name = if ch.letter == 'D' {
+                paint(palette::MUTED, name)
+            } else {
+                paint(palette::TEXT, name)
+            };
+            rows.push((
+                Some(i),
+                format!(
+                    "   {} {} {name}{}",
+                    bold(&paint(letter_color(ch.letter), &ch.letter.to_string())),
+                    paint(gc, glyph),
+                    paint(palette::MUTED, &dir)
+                ),
+            ));
+        }
+    }
+    let at = rows.iter().position(|(i, _)| *i == Some(m.selected())).unwrap_or(0);
+    let top = (at + 1).saturating_sub(list.height);
+    // keep the group's header in sight when its first file is picked
+    let top = if top > 0 && rows[top - 1].0.is_none() && top == at {
+        top - 1
+    } else {
+        top
+    };
+    for (y, (i, text)) in rows
+        .iter()
+        .enumerate()
+        .skip(top)
+        .take(list.height)
+        .map(|(n, r)| (n - top, r))
+    {
+        let row = Rect::new(list.x, list.y + y, list.width, 1);
+        if *i == Some(m.selected()) {
+            mark_row(frame, row, c);
+        }
+        frame.print(Rect::new(row.x + 1, row.y, row.width - 1, 1), 0, text);
+    }
 }
