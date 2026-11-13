@@ -1,9 +1,52 @@
 mod common;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use common::temp;
 use tvim::Editor;
+use tvim::clipboard::Memory;
 use tvim::gitmenu::Group;
 use tvim::keys::parse;
+
+fn git(dir: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("git").arg("-C").arg(dir).args(args).output().ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+// a repo on trunk with a.txt committed by t@t; its own config, so tvim's commits work
+// without reading or touching anyone's global one
+fn repo(name: &str, committed: &str) -> Option<PathBuf> {
+    let dir = temp(&format!("menu-{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    if git(&dir, &["init", "-q"]).is_none() {
+        eprintln!("no git, skipping");
+        return None;
+    }
+    for (k, v) in [
+        ("user.name", "t"),
+        ("user.email", "t@t"),
+        ("commit.gpgsign", "false"),
+        ("core.hooksPath", "/dev/null"),
+    ] {
+        git(&dir, &["config", k, v]).unwrap();
+    }
+    git(&dir, &["symbolic-ref", "HEAD", "refs/heads/trunk"]).unwrap();
+    std::fs::write(dir.join("a.txt"), committed).unwrap();
+    git(&dir, &["add", "a.txt"]).unwrap();
+    git(&dir, &["commit", "-q", "-m", "first"]).unwrap();
+    Some(dir)
+}
+
+fn open(path: &Path) -> Editor {
+    let mut e = Editor::open(path).unwrap();
+    e.set_clipboard(Box::new(Memory::default()));
+    e.set_screen(100, 30);
+    e.wait_for_git();
+    e
+}
 
 fn menu(e: &mut Editor, keys: &str) {
     e.keys(&parse(keys));
@@ -13,6 +56,32 @@ fn menu(e: &mut Editor, keys: &str) {
 fn groups(e: &Editor) -> Vec<(Group, String)> {
     let m = e.git_menu().unwrap();
     m.changes().iter().map(|c| (c.group, c.path.clone())).collect()
+}
+
+#[test]
+fn the_lens_names_who_changed_the_line() {
+    let Some(dir) = repo("lens", "a\nb\nc\n") else { return };
+    let mut e = open(&dir.join("a.txt"));
+    e.wait_for_blame();
+    assert_eq!(e.lens().as_deref(), Some("you, just now · first"));
+    git(&dir, &["config", "user.email", "someone@else"]).unwrap();
+    let e2 = open(&dir.join("a.txt"));
+    e2.wait_for_blame();
+    assert_eq!(
+        e2.lens().as_deref(),
+        Some("t, just now · first"),
+        "a new blame reads the email again"
+    );
+
+    e.keys(&parse("jOnew<Esc>"));
+    assert_eq!(e.lens().as_deref(), Some("not committed yet"));
+    e.keys(&parse("jj"));
+    assert_eq!(e.cursor().row, 3);
+    assert_eq!(
+        e.lens().as_deref(),
+        Some("you, just now · first"),
+        "rows past an edit map back to HEAD"
+    );
 }
 
 #[test]
