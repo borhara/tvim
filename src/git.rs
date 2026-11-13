@@ -151,6 +151,51 @@ impl Statuses {
     }
 }
 
+fn statuses(dir: &Path) -> Statuses {
+    let out = Statuses::default();
+    let Some(root) = git_line(dir, &["rev-parse", "--show-toplevel"]).and_then(|r| std::fs::canonicalize(r).ok())
+    else {
+        return out;
+    };
+    match git(dir, &["status", "--porcelain=v1", "-z"]) {
+        Some((0, raw)) => parse_status(&root, &raw),
+        _ => out,
+    }
+}
+
+fn parse_status(root: &Path, raw: &[u8]) -> Statuses {
+    let mut out = Statuses::default();
+    let mut items = raw.split(|b| *b == 0);
+    while let Some(item) = items.next() {
+        if item.len() < 4 {
+            continue;
+        }
+        let (x, y) = (item[0], item[1]);
+        // a rename or copy is followed by its old name
+        if x == b'R' || x == b'C' {
+            items.next();
+        }
+        let state = match (x, y) {
+            (b'?', b'?') => FileState::Untracked,
+            (b'!', b'!') => continue,
+            (b'D', _) | (_, b'D') => FileState::Deleted,
+            (b'A', _) => FileState::Added,
+            _ => FileState::Modified,
+        };
+        let rel = String::from_utf8_lossy(&item[3..]);
+        let path = root.join(rel.trim_end_matches('/'));
+        let mut up = path.parent();
+        while let Some(d) = up.filter(|d| d.starts_with(root)) {
+            if !out.dirs.insert(d.to_path_buf()) {
+                break;
+            }
+            up = d.parent();
+        }
+        out.files.insert(path, state);
+    }
+    out
+}
+
 fn git(dir: &Path, args: &[&str]) -> Option<(i32, Vec<u8>)> {
     let out = Command::new("git")
         .arg("-C")
