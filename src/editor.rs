@@ -652,6 +652,29 @@ impl Editor {
         self.shown_text().diffed().1
     }
 
+    pub fn branch(&self) -> Option<String> {
+        self.git.with(|f| f.branch.clone())
+    }
+
+    pub fn upstream(&self) -> Option<(usize, usize)> {
+        self.git.with(|f| f.upstream)
+    }
+
+    pub fn wait_for_git(&self) {
+        self.git.wait();
+        self.tree.wait();
+    }
+
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    fn refresh_tree(&self) {
+        if let Some(x) = &self.explorer {
+            self.tree.refresh(x.root());
+        }
+    }
+
     pub fn selection(&self) -> Option<Range> {
         self.mode.is_visual().then(|| self.visual_range())
     }
@@ -1220,6 +1243,7 @@ impl Editor {
                 self.mode = Mode::Normal;
                 self.pending.clear();
                 self.message = None;
+                self.refresh_tree();
             }
             Err(e) => self.error(format!("\"{}\" {e}", dir.display())),
         }
@@ -1241,6 +1265,7 @@ impl Editor {
         let root = x.root().to_path_buf();
         let action = x.key(key, rows);
         if self.explorer.as_ref().is_some_and(|x| x.root() != root) || matches!(key, Key::Char('R') | Key::Ctrl('l')) {
+            self.refresh_tree();
         }
         match action {
             Action::Nothing => {}
@@ -3560,6 +3585,7 @@ impl Editor {
             self.file.new = false;
             self.git.probe(self.file.path.as_deref());
         }
+        self.refresh_tree();
         let lines = if contents.is_empty() {
             0
         } else {

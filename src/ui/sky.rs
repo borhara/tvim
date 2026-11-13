@@ -5,6 +5,7 @@ use super::{Colors, LILAC, diff_totals, display_path, input};
 use crate::editor::{Editor, Mode};
 
 pub(super) fn branch_info(e: &Editor) -> Option<String> {
+    let b = e.branch()?;
     let mut parts = vec![paint(LILAC, &b)];
     if let Some((ahead, behind)) = e.upstream().filter(|u| *u != (0, 0)) {
         let mut s = Vec::new();
