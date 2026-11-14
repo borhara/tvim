@@ -446,6 +446,95 @@ impl Editor {
         }
     }
 
+    fn set(&mut self, arg: &str) {
+        if arg.is_empty() {
+            let o = &self.options;
+            let flag = |on: bool, name: &str| if on { name.to_string() } else { format!("no{name}") };
+            let all = [
+                flag(o.number, "number"),
+                flag(o.relative_number, "relativenumber"),
+                flag(o.expand_tab, "expandtab"),
+                format!("tabstop={}", o.tab_stop),
+                format!("shiftwidth={}", o.shift_width),
+                flag(o.ignore_case, "ignorecase"),
+                flag(o.smart_case, "smartcase"),
+                flag(o.highlight_search, "hlsearch"),
+                flag(o.incremental_search, "incsearch"),
+                flag(o.auto_indent, "autoindent"),
+                format!("scrolloff={}", o.scroll_off),
+                flag(o.syntax, "syntax"),
+                flag(o.cursor_line, "cursorline"),
+                flag(o.indent_guides, "indentguides"),
+                flag(o.auto_pairs, "autopairs"),
+                flag(o.smooth, "smooth"),
+                flag(o.tab_preview, "tabpreview"),
+                flag(o.dim, "dim"),
+                flag(o.gitlens, "gitlens"),
+                flag(o.roomy, "roomy"),
+                flag(o.zero_pad, "zeropad"),
+            ];
+            return self.info(all.join("  "));
+        }
+        for word in arg.split_whitespace() {
+            if let Err(e) = self.set_one(word) {
+                return self.error(e);
+            }
+        }
+    }
+
+    fn set_one(&mut self, word: &str) -> Result<(), String> {
+        let (name, value) = match word.split_once('=') {
+            Some((n, v)) => (n, Some(v)),
+            None => (word, None),
+        };
+        let unknown = || format!("E518: Unknown option: {word}");
+        if let Some(v) = value {
+            let n: usize = v
+                .parse()
+                .map_err(|_| format!("E521: Number required after =: {word}"))?;
+            let o = &mut self.options;
+            match name {
+                "tabstop" | "ts" if n > 0 => o.tab_stop = n.min(32),
+                "shiftwidth" | "sw" if n > 0 => o.shift_width = n.min(32),
+                "scrolloff" | "so" => o.scroll_off = n,
+                "tabstop" | "ts" | "shiftwidth" | "sw" => {
+                    return Err(format!("E487: Argument must be positive: {word}"));
+                }
+                _ => return Err(unknown()),
+            }
+            return Ok(());
+        }
+        if let Some(name) = name.strip_suffix('?') {
+            let shown = match name {
+                "tabstop" | "ts" => format!("tabstop={}", self.options.tab_stop),
+                "shiftwidth" | "sw" => format!("shiftwidth={}", self.options.shift_width),
+                "scrolloff" | "so" => format!("scrolloff={}", self.options.scroll_off),
+                other => {
+                    let (name, on) = self.options.flag_mut(other).ok_or_else(unknown)?;
+                    if *on { name.to_string() } else { format!("no{name}") }
+                }
+            };
+            self.info(shown);
+            return Ok(());
+        }
+        let (name, how) = if let Some(n) = name.strip_prefix("no") {
+            if self.options.flag_mut(n).is_some() {
+                (n, Some(false))
+            } else {
+                (name, Some(true))
+            }
+        } else if let Some(n) = name.strip_prefix("inv") {
+            (n, None)
+        } else if let Some(n) = name.strip_suffix('!') {
+            (n, None)
+        } else {
+            (name, Some(true))
+        };
+        let (_, flag) = self.options.flag_mut(name).ok_or_else(unknown)?;
+        *flag = how.unwrap_or(!*flag);
+        Ok(())
+    }
+
     fn show_registers(&mut self) {
         let all = self.registers_list();
         if all.is_empty() {
