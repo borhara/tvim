@@ -137,6 +137,7 @@ impl Editor {
 
     pub fn save_state(&mut self, dir: &Path) -> std::io::Result<()> {
         let open: Vec<Place> = self
+            .places()
             .into_iter()
             .map(|(path, pos)| Place {
                 path: absolute(&path),

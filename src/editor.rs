@@ -968,6 +968,21 @@ impl Editor {
             .collect()
     }
 
+    pub fn places(&self) -> Vec<(PathBuf, Pos)> {
+        let mut out = Vec::new();
+        for (i, d) in self.docs.iter().enumerate() {
+            let (path, pos) = if i == self.current {
+                (&self.file.path, self.cursor)
+            } else {
+                (&d.file.path, d.cursor)
+            };
+            if let Some(p) = path {
+                out.push((p.clone(), pos));
+            }
+        }
+        out
+    }
+
     pub fn buffer_index(&self) -> usize {
         self.current
     }
