@@ -1077,6 +1077,7 @@ impl Editor {
                 "E89: No write since last change for buffer \"{name}\" (add ! to override)"
             ));
         }
+        self.remember_place();
         if self.docs.len() == 1 {
             self.fresh_doc();
             self.drop_orphan_windows();
