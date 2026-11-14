@@ -269,6 +269,10 @@ impl GitMenu {
         self.opened
     }
 
+    pub fn peek_scroll(&self) -> usize {
+        self.peek_scroll
+    }
+
     fn len(&self) -> usize {
         match self.tab {
             Tab::Files => self.changes().len(),
@@ -281,6 +285,18 @@ impl GitMenu {
         (self.tab == Tab::Files)
             .then(|| self.changes().get(self.selected))
             .flatten()
+    }
+
+    fn peek_key(&self) -> Option<String> {
+        match self.tab {
+            Tab::Files => self.current().map(|c| format!("{:?}:{}", c.group, c.path)),
+            Tab::Log => self.log.get(self.selected).map(|e| format!("commit:{}", e.id)),
+            Tab::Branches => self.branches.get(self.selected).map(|e| format!("branch:{}", e.id)),
+        }
+    }
+
+    pub fn peek(&self) -> Option<&[String]> {
+        self.peeks.get(&self.peek_key()?).map(Vec::as_slice)
     }
 
     pub fn tick(&mut self) -> bool {
@@ -325,7 +341,28 @@ impl GitMenu {
             self.peeking = None;
             self.peeks.insert(key, lines);
         }
+        self.want_peek();
         changed
+    }
+
+    fn want_peek(&mut self) {
+        let Some(key) = self.peek_key() else { return };
+        if self.peeks.contains_key(&key) || self.peeking.as_ref() == Some(&key) {
+            return;
+        }
+        let Some(root) = self.root().map(Path::to_path_buf) else {
+            return;
+        };
+        let what = match self.tab {
+            Tab::Files => match self.current() {
+                Some(c) => Peeking::File(c.clone()),
+                None => return,
+            },
+            Tab::Log => Peeking::Commit(self.log[self.selected].id.clone()),
+            Tab::Branches => Peeking::Branch(self.branches[self.selected].id.clone()),
+        };
+        self.peeking = Some(key.clone());
+        self.peek.run(move || (key, peek(&root, what)));
     }
 
     fn start(&mut self, label: &str, work: impl FnOnce(&Path) -> Done + Send + 'static) -> bool {
@@ -469,6 +506,7 @@ impl GitMenu {
             self.selected = at;
             self.peek_scroll = 0;
         }
+        self.want_peek();
     }
 
     fn switch_tab(&mut self, tab: Tab) {
@@ -476,6 +514,7 @@ impl GitMenu {
         self.selected = 0;
         self.peek_scroll = 0;
         match tab {
+            Tab::Files => self.want_peek(),
             Tab::Log => {
                 self.start("reading the log", |root| Done {
                     log: Some(read_log(root)),
