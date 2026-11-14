@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::buffer::Pos;
-use crate::editor::Editor;
+use crate::editor::{Editor, relative_to_cwd};
 
 pub const RECENT_SHOWN: usize = 20;
 const RECENT_KEPT: usize = 100;
@@ -106,6 +106,33 @@ impl Editor {
         let col = pos.col.min(self.buf.line_len(row).saturating_sub(1));
         self.set_cursor(Pos::new(row, col));
         self.top.set(row.saturating_sub(self.text_rows() / 3));
+    }
+
+    pub fn restore_session(&mut self, dir: &Path) -> bool {
+        let Ok(text) = std::fs::read_to_string(dir.join("session")) else {
+            return false;
+        };
+        let (head, rest) = text.split_once('\n').unwrap_or((&text, ""));
+        let current: usize = head.strip_prefix("current ").and_then(|n| n.parse().ok()).unwrap_or(0);
+        let mut opened = 0;
+        let mut back = None;
+        for (i, place) in parse_places(rest).into_iter().enumerate() {
+            if !place.path.is_file() || self.open_path(&relative_to_cwd(&place.path)).is_err() {
+                continue;
+            }
+            self.go_to_place(place.pos);
+            if i == current {
+                back = Some(self.buffer_index());
+            }
+            opened += 1;
+        }
+        if let Some(i) = back {
+            self.switch_to(i);
+        }
+        if opened > 1 {
+            self.info(format!("reopened {opened} files"));
+        }
+        opened > 0
     }
 
     pub fn save_state(&mut self, dir: &Path) -> std::io::Result<()> {
