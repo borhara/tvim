@@ -95,6 +95,9 @@ fn main() -> ExitCode {
     match app::run(Tvim::new(editor)) {
         Ok(mut tvim) => {
             if let Some(dir) = &state {
+                if let Err(e) = tvim.editor.save_state(dir) {
+                    tinsel::error(&format!("couldn't save the session in {}: {e}", dir.display()));
+                }
             }
             ExitCode::SUCCESS
         }
