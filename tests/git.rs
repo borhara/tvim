@@ -169,6 +169,53 @@ fn space_h_r_resets_the_hunk_under_the_cursor() {
 }
 
 #[test]
+fn the_branch_shows_at_the_top_right() {
+    let Some(dir) = repo("looks", "a\n") else { return };
+    let mut e = open(&dir.join("a.txt"));
+    e.clear_message();
+    let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&tvim::ui::Tvim::new(e), 140, 12).plain()
+    });
+    let top = shown.lines().next().unwrap();
+    assert!(top.ends_with("trunk"), "{top}");
+}
+
+fn shown(e: Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&tvim::ui::Tvim::new(e), width, height).plain()
+    })
+}
+
+#[test]
+fn diff_totals_sit_by_the_branch() {
+    let Some(dir) = repo("totals", "1\n2\n3\n4\n5\n") else {
+        return;
+    };
+    let file = dir.join("a.txt");
+    let mut e = open(&file);
+    e.clear_message();
+    let clean = shown(e, 100, 10);
+    let tabs = clean.lines().next().unwrap();
+    assert!(
+        tabs.contains("trunk") && !tabs.contains("+0") && !tabs.contains('~'),
+        "{tabs}"
+    );
+    std::fs::write(&file, "1\nX\n3\n5\nnew\n").unwrap();
+    let mut e = open(&file);
+    e.clear_message();
+    let screen = shown(e, 100, 10);
+    assert!(screen.contains("trunk  +1 ~1 -1"), "{screen}");
+    let mut e = open(&file);
+    e.keys(&parse("ggjdd"));
+    e.clear_message();
+    let tabs = shown(e, 100, 10).lines().next().unwrap().to_string();
+    assert!(
+        tabs.contains("trunk  +1 -2"),
+        "zeros are left out, on the tab row: {tabs}"
+    );
+}
+
+#[test]
 fn the_sidebar_status_follows_saves() {
     let Some(dir) = repo("sidebar-save", "a\n") else { return };
     let mut e = open(&dir.join("a.txt"));
