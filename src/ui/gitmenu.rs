@@ -347,6 +347,7 @@ fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f32) {
         Some([]) => {
             frame.print(pane, 1, &paint(palette::MUTED, "no differences"));
         }
+        Some(lines) => print_lines(frame, lines, m.peek_scroll(), &diff_line),
         None => {
             let wait = format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::MUTED, "loading…"));
             frame.print(pane, 1, &wait);
