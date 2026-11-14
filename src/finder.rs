@@ -86,6 +86,13 @@ impl Finder {
         Finder::build(root.to_path_buf(), files, false, "", title.to_string())
     }
 
+    pub fn recent(root: &Path, files: Vec<String>, lines: Vec<usize>) -> Finder {
+        let mut f = Finder::build(root.to_path_buf(), files, false, "", "recent files".into());
+        f.lines = Some(lines);
+        f.refresh();
+        f
+    }
+
     fn build(root: PathBuf, files: Vec<String>, cut_short: bool, query: &str, title: String) -> Finder {
         let mut f = Finder {
             root,
