@@ -987,3 +987,45 @@ fn peek(root: &Path, what: Peeking) -> Vec<String> {
         Peeking::Branch(id) => lines(git(root, &["log", "--oneline", "-n20", &id]).1),
     }
 }
+
+fn split_args(line: &str) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    let mut in_word = false;
+    let mut quote: Option<char> = None;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some('"') if c == '\\' => word.extend(chars.next()),
+            Some(_) => word.push(c),
+            None => match c {
+                '\'' | '"' => {
+                    quote = Some(c);
+                    in_word = true;
+                }
+                '\\' => {
+                    word.extend(chars.next());
+                    in_word = true;
+                }
+                c if c.is_whitespace() => {
+                    if in_word {
+                        out.push(std::mem::take(&mut word));
+                        in_word = false;
+                    }
+                }
+                c => {
+                    word.push(c);
+                    in_word = true;
+                }
+            },
+        }
+    }
+    if quote.is_some() {
+        return Err("a quote isn't closed".into());
+    }
+    if in_word {
+        out.push(word);
+    }
+    Ok(out)
+}
