@@ -96,6 +96,8 @@ struct Done {
     changed: bool,
 }
 
+type Peek = (String, Vec<String>);
+
 struct Slot<T> {
     shared: Arc<Mutex<(u64, Option<T>)>>,
     ticket: u64,
@@ -157,6 +159,7 @@ pub struct GitMenu {
     note: Option<Note>,
     busy: Option<String>,
     job: Slot<Done>,
+    peek: Slot<Peek>,
     peeking: Option<String>,
     pub(crate) history: Vec<String>,
     recall: Option<usize>,
@@ -797,4 +800,57 @@ fn read_branches(root: &Path) -> Vec<Entry> {
             })
         })
         .collect()
+}
+
+enum Peeking {
+    File(Change),
+    Commit(String),
+    Branch(String),
+}
+
+// the first megabyte, and whether there was more
+fn read_start(path: &Path) -> Option<(String, bool)> {
+    use std::io::Read;
+    const CAP: usize = 1 << 20;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path).ok()?.take(CAP as u64 + 1).read_to_end(&mut bytes).ok()?;
+    let cut = bytes.len() > CAP;
+    bytes.truncate(CAP);
+    match String::from_utf8(bytes) {
+        Ok(text) => Some((text, cut)),
+        Err(e) if cut && e.utf8_error().valid_up_to() > 0 => {
+            let valid = e.utf8_error().valid_up_to();
+            let mut bytes = e.into_bytes();
+            bytes.truncate(valid);
+            String::from_utf8(bytes).ok().map(|t| (t, cut))
+        }
+        Err(_) => None,
+    }
+}
+
+fn peek(root: &Path, what: Peeking) -> Vec<String> {
+    let lines = |s: String| -> Vec<String> { s.lines().map(|l| l.replace('\t', "    ")).take(MAX_LINES).collect() };
+    match what {
+        Peeking::File(c) if c.group == Group::Untracked => match read_start(&root.join(&c.path)) {
+            Some((text, cut)) => {
+                let more = if cut { "+" } else { "" };
+                let mut v = vec![format!("@@ new file, {}{more} lines @@", text.lines().count())];
+                v.extend(lines(text).into_iter().map(|l| format!("+{l}")));
+                v
+            }
+            None => vec!["(not text, or not readable)".into()],
+        },
+        Peeking::File(c) => {
+            let mut args = vec!["diff", "--no-ext-diff"];
+            if c.group == Group::Staged {
+                args.push("--cached");
+            }
+            args.extend(["--", &c.path]);
+            let mut out = lines(git(root, &args).1);
+            out.retain(|l| !l.starts_with("diff --git") && !l.starts_with("index "));
+            out
+        }
+        Peeking::Commit(id) => lines(git(root, &["show", "--stat", "--format=medium", &id]).1),
+        Peeking::Branch(id) => lines(git(root, &["log", "--oneline", "-n20", &id]).1),
+    }
 }
