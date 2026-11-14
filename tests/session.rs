@@ -48,3 +48,22 @@ fn open_files_come_back_where_they_were() {
     e.ex("bnext");
     assert_eq!(e.cursor(), Pos::new(11, 0));
 }
+
+#[test]
+fn files_that_are_gone_are_skipped() {
+    let dir = fresh("session-gone");
+    let state = dir.join("state");
+    let a = numbered(&dir, "a.txt", 3);
+    let b = numbered(&dir, "b.txt", 3);
+    let mut e = Editor::new();
+    e.ex(&format!("e {}", a.display()));
+    e.ex(&format!("e {}", b.display()));
+    e.save_state(&state).unwrap();
+    std::fs::remove_file(&b).unwrap();
+    let mut e = Editor::new();
+    assert!(e.restore_session(&state));
+    assert_eq!(e.buffers().len(), 1);
+    assert_eq!(e.file().path.as_ref().unwrap().file_name().unwrap(), "a.txt");
+
+    assert!(!Editor::new().restore_session(&dir.join("nothing-here")));
+}
