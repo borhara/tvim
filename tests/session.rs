@@ -176,6 +176,41 @@ fn space_r_lists_recent_files() {
 }
 
 #[test]
+fn moving_filtering_and_opening_recent_files() {
+    let dir = fresh("session-recent-pick");
+    let a = numbered(&dir, "alpha.rs", 40);
+    let b = numbered(&dir, "beta.md", 40);
+    let c = numbered(&dir, "gamma.txt", 40);
+    let recent = vec![place(&a, 11, 0), place(&b, 20, 2), place(&c, 5, 0)];
+
+    let mut e = Editor::new();
+    e.set_recent(recent.clone());
+    e.keys(&parse("<Space>rjjk"));
+    assert_eq!(e.finder().unwrap().selected(), 1, "j and k move while nothing is typed");
+    e.keys(&parse("<C-n><Up><Down>"));
+    assert_eq!(e.finder().unwrap().selected(), 2);
+    e.keys(&parse("<Esc>"));
+    assert!(e.finder().is_none());
+
+    let mut e = Editor::new();
+    e.set_recent(recent.clone());
+    e.keys(&parse("<Space>rgk"));
+    let f = e.finder().unwrap();
+    assert_eq!(f.query(), "gk", "once typing, j and k are letters");
+    e.keys(&parse("<BS><BS>bt"));
+    assert_eq!(e.finder().unwrap().match_count(), 1);
+    e.keys(&parse("<CR>"));
+    assert!(e.finder().is_none());
+    assert_eq!(e.file().path.as_ref().unwrap().canonicalize().unwrap(), b);
+    assert_eq!(e.cursor(), Pos::new(20, 2), "at the remembered place");
+
+    e.ex("recent");
+    let names: Vec<String> = e.finder().unwrap().matches().map(|(p, _)| p.to_string()).collect();
+    assert_eq!(names.len(), 2, "the file in front isn't listed: {names:?}");
+    assert!(names[0].ends_with("alpha.rs"), "{names:?}");
+}
+
+#[test]
 fn no_recent_files_yet() {
     let mut e = Editor::new();
     e.keys(&parse("<Space>r"));
