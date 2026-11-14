@@ -105,3 +105,21 @@ fn ctrl_p_and_find_open_it() {
         "run from the crate, so it finds tvim's own files"
     );
 }
+
+#[test]
+fn it_floats_over_the_editor() {
+    let mut e = Editor::with_text("x");
+    e.keys(&parse(":find ui/mo<CR>"));
+    let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&tvim::ui::Tvim::new(e), 110, 24).plain()
+    });
+    assert!(shown.contains("find in tvim"), "{shown}");
+    assert!(shown.contains("› ui/mo"), "{shown}");
+    assert!(shown.contains("› ⊛ src/ui/mod.rs"), "with its icon: {shown}");
+    assert!(
+        shown.contains("src/ui/mod.rs  rust"),
+        "and a preview beside it: {shown}"
+    );
+    assert!(shown.contains(" mod gitmenu;"), "{shown}");
+    assert!(shown.contains("esc close"), "{shown}");
+}
