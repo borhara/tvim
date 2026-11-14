@@ -69,6 +69,7 @@ fn main() -> ExitCode {
         Some(path) => match Editor::open(path) {
             Ok(mut e) => {
                 e.set_recent(recent);
+                e.restore_place();
                 e
             }
             Err(e) => {

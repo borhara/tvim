@@ -1040,6 +1040,7 @@ impl Editor {
         }
         if self.disposable() {
             self.load(path)?;
+            self.restore_place();
             return Ok(());
         }
         self.push_jump(self.cursor);
@@ -1056,6 +1057,7 @@ impl Editor {
             self.unstash(there);
             return Err(e);
         }
+        self.restore_place();
         Ok(())
     }
 
