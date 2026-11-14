@@ -172,6 +172,38 @@ impl Editor {
         Ok(())
     }
 
+    pub fn apply_config(&mut self, text: &str) -> Option<String> {
+        let mut problems = Vec::new();
+        for (n, line) in text.lines().enumerate() {
+            let line = line.trim().trim_start_matches(':').trim_start();
+            if line.is_empty() || line.starts_with(['"', '#']) {
+                continue;
+            }
+            let word = line.split_whitespace().next().unwrap_or("");
+            if word != "set" && word != "se" {
+                problems.push(format!("config line {}: only set lines are allowed: {line}", n + 1));
+                continue;
+            }
+            self.ex(line);
+            if let Some(m) = self.message.take().filter(|m| m.error) {
+                problems.push(format!("config line {}: {}", n + 1, m.text));
+            }
+        }
+        let first = problems.first()?.clone();
+        let more = problems.len() - 1;
+        let shown = if more > 0 {
+            format!("{first} (and {more} more)")
+        } else {
+            first
+        };
+        self.error(shown.clone());
+        Some(shown)
+    }
+
+    pub fn show_error(&mut self, text: &str) {
+        self.error(text);
+    }
+
 }
 
 // so two tvims quitting at once never leave half a file
