@@ -216,3 +216,35 @@ fn no_recent_files_yet() {
     e.keys(&parse("<Space>r"));
     assert!(screen(e, 100, 30).contains("nothing opened yet"));
 }
+
+#[test]
+fn where_state_and_config_live() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
+    };
+    assert_eq!(
+        session::state_dir_in(env(&[("HOME", "/h")])),
+        Some(PathBuf::from("/h/.local/state/tvim"))
+    );
+    assert_eq!(
+        session::state_dir_in(env(&[("HOME", "/h"), ("XDG_STATE_HOME", "/x")])),
+        Some(PathBuf::from("/x/tvim"))
+    );
+    assert_eq!(
+        session::state_dir_in(env(&[("XDG_STATE_HOME", "/x"), ("TVIM_STATE_DIR", "/t")])),
+        Some(PathBuf::from("/t"))
+    );
+    assert_eq!(
+        session::config_path_in(env(&[("HOME", "/h"), ("XDG_CONFIG_HOME", "")])),
+        Some(PathBuf::from("/h/.config/tvim/config"))
+    );
+    assert_eq!(
+        session::config_path_in(env(&[("HOME", "/h"), ("XDG_CONFIG_HOME", "/x")])),
+        Some(PathBuf::from("/x/tvim/config"))
+    );
+    assert_eq!(
+        session::config_path_in(env(&[("TVIM_CONFIG", "/c/tvimrc")])),
+        Some(PathBuf::from("/c/tvimrc"))
+    );
+    assert_eq!(session::state_dir_in(env(&[])), None);
+}
