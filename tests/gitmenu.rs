@@ -239,6 +239,46 @@ fn discard_asks_first() {
 }
 
 #[test]
+fn the_command_box_runs_git_and_shows_its_output() {
+    let Some(dir) = repo("command", "a\n") else { return };
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>G:log --format='%s by %an'<CR>");
+    let m = e.git_menu().unwrap();
+    let o = m.output().expect("output");
+    assert_eq!(o.code, 0);
+    assert_eq!(o.lines, ["first by t"]);
+    menu(&mut e, ":nosuchthing<CR>");
+    let o = e.git_menu().unwrap().output().unwrap();
+    assert_ne!(o.code, 0);
+    assert!(o.lines.iter().any(|l| l.contains("nosuchthing")), "{:?}", o.lines);
+    let screen = shown(e, 110, 30);
+    assert!(
+        screen.contains("$ git nosuchthing") && screen.contains("✕ exit 1"),
+        "{screen}"
+    );
+
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>G:status --short<CR>");
+    e.keys(&parse(":<Up>"));
+    assert_eq!(e.git_menu().unwrap().typing().unwrap().1, "status --short", "history");
+    menu(&mut e, "<Esc>");
+    assert!(e.git_menu().unwrap().typing().is_none());
+    assert!(e.git_menu().unwrap().output().is_some());
+    menu(&mut e, "<Esc>");
+    assert!(e.git_menu().unwrap().output().is_none());
+
+    let mut e = open(&dir.join("a.txt"));
+    e.ex("git rev-parse --abbrev-ref HEAD");
+    e.wait_for_git_menu();
+    e.wait_for_git_menu();
+    assert_eq!(
+        e.git_menu().unwrap().output().unwrap().lines,
+        ["trunk"],
+        ":git takes arguments"
+    );
+}
+
+#[test]
 fn log_and_branches() {
     let Some(dir) = repo("log", "a\n") else { return };
     git(&dir, &["branch", "side"]).unwrap();
