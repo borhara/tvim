@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::buffer::Pos;
-use crate::editor::{Editor, relative_to_cwd};
+use crate::editor::{Editor, Mode, relative_to_cwd};
+use crate::finder::Finder;
 
 pub const RECENT_SHOWN: usize = 20;
 const RECENT_KEPT: usize = 100;
@@ -204,6 +205,23 @@ impl Editor {
         self.error(text);
     }
 
+    pub fn pick_recent(&mut self) {
+        self.remember_place();
+        let here = self.file.path.as_deref().map(absolute);
+        let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let (names, lines) = self
+            .recent
+            .iter()
+            .filter(|p| Some(&p.path) != here.as_ref() && p.path.is_file())
+            .take(RECENT_SHOWN)
+            .map(|p| (relative_to_cwd(&p.path).display().to_string(), p.pos.row))
+            .unzip();
+        self.pending.clear();
+        self.message = None;
+        self.leave_visual_if_any();
+        self.mode = Mode::Normal;
+        self.finder = Some(Finder::recent(&root, names, lines));
+    }
 }
 
 // so two tvims quitting at once never leave half a file
