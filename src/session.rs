@@ -108,4 +108,47 @@ impl Editor {
         self.top.set(row.saturating_sub(self.text_rows() / 3));
     }
 
+    pub fn save_state(&mut self, dir: &Path) -> std::io::Result<()> {
+        let open: Vec<Place> = self
+            .into_iter()
+            .map(|(path, pos)| Place {
+                path: absolute(&path),
+                pos,
+            })
+            .filter(|p| p.path.is_file())
+            .collect();
+        let current_path = self.file.path.as_deref().map(absolute);
+        let mut recent = self.recent.clone();
+        for p in open.iter().rev().filter(|p| Some(&p.path) != current_path.as_ref()) {
+            push_front(&mut recent, p.clone());
+        }
+        if let Some(p) = open.iter().find(|p| Some(&p.path) == current_path.as_ref()) {
+            push_front(&mut recent, p.clone());
+        }
+        // keep what another tvim saved meanwhile
+        for p in read_recent(dir) {
+            if recent.len() < RECENT_KEPT && !recent.iter().any(|r| r.path == p.path) {
+                recent.push(p);
+            }
+        }
+        let current_at = self
+            .buffers()
+            .iter()
+            .filter(|b| b.path.as_deref().is_some_and(Path::is_file))
+            .position(|b| b.current)
+            .unwrap_or(0);
+        std::fs::create_dir_all(dir)?;
+        write_whole(&dir.join("recent"), &format_places(&recent))?;
+        write_whole(&dir.join("session"), &format!("current {current_at}\n{}", format_places(&open)))?;
+        self.recent = recent;
+        Ok(())
+    }
+
+}
+
+// so two tvims quitting at once never leave half a file
+fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)
 }
