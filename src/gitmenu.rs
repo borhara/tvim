@@ -740,6 +740,12 @@ impl GitMenu {
         }
     }
 
+    pub fn paste(&mut self, s: &str) {
+        let line = s.lines().next().unwrap_or("");
+        for c in line.chars() {
+            self.type_key(Key::Char(c));
+        }
+    }
 }
 
 fn info(text: impl Into<String>) -> Note {
