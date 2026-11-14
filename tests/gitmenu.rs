@@ -176,6 +176,46 @@ fn space_capital_g_opens_the_menu_with_grouped_changes() {
 }
 
 #[test]
+fn stage_unstage_and_commit() {
+    let Some(dir) = repo("commit", "a\n") else { return };
+    std::fs::write(dir.join("a.txt"), "a\nb\n").unwrap();
+    let mut e = open(&dir.join("a.txt"));
+    e.ex("git");
+    e.wait_for_git_menu();
+    assert_eq!(groups(&e), [(Group::Changes, "a.txt".into())]);
+    menu(&mut e, "c");
+    assert!(e.git_menu().unwrap().note().unwrap().error, "nothing staged yet");
+    menu(&mut e, "s");
+    assert_eq!(groups(&e), [(Group::Staged, "a.txt".into())]);
+    menu(&mut e, "s");
+    assert_eq!(groups(&e), [(Group::Changes, "a.txt".into())]);
+    menu(&mut e, "a");
+    assert_eq!(groups(&e), [(Group::Staged, "a.txt".into())]);
+    menu(&mut e, "u");
+    assert_eq!(groups(&e), [(Group::Changes, "a.txt".into())]);
+    menu(&mut e, "a");
+    e.keys(&parse("c"));
+    assert!(e.git_menu().unwrap().typing().is_some());
+    e.keys(&parse("add b<Esc>"));
+    assert!(e.git_menu().unwrap().typing().is_none(), "esc cancels");
+    assert_eq!(groups(&e).len(), 1);
+    menu(&mut e, "cadd b<CR>");
+    assert_eq!(groups(&e), []);
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]).unwrap().trim(), "add b");
+    assert!(e.git_menu().unwrap().note().unwrap().text.contains("add b"));
+    menu(&mut e, "q");
+    assert!(e.git_menu().is_none());
+    e.keys(&parse("j"));
+    e.wait_for_blame();
+    assert_eq!(
+        e.lens().as_deref(),
+        Some("you, just now · add b"),
+        "the lens follows the commit"
+    );
+    assert_eq!(e.change_marks().to_vec(), [None, None], "and so does the gutter");
+}
+
+#[test]
 fn discard_asks_first() {
     let Some(dir) = repo("discard", "a\n") else { return };
     let file = dir.join("a.txt");
