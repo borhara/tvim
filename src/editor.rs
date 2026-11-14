@@ -1626,6 +1626,7 @@ impl Editor {
             return;
         }
         if changed {
+            self.after_git();
         }
         let early = match self.git_menu.as_mut() {
             Some(m) if m.ready() => std::mem::take(&mut m.early),
@@ -1635,6 +1636,29 @@ impl Editor {
             if self.git_menu.is_some() {
                 self.git_menu_input(Input::Key(k));
             }
+        }
+    }
+
+    // the repo changed under us: redraw the gutter and branch, and reload a clean buffer
+    fn after_git(&mut self) {
+        self.git.probe(self.file.path.as_deref());
+        self.refresh_tree();
+        if self.is_modified() {
+            return;
+        }
+        let Some(path) = self.file.path.clone() else { return };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return;
+        };
+        if text == self.contents(None) {
+            return;
+        }
+        let (cursor, top) = (self.cursor, self.top.get());
+        if self.load(&path).is_ok() {
+            self.cursor = cursor;
+            self.top.set(top);
+            self.clamp();
+            self.message = None;
         }
     }
 
