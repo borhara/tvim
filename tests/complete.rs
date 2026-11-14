@@ -93,3 +93,27 @@ fn undo_and_repeat_use_the_word_chosen() {
     );
     assert_eq!(t("foobar\n", "G2ifo<C-n><C-y><Esc>"), "foobar\nfoobarfoobar");
 }
+
+fn screen(e: &tvim::Editor, width: usize, height: usize) -> Vec<String> {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = tinsel::app::Frame::new(width, height);
+        tvim::ui::draw(e, &mut frame);
+        frame.snapshot().plain().lines().map(str::to_string).collect()
+    })
+}
+
+#[test]
+fn the_choices_pop_up_below_the_word() {
+    let mut e = ed("format foobar\n");
+    e.keys(&parse("Gi  fo<C-n>"));
+    let shown = screen(&e, 40, 14);
+    let row = shown.iter().position(|r| r.contains("2 ›   format")).unwrap();
+    assert!(shown[row + 2].contains("› format"), "{shown:?}");
+    let col = |line: &str, pat: &str| line[..line.find(pat).unwrap()].chars().count();
+    assert_eq!(col(&shown[row + 2], "format"), col(&shown[row], "format"));
+    assert!(shown[row + 3].contains("  foobar │"), "{shown:?}");
+    e.keys(&parse("<C-n>"));
+    assert!(screen(&e, 40, 14)[row + 3].contains("› foobar │"));
+    e.keys(&parse("<C-y>"));
+    assert!(!screen(&e, 40, 14).join("\n").contains("foobar │"), "the choices close");
+}
