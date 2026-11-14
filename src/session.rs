@@ -91,4 +91,21 @@ impl Editor {
         }
     }
 
+    pub fn restore_place(&mut self) {
+        let Some(path) = self.file.path.as_deref().map(absolute) else {
+            return;
+        };
+        if let Some(p) = self.recent.iter().find(|p| p.path == path) {
+            let pos = p.pos;
+            self.go_to_place(pos);
+        }
+    }
+
+    fn go_to_place(&mut self, pos: Pos) {
+        let row = pos.row.min(self.buf.last_row());
+        let col = pos.col.min(self.buf.line_len(row).saturating_sub(1));
+        self.set_cursor(Pos::new(row, col));
+        self.top.set(row.saturating_sub(self.text_rows() / 3));
+    }
+
 }
