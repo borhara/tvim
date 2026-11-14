@@ -1,9 +1,9 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{Rgb, Spinner, bold, italic, mix, paint, palette};
 
-use super::{Colors, LILAC, icon, vline};
+use super::{Colors, LILAC, icon, input, vline};
 use crate::editor::Editor;
-use crate::gitmenu::{GitMenu, Group, Tab};
+use crate::gitmenu::{GitMenu, Group, Tab, Typing};
 
 fn group_color(g: Group) -> Rgb {
     match g {
@@ -85,6 +85,13 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         Tab::Log | Tab::Branches => entries(m, frame, list, c),
     }
     right_pane(m, frame, pane, t);
+    let at = prompt(
+        m,
+        frame,
+        Rect::new(inner.x, inner.y + inner.height - 2, inner.width, 1),
+        t,
+        c,
+    );
     if open < 1.0 {
         frame.dim(rect);
     }
@@ -353,4 +360,35 @@ fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f32) {
             frame.print(pane, 1, &wait);
         }
     }
+}
+
+fn prompt(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32, c: &Colors) -> Option<(usize, usize)> {
+    if let Some(ch) = m.confirming() {
+        let text = format!(
+            "{} {}{}   {} {}",
+            bold(&paint(palette::RED, "discard")),
+            paint(palette::TEXT, &format!("changes to {}", ch.path)),
+            paint(palette::TEXT, "?"),
+            bold(&paint(palette::ROSE, "y")),
+            paint(palette::MUTED, "yes · any other key keeps them")
+        );
+        frame.print(row, 0, &text);
+        return None;
+    }
+    if let Some((kind, text, at)) = m.typing() {
+        let label = match kind {
+            Typing::Commit => format!("{} {} ", paint(palette::SAGE, "✎"), paint(palette::SAGE, "message ›")),
+            Typing::Command => format!("{} ", bold(&paint(palette::ROSE, "git ›"))),
+        };
+        frame.tint(row, mix(c.bar, palette::ROSE, 0.1));
+        return Some(input(frame, row, &label, text, at, Some(palette::TEXT)));
+    }
+    let text = match (m.note(), m.busy()) {
+        (_, Some(what)) => working(what, t),
+        (Some(n), _) if n.error => paint(palette::RED, &format!("✕ {}", n.text)),
+        (Some(n), _) => paint(palette::SAGE, &format!("✓ {}", n.text)),
+        (None, None) => italic(&paint(palette::MUTED, ": runs any git command here")),
+    };
+    frame.print(row, 0, &text);
+    None
 }
