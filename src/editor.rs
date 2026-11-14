@@ -426,6 +426,7 @@ pub struct Editor {
     current: usize,
     pub(crate) buffer_id: usize,
     next_id: usize,
+    pub(crate) recent: Vec<crate::session::Place>,
     // the focused window's cursor and scroll live in the fields above; wins has the rest
     pub(crate) wins: Vec<Win>,
     pub(crate) layout: Node,
