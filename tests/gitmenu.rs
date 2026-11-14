@@ -317,3 +317,29 @@ fn log_and_branches() {
     assert_eq!(e.text(), "a", "the buffer follows the switch");
     assert_eq!(e.branch().as_deref(), Some("side"));
 }
+
+#[test]
+fn outside_a_repo_there_is_only_a_message() {
+    let dir = temp("menu-outside");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("plain.txt");
+    std::fs::write(&file, "a\n").unwrap();
+    if git(&dir, &["rev-parse"]).is_some() {
+        return;
+    }
+    let mut e = open(&file);
+    menu(&mut e, "<Space>G");
+    assert!(e.git_menu().is_none());
+    assert_eq!(e.message().unwrap().text, "not in a git repository");
+}
+
+#[test]
+fn enter_opens_the_file() {
+    let Some(dir) = repo("enter", "a\n") else { return };
+    std::fs::write(dir.join("b.txt"), "bee\n").unwrap();
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>G<CR>");
+    assert!(e.git_menu().is_none());
+    assert_eq!(e.text(), "bee");
+}
