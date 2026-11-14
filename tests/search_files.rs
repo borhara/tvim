@@ -85,3 +85,20 @@ fn the_open_files_picker() {
     e.keys(&parse("one<CR>"));
     assert!(e.file().path.as_ref().unwrap().ends_with("src/one.rs"));
 }
+
+#[test]
+fn it_floats_with_a_preview() {
+    let mut e = Editor::with_text("x");
+    e.ex("grep fn breadcrumb");
+    e.wait_for_grep();
+    let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&tvim::ui::Tvim::new(e), 140, 30).plain()
+    });
+    assert!(shown.contains("search in tvim"), "{shown}");
+    assert!(shown.contains("› fn breadcrumb"), "{shown}");
+    assert!(shown.contains("src/ui/mod.rs:"), "{shown}");
+    assert!(
+        shown.contains("fn breadcrumb(e: &Editor)"),
+        "the preview shows the line in place: {shown}"
+    );
+}
