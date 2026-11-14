@@ -152,3 +152,32 @@ fn the_welcome_screen_points_to_recent_files() {
     );
     assert!(shown.contains("start writing"), "{shown}");
 }
+
+#[test]
+fn space_r_lists_recent_files() {
+    let dir = fresh("session-space-r");
+    let a = numbered(&dir, "alpha.rs", 40);
+    let b = numbered(&dir, "beta.md", 40);
+    let mut e = Editor::new();
+    e.set_recent(vec![place(&a, 11, 0), place(&b, 2, 0)]);
+    e.keys(&parse("<Space>r"));
+    let f = e.finder().expect("open");
+    assert_eq!(f.title(), "recent files");
+    assert!(f.is_recent());
+    let shown = screen(e, 100, 30);
+    let alpha = shown.lines().find(|l| l.contains("alpha.rs")).unwrap();
+    assert!(alpha.contains("▎ ⊛ alpha.rs") && alpha.contains(":12"), "{alpha}");
+    let beta = shown.lines().find(|l| l.contains("beta.md")).unwrap();
+    assert!(!beta.contains('▎') && beta.contains(":3"), "{beta}");
+    assert!(
+        shown.find("alpha.rs").unwrap() < shown.find("beta.md").unwrap(),
+        "most recent first"
+    );
+}
+
+#[test]
+fn no_recent_files_yet() {
+    let mut e = Editor::new();
+    e.keys(&parse("<Space>r"));
+    assert!(screen(e, 100, 30).contains("nothing opened yet"));
+}
