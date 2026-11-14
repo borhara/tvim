@@ -3,6 +3,7 @@ use common::temp;
 use std::path::{Path, PathBuf};
 use tvim::keys::parse;
 use tvim::session::{self, Place};
+use tvim::ui::Tvim;
 use tvim::{Editor, Pos};
 
 fn fresh(name: &str) -> PathBuf {
@@ -17,6 +18,12 @@ fn numbered(dir: &Path, name: &str, lines: usize) -> PathBuf {
     let text: String = (1..=lines).map(|i| format!("line {i}\n")).collect();
     std::fs::write(&path, text).unwrap();
     path.canonicalize().unwrap()
+}
+
+fn screen(e: Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&Tvim::new(e), width, height).plain()
+    })
 }
 
 fn place(path: &Path, row: usize, col: usize) -> Place {
@@ -128,4 +135,20 @@ fn the_recent_list_is_capped_and_merges_with_whats_on_disk() {
     let recent = session::read_recent(&state);
     assert_eq!(recent[0].path, files[29]);
     assert_eq!(recent.len(), 26, "the other tvim's files are kept");
+}
+
+#[test]
+fn the_welcome_screen_points_to_recent_files() {
+    let dir = fresh("session-welcome");
+    let a = numbered(&dir, "alpha.rs", 40);
+    let mut e = Editor::new();
+    e.set_recent(vec![place(&a, 11, 0)]);
+    let shown = screen(e, 100, 30);
+    let line = shown.lines().find(|l| l.contains("recent files")).unwrap();
+    assert!(line.contains("space r"), "{line}");
+    assert!(
+        !shown.contains("alpha.rs"),
+        "the list itself is in the space r window: {shown}"
+    );
+    assert!(shown.contains("start writing"), "{shown}");
 }
