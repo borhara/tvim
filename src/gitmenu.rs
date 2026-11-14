@@ -339,6 +339,7 @@ impl GitMenu {
             }
             self.selected = self.selected.min(self.len().saturating_sub(1));
             if let Some(cmd) = self.queued.take().filter(|_| self.status.is_some()) {
+                self.command(&cmd);
             }
         }
         if let Some((key, lines)) = self.peek.take() {
@@ -642,6 +643,32 @@ impl GitMenu {
         });
     }
 
+    fn command(&mut self, line: &str) {
+        let mut args = match split_args(line) {
+            Ok(a) => a,
+            Err(e) => {
+                self.note = Some(error(e));
+                return;
+            }
+        };
+        if args.first().is_some_and(|a| a == "git") {
+            args.remove(0);
+        }
+        if args.is_empty() {
+            return;
+        }
+        let title = format!("git {}", line.trim().trim_start_matches("git ").trim());
+        self.start(&format!("running {title}"), move |root| {
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            let (code, out, err) = git(root, &args);
+            Done {
+                output: Some(output(title, code, &out, &err)),
+                changed: true,
+                ..Done::default()
+            }
+        });
+    }
+
     fn type_key(&mut self, key: Key) {
         let Some((kind, text, at)) = self.typing.as_mut() else {
             return;
@@ -666,6 +693,7 @@ impl GitMenu {
                                 self.history.remove(0);
                             }
                         }
+                        self.command(&line);
                     }
                 }
             }
