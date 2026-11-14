@@ -53,9 +53,11 @@ fn main() -> ExitCode {
     }
 
     let state = session::state_dir();
+    let recent = state.as_deref().map(session::read_recent).unwrap_or_default();
     let mut editor = match &file {
         Some(path) if path.is_dir() => {
             let mut e = Editor::new();
+            e.set_recent(recent);
             e.explore(path);
             if e.explorer().is_none() {
                 let why = e.message().map_or(String::new(), |m| m.text.clone());
@@ -66,6 +68,7 @@ fn main() -> ExitCode {
         }
         Some(path) => match Editor::open(path) {
             Ok(mut e) => {
+                e.set_recent(recent);
                 e
             }
             Err(e) => {
@@ -75,6 +78,7 @@ fn main() -> ExitCode {
         },
         None => {
             let mut e = Editor::new();
+            e.set_recent(recent);
             if let Some(dir) = &state {
             }
             e
