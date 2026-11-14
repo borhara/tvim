@@ -5,6 +5,14 @@ use tvim::keys::parse;
 use tvim::ui::draw;
 use tvim::{Editor, Pos};
 
+fn screen(e: &Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = Frame::new(width, height);
+        draw(e, &mut frame);
+        frame.snapshot().plain()
+    })
+}
+
 fn lines(n: usize) -> String {
     (1..=n).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n")
 }
@@ -188,6 +196,21 @@ fn not_enough_room() {
     e.ex("sp");
     assert!(e.message().unwrap().text.starts_with("E36"));
     assert_eq!(e.window_count(), 1);
+}
+
+#[test]
+fn windows_are_drawn_with_titles_and_a_divider() {
+    let p = file("win-draw.txt", "alpha\nbeta\n");
+    let mut e = Editor::open(&p).unwrap();
+    e.set_screen(80, 24);
+    e.keys(&parse("<C-w>vj"));
+    let shown = screen(&e, 60, 12);
+    let rows: Vec<&str> = shown.lines().collect();
+    let titles = rows.iter().find(|r| r.contains("── ✶ win-draw.txt")).expect(&shown);
+    assert!(titles.contains("│── win-draw.txt"), "{shown}");
+    let text = rows.iter().find(|r| r.contains("alpha")).unwrap();
+    assert_eq!(text.matches("1   alpha").count(), 2, "{shown}");
+    assert!(text.contains('│'));
 }
 
 #[test]
