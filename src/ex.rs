@@ -126,6 +126,7 @@ impl Editor {
         } else if is("git", 3) || is("Git", 3) {
             self.open_git_menu(non_empty(arg));
         } else if is("recent", 3) {
+            self.pick_recent();
         } else if is("zen", 3) {
         } else if is("Explore", 2) || is("explore", 3) {
             let dir = match non_empty(arg) {
