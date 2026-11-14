@@ -1,5 +1,5 @@
 use tinsel::app::{Frame, Panel, Rect};
-use tinsel::{Rgb, Spinner, bold, mix, paint, palette};
+use tinsel::{Rgb, Spinner, bold, italic, mix, paint, palette};
 
 use super::{Colors, LILAC, icon, vline};
 use crate::editor::Editor;
@@ -84,6 +84,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         Tab::Files => files(m, frame, list, c),
         Tab::Log | Tab::Branches => entries(m, frame, list, c),
     }
+    right_pane(m, frame, pane, t);
     if open < 1.0 {
         frame.dim(rect);
     }
@@ -282,5 +283,73 @@ fn diff_line(l: &str) -> String {
         format!("{}{}{bar}", paint(palette::TEXT, file), paint(palette::LINE, " | "))
     } else {
         paint(palette::SOFT, l)
+    }
+}
+
+fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f32) {
+    if pane.width < 4 || pane.height < 2 {
+        return;
+    }
+    let rows = pane.height - 1;
+    let print_lines = |frame: &mut Frame, lines: &[String], from: usize, style: &dyn Fn(&str) -> String| {
+        for (i, l) in lines.iter().skip(from).take(rows).enumerate() {
+            frame.print(pane, i + 1, &style(l));
+        }
+    };
+    if let Some(o) = m.output() {
+        let badge = if o.code == 0 {
+            paint(palette::SAGE, "✓ exit 0")
+        } else {
+            paint(palette::RED, &format!("✕ exit {}", o.code))
+        };
+        let title = format!(
+            "{} {}",
+            paint(palette::ROSE, "$"),
+            bold(&paint(palette::TEXT, &o.title))
+        );
+        frame.print(pane, 0, &title);
+        let w = tinsel::text::width(&badge);
+        if w + tinsel::text::width(&title) + 2 <= pane.width {
+            frame.print(Rect::new(pane.x + pane.width - w, pane.y, w, 1), 0, &badge);
+        }
+        print_lines(frame, &o.lines, o.scroll, &|l| paint(palette::TEXT, l));
+        return;
+    }
+    let title = match m.tab() {
+        Tab::Files => m.current().map(|ch| {
+            let what = match ch.group {
+                Group::Staged => "staged",
+                Group::Changes => "not staged",
+                Group::Untracked => "untracked",
+            };
+            format!(
+                "{}  {}",
+                bold(&paint(palette::TEXT, &ch.path)),
+                italic(&paint(palette::MUTED, what))
+            )
+        }),
+        Tab::Log | Tab::Branches => m.entries().get(m.selected()).map(|en| {
+            let detail = if en.detail.is_empty() {
+                String::new()
+            } else {
+                format!("  {}", en.detail)
+            };
+            format!(
+                "{}{}",
+                bold(&paint(palette::TEXT, &en.id)),
+                italic(&paint(palette::MUTED, &detail))
+            )
+        }),
+    };
+    let Some(title) = title else { return };
+    frame.print(pane, 0, &title);
+    match m.peek() {
+        Some([]) => {
+            frame.print(pane, 1, &paint(palette::MUTED, "no differences"));
+        }
+        None => {
+            let wait = format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::MUTED, "loading…"));
+            frame.print(pane, 1, &wait);
+        }
     }
 }
