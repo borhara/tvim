@@ -180,6 +180,14 @@ fn the_branch_shows_at_the_top_right() {
     assert!(top.ends_with("trunk"), "{top}");
 }
 
+fn shown_ref(e: &Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = tinsel::app::Frame::new(width, height);
+        tvim::ui::draw(e, &mut frame);
+        frame.snapshot().plain()
+    })
+}
+
 fn shown(e: Editor, width: usize, height: usize) -> String {
     tinsel::with_color_mode(tinsel::ColorMode::None, || {
         tinsel::app::snapshot(&tvim::ui::Tvim::new(e), width, height).plain()
@@ -213,6 +221,81 @@ fn diff_totals_sit_by_the_branch() {
         tabs.contains("trunk  +1 -2"),
         "zeros are left out, on the tab row: {tabs}"
     );
+}
+
+fn side(screen: &str, row: &str) -> String {
+    let line = screen.lines().find(|l| l.contains(row)).unwrap_or("");
+    // the sidebar is 26 wide, the last its dotted rule
+    line.chars().take(25).collect::<String>().trim_end().to_string()
+}
+
+#[test]
+fn the_sidebar_shows_each_files_git_status() {
+    let Some(dir) = repo("sidebar", "a\n") else { return };
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    std::fs::write(dir.join("sub/in.txt"), "x\n").unwrap();
+    std::fs::write(dir.join("kept.txt"), "k\n").unwrap();
+    assert!(git(&dir, &["add", "."]));
+    assert!(git(&dir, &["commit", "-q", "-m", "more"]));
+    std::fs::write(dir.join("a.txt"), "changed\n").unwrap();
+    std::fs::write(dir.join("sub/in.txt"), "y\n").unwrap();
+    std::fs::write(dir.join("staged.txt"), "s\n").unwrap();
+    assert!(git(&dir, &["add", "staged.txt"]));
+    std::fs::write(dir.join("loose.txt"), "l\n").unwrap();
+    let mut e = Editor::new();
+    e.explore(&dir);
+    e.wait_for_git();
+    // the sidebar row's glyph and the colour it's painted in
+    let ink = |e: &Editor, name: &str| -> (char, String) {
+        let (plain, line) = tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
+            let mut frame = tinsel::app::Frame::new(80, 12);
+            tvim::ui::draw(e, &mut frame);
+            let y = frame
+                .snapshot()
+                .plain()
+                .lines()
+                .position(|l| l.ends_with(&format!(" {name}")) || l.contains(&format!(" {name} ")))
+                .unwrap();
+            (frame.snapshot().plain(), frame.snapshot().lines()[y].clone())
+        });
+        let seg = line
+            .split("\u{1b}[")
+            .find(|s| s.contains(['⋆', '·', '◇', '✶']))
+            .expect(&plain);
+        let (code, text) = seg.split_once('m').unwrap();
+        let fg = code
+            .split(';')
+            .skip_while(|p| *p != "38")
+            .take(5)
+            .collect::<Vec<_>>()
+            .join(";");
+        (text.chars().find(|c| "⋆·◇✶".contains(*c)).unwrap(), fg)
+    };
+    let rgb = |c: tinsel::Rgb| format!("38;2;{};{};{}", c.0, c.1, c.2);
+    let screen = shown_ref(&e, 80, 12);
+    assert!(screen.contains("─ sidebar ─"), "{screen}");
+    assert_eq!(ink(&e, "a.txt"), ('⋆', rgb(tinsel::palette::AMBER)), "{screen}");
+    assert_eq!(ink(&e, "staged.txt"), ('⋆', rgb(tinsel::palette::SAGE)));
+    assert_eq!(ink(&e, "loose.txt"), ('⋆', rgb(tinsel::palette::MUTED)));
+    assert_eq!(
+        ink(&e, "sub"),
+        ('◇', rgb(tinsel::palette::AMBER)),
+        "folders with changes in them"
+    );
+    assert_eq!(ink(&e, "kept.txt").0, '·', "clean files are plain dots");
+    assert!(
+        !side(&screen, "a.txt").ends_with(" M"),
+        "no letters at the edge: {screen}"
+    );
+
+    let outside = temp("sidebar-outside");
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("plain.txt"), "p\n").unwrap();
+    let mut e = Editor::new();
+    e.explore(&outside);
+    e.wait_for_git();
+    assert!(e.tree().with(|t| t.is_empty()), "nothing outside a repo");
 }
 
 #[test]
