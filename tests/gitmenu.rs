@@ -53,6 +53,12 @@ fn menu(e: &mut Editor, keys: &str) {
     e.wait_for_git_menu();
 }
 
+fn shown(e: Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&tvim::ui::Tvim::new(e), width, height).plain()
+    })
+}
+
 fn groups(e: &Editor) -> Vec<(Group, String)> {
     let m = e.git_menu().unwrap();
     m.changes().iter().map(|c| (c.group, c.path.clone())).collect()
@@ -108,6 +114,28 @@ fn the_lens_hides_while_typing_and_when_off() {
     if git(outside.parent().unwrap(), &["rev-parse"]).is_none() {
         assert_eq!(e.lens(), None, "no lens outside a repo");
     }
+}
+
+#[test]
+fn the_lens_is_drawn_after_the_line_only_when_it_fits() {
+    let Some(dir) = repo("lens-draw", "short\n") else {
+        return;
+    };
+    let e = open(&dir.join("a.txt"));
+    e.wait_for_blame();
+    let wide = shown(e, 100, 10);
+    assert!(wide.contains("short    you, just now · first"), "{wide}");
+    let e = open(&dir.join("a.txt"));
+    e.wait_for_blame();
+    let narrow = shown(e, 34, 10);
+    assert!(
+        narrow.contains("short    you, just now") && !narrow.contains("first"),
+        "{narrow}"
+    );
+    let e = open(&dir.join("a.txt"));
+    e.wait_for_blame();
+    let tiny = shown(e, 22, 10);
+    assert!(!tiny.contains("you"), "{tiny}");
 }
 
 #[test]
