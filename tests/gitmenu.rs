@@ -343,3 +343,20 @@ fn enter_opens_the_file() {
     assert!(e.git_menu().is_none());
     assert_eq!(e.text(), "bee");
 }
+
+#[test]
+fn a_staged_rename_unstages_and_discards_as_a_whole() {
+    let Some(dir) = repo("rename", "a\n") else { return };
+    git(&dir, &["mv", "a.txt", "b.txt"]).unwrap();
+    let mut e = open(&dir.join("b.txt"));
+    menu(&mut e, "<Space>G");
+    assert_eq!(groups(&e), [(Group::Staged, "b.txt".to_string())]);
+    menu(&mut e, "s");
+    assert_eq!(git(&dir, &["diff", "--cached", "--name-only"]).unwrap(), "", "nothing left staged");
+    git(&dir, &["add", "-A"]).unwrap();
+    menu(&mut e, "r");
+    menu(&mut e, "dy");
+    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "a\n", "back under its old name");
+    assert!(!dir.join("b.txt").exists());
+    assert_eq!(git(&dir, &["status", "--porcelain"]).unwrap(), "");
+}
