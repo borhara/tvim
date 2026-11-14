@@ -412,6 +412,7 @@ impl GitMenu {
             return Want::Nothing;
         }
         if self.typing.is_some() {
+            self.type_key(key);
             return Want::Nothing;
         }
         if let Some(o) = self.output.as_mut() {
@@ -639,6 +640,76 @@ impl GitMenu {
                 ..Done::default()
             }
         });
+    }
+
+    fn type_key(&mut self, key: Key) {
+        let Some((kind, text, at)) = self.typing.as_mut() else {
+            return;
+        };
+        let kind = *kind;
+        let byte = |s: &str, i: usize| s.char_indices().nth(i).map_or(s.len(), |(b, _)| b);
+        match key {
+            Key::Esc | Key::Ctrl('c') => self.typing = None,
+            Key::Enter => {
+                let line = std::mem::take(text);
+                self.typing = None;
+                match kind {
+                    Typing::Commit if line.trim().is_empty() => {
+                        self.note = Some(error("an empty message, so no commit"))
+                    }
+                    Typing::Commit => self.commit(line.trim().to_string()),
+                    Typing::Command => {
+                        if !line.trim().is_empty() {
+                            self.history.retain(|h| h != &line);
+                            self.history.push(line.clone());
+                            if self.history.len() > 100 {
+                                self.history.remove(0);
+                            }
+                        }
+                    }
+                }
+            }
+            Key::Char(c) => {
+                let b = byte(text, *at);
+                text.insert(b, c);
+                *at += 1;
+            }
+            Key::Backspace if *at > 0 => {
+                *at -= 1;
+                let b = byte(text, *at);
+                text.remove(b);
+            }
+            Key::Delete if *at < text.chars().count() => {
+                let b = byte(text, *at);
+                text.remove(b);
+            }
+            Key::Left => *at = at.saturating_sub(1),
+            Key::Right => *at = (*at + 1).min(text.chars().count()),
+            Key::Home | Key::Ctrl('a') => *at = 0,
+            Key::End | Key::Ctrl('e') => *at = text.chars().count(),
+            Key::Ctrl('u') => {
+                let b = byte(text, *at);
+                text.replace_range(..b, "");
+                *at = 0;
+            }
+            Key::Up | Key::Down if kind == Typing::Command && !self.history.is_empty() => {
+                let last = self.history.len() - 1;
+                let next = match (self.recall, key) {
+                    (None, Key::Up) => Some(last),
+                    (None, _) => None,
+                    (Some(i), Key::Up) => Some(i.saturating_sub(1)),
+                    (Some(i), _) if i < last => Some(i + 1),
+                    (Some(_), _) => None,
+                };
+                self.recall = next;
+                let line = next.map_or_else(String::new, |i| self.history[i].clone());
+                if let Some((_, text, at)) = self.typing.as_mut() {
+                    *at = line.chars().count();
+                    *text = line;
+                }
+            }
+            _ => {}
+        }
     }
 
 }
