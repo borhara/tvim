@@ -5,7 +5,7 @@ use std::process::Command;
 use common::temp;
 use tvim::Editor;
 use tvim::clipboard::Memory;
-use tvim::gitmenu::Group;
+use tvim::gitmenu::{Group, Tab};
 use tvim::keys::parse;
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
@@ -196,4 +196,44 @@ fn discard_asks_first() {
     menu(&mut e, "r");
     menu(&mut e, "dy");
     assert!(!dir.join("junk.txt").exists(), "untracked files are removed");
+}
+
+#[test]
+fn log_and_branches() {
+    let Some(dir) = repo("log", "a\n") else { return };
+    git(&dir, &["branch", "side"]).unwrap();
+    std::fs::write(dir.join("a.txt"), "a\nb\n").unwrap();
+    git(&dir, &["commit", "-q", "-am", "second"]).unwrap();
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>Gl");
+    let m = e.git_menu().unwrap();
+    assert_eq!(m.tab(), Tab::Log);
+    let titles: Vec<_> = m.entries().iter().map(|en| en.title.as_str()).collect();
+    assert_eq!(titles, ["second", "first"]);
+    assert!(m.peek().unwrap().iter().any(|l| l.contains("a.txt |")), "a diffstat");
+
+    menu(&mut e, "b");
+    let m = e.git_menu().unwrap();
+    assert_eq!(m.tab(), Tab::Branches);
+    let names: Vec<_> = m.entries().iter().map(|en| (en.id.as_str(), en.current)).collect();
+    assert!(
+        names.contains(&("trunk", true)) && names.contains(&("side", false)),
+        "{names:?}"
+    );
+    let side = names.iter().position(|n| n.0 == "side").unwrap();
+
+    std::fs::write(dir.join("a.txt"), "local\n").unwrap();
+    for _ in 0..side {
+        e.keys(&parse("j"));
+    }
+    menu(&mut e, "<CR>");
+    let note = e.git_menu().unwrap().note().unwrap().clone();
+    assert!(note.error && note.text.contains("commit or stash"), "{note:?}");
+    assert_eq!(git(&dir, &["branch", "--show-current"]).unwrap().trim(), "trunk");
+
+    git(&dir, &["checkout", "--", "a.txt"]).unwrap();
+    menu(&mut e, "<CR>");
+    assert_eq!(git(&dir, &["branch", "--show-current"]).unwrap().trim(), "side");
+    assert_eq!(e.text(), "a", "the buffer follows the switch");
+    assert_eq!(e.branch().as_deref(), Some("side"));
 }
