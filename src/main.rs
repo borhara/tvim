@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use tinsel::app;
 use tvim::editor::Editor;
+use tvim::session;
 use tvim::ui::Tvim;
 
 const USAGE: &str = "\
@@ -50,6 +51,8 @@ fn main() -> ExitCode {
             _ => file = Some(PathBuf::from(arg)),
         }
     }
+
+    let state = session::state_dir();
     let mut editor = match &file {
         Some(path) if path.is_dir() => {
             let mut e = Editor::new();
@@ -77,6 +80,7 @@ fn main() -> ExitCode {
             e
         }
     };
+    let config = session::config_path().and_then(|p| std::fs::read_to_string(p).ok());
     if let Some(start) = start {
         go_to(&mut editor, &start);
     }
