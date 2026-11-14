@@ -87,10 +87,12 @@ fn main() -> ExitCode {
         }
     };
     let config = session::config_path().and_then(|p| std::fs::read_to_string(p).ok());
+    let problem = config.and_then(|text| editor.apply_config(&text));
     if let Some(start) = start {
         go_to(&mut editor, &start);
     }
     if let Some(problem) = problem {
+        editor.show_error(&problem);
     }
 
     match app::run(Tvim::new(editor)) {
