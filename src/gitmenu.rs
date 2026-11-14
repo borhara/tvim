@@ -445,6 +445,7 @@ impl GitMenu {
                         self.note = Some(error(format!("{} isn't there to open", c.path)));
                     }
                 }
+                Tab::Branches => self.switch_branch(unsaved),
                 Tab::Log => {}
             },
             _ => {}
@@ -521,6 +522,39 @@ impl GitMenu {
                 }
             };
             changed(out, &format!("discarded {}", c.path))
+        });
+    }
+
+    fn switch_branch(&mut self, unsaved: bool) {
+        let Some(e) = self.branches.get(self.selected).cloned() else {
+            return;
+        };
+        if e.current {
+            self.note = Some(info(format!("already on {}", e.id)));
+            return;
+        }
+        if unsaved {
+            self.note = Some(error("save your changes before switching branches"));
+            return;
+        }
+        self.start("switching", move |root| {
+            let (code, _, err) = git(root, &["switch", "-q", &e.id]);
+            if code == 0 {
+                return Done {
+                    note: Some(info(format!("on {} now", e.id))),
+                    changed: true,
+                    ..Done::default()
+                };
+            }
+            let why = if err.contains("would be overwritten") || err.contains("commit your changes") {
+                "can't switch: commit or stash your changes first".to_string()
+            } else {
+                first_line(&err)
+            };
+            Done {
+                note: Some(error(why)),
+                ..Done::default()
+            }
         });
     }
 
