@@ -111,3 +111,21 @@ fn recent_files_are_most_recent_first_and_remember_the_line() {
     e.ex(&format!("e {}", c.display()));
     assert_eq!(e.cursor().row, 8, "and so does :e");
 }
+
+#[test]
+fn the_recent_list_is_capped_and_merges_with_whats_on_disk() {
+    let dir = fresh("session-cap");
+    let state = dir.join("state");
+    let files: Vec<PathBuf> = (0..30).map(|i| numbered(&dir, &format!("f{i}.txt"), 1)).collect();
+    let mut e = Editor::new();
+    e.set_recent(files[..25].iter().map(|f| place(f, 0, 0)).collect());
+    assert_eq!(e.recent().len(), session::RECENT_SHOWN);
+    e.save_state(&state).unwrap();
+
+    let mut other = Editor::new();
+    other.ex(&format!("e {}", files[29].display()));
+    other.save_state(&state).unwrap();
+    let recent = session::read_recent(&state);
+    assert_eq!(recent[0].path, files[29]);
+    assert_eq!(recent.len(), 26, "the other tvim's files are kept");
+}
