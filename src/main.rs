@@ -81,6 +81,7 @@ fn main() -> ExitCode {
             let mut e = Editor::new();
             e.set_recent(recent);
             if let Some(dir) = &state {
+                e.restore_session(dir);
             }
             e
         }
