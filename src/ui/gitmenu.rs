@@ -92,6 +92,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         t,
         c,
     );
+    hints(m, frame, Rect::new(inner.x, inner.y + inner.height - 1, inner.width, 1));
     if open < 1.0 {
         frame.dim(rect);
     }
@@ -391,4 +392,71 @@ fn prompt(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32, c: &Colors) -> Opti
     };
     frame.print(row, 0, &text);
     None
+}
+
+fn hints(m: &GitMenu, frame: &mut Frame, row: Rect) {
+    let keys: &[(&str, &str)] = if m.typing().is_some() {
+        &[("⏎", "run"), ("esc", "cancel"), ("↑↓", "history")]
+    } else if m.output().is_some() {
+        &[
+            ("j/k", "scroll"),
+            ("esc", "close output"),
+            (":", "git …"),
+            ("r", "refresh"),
+        ]
+    } else {
+        match m.tab() {
+            Tab::Files => &[
+                ("j/k", "move"),
+                ("s", "stage"),
+                ("a", "all"),
+                ("u", "unstage all"),
+                ("d", "discard"),
+                ("c", "commit"),
+                ("⏎", "open"),
+                ("l", "log"),
+                ("b", "branches"),
+                ("p/P", "pull/push"),
+                (":", "git …"),
+                ("r", "refresh"),
+                ("q", "close"),
+            ],
+            Tab::Log => &[
+                ("j/k", "move"),
+                ("J/K", "scroll"),
+                ("l", "files"),
+                ("b", "branches"),
+                (":", "git …"),
+                ("q", "close"),
+            ],
+            Tab::Branches => &[
+                ("j/k", "move"),
+                ("⏎", "switch"),
+                ("b", "files"),
+                ("l", "log"),
+                (":", "git …"),
+                ("q", "close"),
+            ],
+        }
+    };
+    let keys = if m.typing().is_some_and(|(k, _, _)| k == Typing::Commit) {
+        &keys[..2]
+    } else {
+        keys
+    };
+    let mut line = String::new();
+    let mut used = 0;
+    for (k, d) in keys {
+        let w = tinsel::text::width(k) + 1 + tinsel::text::width(d) + 2;
+        if used + w > row.width {
+            break;
+        }
+        line.push_str(&format!(
+            "{} {}  ",
+            bold(&paint(palette::ROSE, k)),
+            paint(palette::MUTED, d)
+        ));
+        used += w;
+    }
+    frame.print(row, 0, &line);
 }
