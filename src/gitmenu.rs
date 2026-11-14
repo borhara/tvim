@@ -7,6 +7,7 @@ use tinsel::app::{Key, Waker};
 
 use crate::sync::lock;
 
+const MAX_LINES: usize = 3000;
 const LOG_LENGTH: usize = 30;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -245,6 +246,10 @@ impl GitMenu {
         self.confirm.as_ref()
     }
 
+    pub fn output(&self) -> Option<&Output> {
+        self.output.as_ref()
+    }
+
     pub fn note(&self) -> Option<&Note> {
         self.note.as_ref()
     }
@@ -408,6 +413,8 @@ impl GitMenu {
             } else {
                 Tab::Branches
             }),
+            Key::Char('p') => self.remote("pull"),
+            Key::Char('P') => self.remote("push"),
             Key::Char('s') if files => self.toggle_stage(),
             Key::Char('a') if files => {
                 self.start("staging", |root| {
@@ -525,6 +532,17 @@ impl GitMenu {
         });
     }
 
+    fn remote(&mut self, verb: &'static str) {
+        self.start(&format!("{verb}ing"), move |root| {
+            let (code, out, err) = git(root, &[verb]);
+            Done {
+                output: Some(output(format!("git {verb}"), code, &out, &err)),
+                changed: true,
+                ..Done::default()
+            }
+        });
+    }
+
     fn switch_branch(&mut self, unsaved: bool) {
         let Some(e) = self.branches.get(self.selected).cloned() else {
             return;
@@ -593,6 +611,24 @@ fn changed((code, out, err): (i32, String, String), done: &str) -> Done {
         note: Some(note),
         changed: true,
         ..Done::default()
+    }
+}
+
+fn output(title: String, code: i32, out: &str, err: &str) -> Output {
+    let mut lines: Vec<String> = tinsel::text::strip_ansi(out)
+        .lines()
+        .chain(tinsel::text::strip_ansi(err).lines())
+        .map(|l| l.replace('\t', "    "))
+        .take(MAX_LINES)
+        .collect();
+    if lines.is_empty() {
+        lines.push("(no output)".into());
+    }
+    Output {
+        title,
+        lines,
+        code,
+        scroll: 0,
     }
 }
 
