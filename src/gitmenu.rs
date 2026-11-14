@@ -245,6 +245,10 @@ impl GitMenu {
         }
     }
 
+    pub fn typing(&self) -> Option<(Typing, &str, usize)> {
+        self.typing.as_ref().map(|(t, s, c)| (*t, s.as_str(), *c))
+    }
+
     pub fn confirming(&self) -> Option<&Change> {
         self.confirm.as_ref()
     }
@@ -613,6 +617,25 @@ impl GitMenu {
             };
             Done {
                 note: Some(error(why)),
+                ..Done::default()
+            }
+        });
+    }
+
+    fn commit(&mut self, message: String) {
+        self.start("committing", move |root| {
+            let (code, out, err) = git(root, &["commit", "-q", "-m", &message]);
+            if code != 0 {
+                let why = if err.trim().is_empty() { out } else { err };
+                return Done {
+                    note: Some(error(first_line(&why))),
+                    ..Done::default()
+                };
+            }
+            let sha = git(root, &["rev-parse", "--short", "HEAD"]).1;
+            Done {
+                note: Some(info(format!("committed {} {}", sha.trim(), first_line(&message)))),
+                changed: true,
                 ..Done::default()
             }
         });
