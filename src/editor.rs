@@ -127,6 +127,36 @@ impl Default for Options {
     }
 }
 
+impl Options {
+    pub(crate) fn flag(&self, name: &str) -> Option<bool> {
+        self.clone().flag_mut(name).map(|(_, on)| *on)
+    }
+
+    pub(crate) fn flag_mut(&mut self, name: &str) -> Option<(&'static str, &mut bool)> {
+        Some(match name {
+            "number" | "nu" => ("number", &mut self.number),
+            "relativenumber" | "rnu" => ("relativenumber", &mut self.relative_number),
+            "expandtab" | "et" => ("expandtab", &mut self.expand_tab),
+            "ignorecase" | "ic" => ("ignorecase", &mut self.ignore_case),
+            "smartcase" | "scs" => ("smartcase", &mut self.smart_case),
+            "hlsearch" | "hls" => ("hlsearch", &mut self.highlight_search),
+            "incsearch" | "is" => ("incsearch", &mut self.incremental_search),
+            "autoindent" | "ai" => ("autoindent", &mut self.auto_indent),
+            "syntax" | "syn" => ("syntax", &mut self.syntax),
+            "cursorline" | "cul" => ("cursorline", &mut self.cursor_line),
+            "indentguides" | "ig" => ("indentguides", &mut self.indent_guides),
+            "autopairs" | "ap" => ("autopairs", &mut self.auto_pairs),
+            "smooth" | "sm" => ("smooth", &mut self.smooth),
+            "tabpreview" | "tp" => ("tabpreview", &mut self.tab_preview),
+            "dim" => ("dim", &mut self.dim),
+            "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
+            "roomy" | "ro" => ("roomy", &mut self.roomy),
+            "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FileInfo {
     pub path: Option<PathBuf>,
