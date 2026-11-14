@@ -1063,3 +1063,39 @@ fn split_args(line: &str) -> Result<Vec<String>, String> {
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn args_split_on_spaces_and_respect_quotes() {
+        let s = |l: &str| split_args(l).unwrap();
+        assert_eq!(s("log --oneline -5"), ["log", "--oneline", "-5"]);
+        assert_eq!(s("commit -m 'two words'"), ["commit", "-m", "two words"]);
+        assert_eq!(s(r#"commit -m "say \"hi\"" "#), ["commit", "-m", "say \"hi\""]);
+        assert_eq!(s("a ''  b"), ["a", "", "b"]);
+        assert!(split_args("log 'oops").is_err());
+    }
+
+    #[test]
+    fn status_is_grouped() {
+        let out = "## main...origin/main [ahead 2, behind 1]\0M  a.rs\0 M b.rs\0MM c.rs\0R  new.rs\0old.rs\0?? d.rs\0";
+        let (branch, up, changes) = parse_status(out);
+        assert_eq!((branch.as_str(), up), ("main", Some((2, 1))));
+        let shown: Vec<_> = changes.iter().map(|c| (c.group, c.letter, c.path.as_str())).collect();
+        assert_eq!(
+            shown,
+            [
+                (Group::Staged, 'M', "a.rs"),
+                (Group::Staged, 'M', "c.rs"),
+                (Group::Staged, 'R', "new.rs"),
+                (Group::Changes, 'M', "b.rs"),
+                (Group::Changes, 'M', "c.rs"),
+                (Group::Untracked, 'U', "d.rs"),
+            ]
+        );
+        assert_eq!(parse_status("## No commits yet on trunk\0").0, "trunk");
+        assert_eq!(parse_status("## trunk\0").1, None);
+    }
+}
