@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
 
 use tinsel::ColorMode;
@@ -220,6 +220,56 @@ impl Editor {
         for id in orphans {
             self.close_preview(id);
         }
+    }
+
+    fn source_view(&self, p: &Preview) -> Option<(usize, usize)> {
+        let top = if p.source == self.focus {
+            (self.buffer_id == p.buffer).then(|| self.top.get())?
+        } else {
+            self.wins.iter().find(|w| w.id == p.source && w.buffer == p.buffer)?.top
+        };
+        let rows = self
+            .window_rects(self.region())
+            .into_iter()
+            .find(|(id, _)| *id == p.source)
+            .map_or(self.text_rows(), |(_, r)| r.height.saturating_sub(1));
+        Some((top, rows))
+    }
+
+    fn rendered<'a>(&self, p: &'a Preview, width: usize) -> Ref<'a, Render> {
+        let text = self.text_of(p.buffer);
+        let key = (text.version, text.buf.len(), width, tinsel::color_mode());
+        if p.render.borrow().key != Some(key) {
+            let mut r = p.render.borrow_mut();
+            r.build(text.buf.lines(), width);
+            r.key = Some(key);
+        }
+        p.render.borrow()
+    }
+
+    fn preview_top(&self, p: &Preview, width: usize, rows: usize) -> usize {
+        let r = self.rendered(p, width);
+        if let Some((top, shown)) = self.source_view(p) {
+            let text = self.text_of(p.buffer);
+            let at = (text.version, top);
+            if p.seen.replace(Some(at)) != Some(at) {
+                p.pinned.set(false);
+            }
+            if !p.pinned.get() {
+                let end = top + shown >= text.buf.len();
+                p.top.set(if end { usize::MAX } else { r.line_for(top) });
+            }
+        }
+        let top = p.top.get().min(r.lines.len().saturating_sub(rows));
+        p.top.set(top);
+        top
+    }
+
+    pub(crate) fn preview_lines(&self, id: usize, width: usize, rows: usize) -> Option<(Ref<'_, [String]>, usize)> {
+        let p = self.previews.get(&id)?;
+        p.size.set(Some((width, rows)));
+        let top = self.preview_top(p, width, rows);
+        Some((Ref::map(self.rendered(p, width), |r| r.lines.as_slice()), top))
     }
 
 }
