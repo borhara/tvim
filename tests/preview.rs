@@ -211,3 +211,15 @@ fn only_from_the_preview_keeps_the_text() {
     assert_eq!(e.window_count(), 1);
     assert!(!e.preview_focused());
 }
+
+#[test]
+fn the_preview_window_is_titled() {
+    let mut e = open("pv-looks.md", "# Hi\n\nbody text\n");
+    e.ex("preview");
+    let shown = screen(&e, 100, 20);
+    assert!(shown.contains("preview · pv-looks.md"), "{shown}");
+    assert_eq!(shown.matches("body text").count(), 2, "{shown}");
+    e.keys(&parse("<C-w>l"));
+    let shown = screen(&e, 100, 20);
+    assert!(shown.contains("✶ preview · pv-looks.md"), "{shown}");
+}
