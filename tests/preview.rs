@@ -123,3 +123,28 @@ fn it_scrolls_with_the_text() {
     let side = right(&screen(&e, 100, 24));
     assert!(side.contains("Section 40"), "{side}");
 }
+
+#[test]
+fn the_focused_preview_scrolls_and_ignores_edits() {
+    let mut e = open("pv-keys.md", &sections(40));
+    e.ex("preview");
+    e.keys(&parse("<C-w>l"));
+    assert!(e.preview_focused());
+    let before = e.text();
+    e.keys(&parse("xddiabc<Esc>p"));
+    assert_eq!(e.text(), before, "editing keys do nothing");
+    e.keys(&parse("G"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 40"), "{side}");
+    e.keys(&parse("gg"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 1 "), "{side}");
+    e.keys(&parse("<C-d><C-d>"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(!side.contains("Section 1 "), "{side}");
+    let top = side.lines().nth(1).unwrap().to_string();
+    e.keys(&parse("k"));
+    assert_ne!(right(&screen(&e, 100, 24)).lines().nth(1).unwrap(), top);
+    e.keys(&parse("j"));
+    assert_eq!(right(&screen(&e, 100, 24)).lines().nth(1).unwrap(), top);
+}
