@@ -1,6 +1,34 @@
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use tinsel::ColorMode;
+
+use crate::editor::Editor;
+
+pub(crate) struct Preview {
+    pub buffer: usize,
+    pub source: usize,
+    top: Cell<usize>,
+    // scrolled by hand: stays put until the source moves or changes
+    pinned: Cell<bool>,
+    seen: Cell<Option<(u64, usize)>>,
+    size: Cell<Option<(usize, usize)>>,
+    render: RefCell<Render>,
+}
+
+impl Preview {
+    fn new(buffer: usize, source: usize) -> Preview {
+        Preview {
+            buffer,
+            source,
+            top: Cell::new(0),
+            pinned: Cell::new(false),
+            seen: Cell::new(None),
+            size: Cell::new(None),
+            render: RefCell::default(),
+        }
+    }
+}
 
 #[derive(Default)]
 struct Render {
@@ -85,4 +113,15 @@ fn blocks(lines: &[String]) -> Vec<(usize, usize)> {
         out.push((s, lines.len()));
     }
     out
+}
+
+impl Editor {
+    pub fn preview_focused(&self) -> bool {
+        self.previews.contains_key(&self.focus)
+    }
+
+    pub(crate) fn is_preview(&self, id: usize) -> bool {
+        self.previews.contains_key(&id)
+    }
+
 }

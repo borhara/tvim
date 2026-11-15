@@ -358,6 +358,7 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
             continue;
         }
         let text = Rect::new(r.x, r.y + 1, r.width, r.height - 1);
+        let preview = e.is_preview(v.id);
         if preview {
             if v.focused {
                 body = b;
