@@ -1,3 +1,59 @@
+use std::collections::HashMap;
+
+use tinsel::ColorMode;
+
+#[derive(Default)]
+struct Render {
+    key: Option<(u64, usize, usize, ColorMode)>,
+    lines: Vec<String>,
+    spans: Vec<Span>,
+    // keyed by block source, so typing only re-renders that block
+    done: HashMap<String, Vec<String>>,
+}
+
+struct Span {
+    row: usize,
+    rows: usize,
+    line: usize,
+    lines: usize,
+}
+
+impl Render {
+    fn build(&mut self, src: &[String], width: usize) {
+        let mut old = std::mem::take(&mut self.done);
+        self.lines.clear();
+        self.spans.clear();
+        for (a, b) in blocks(src) {
+            let text = src[a..b].join("\n");
+            let out = match old.remove(&text).or_else(|| self.done.get(&text).cloned()) {
+                Some(out) => out,
+            };
+            if self.lines.last().is_some_and(|l| !l.is_empty()) {
+                self.lines.push(String::new());
+            }
+            self.spans.push(Span {
+                row: a,
+                rows: b - a,
+                line: self.lines.len(),
+                lines: out.len(),
+            });
+            self.lines.extend(out.iter().cloned());
+            self.done.insert(text, out);
+        }
+    }
+
+    fn line_for(&self, row: usize) -> usize {
+        let i = self.spans.partition_point(|s| s.row <= row);
+        let Some(s) = i.checked_sub(1).map(|i| &self.spans[i]) else {
+            return 0;
+        };
+        if row >= s.row + s.rows {
+            return s.line + s.lines;
+        }
+        s.line + (row - s.row) * s.lines / s.rows
+    }
+}
+
 // split at blank lines outside fences and around headings, where tinsel restarts anyway
 fn blocks(lines: &[String]) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
