@@ -44,3 +44,19 @@ fn space_m_opens_a_rendered_preview_beside() {
     assert!(!side.contains("**") && !side.contains("# Hello"), "{shown}");
     assert!(side.contains("─────"), "the heading is underlined: {shown}");
 }
+
+#[test]
+fn a_narrow_screen_puts_it_below() {
+    let mut e = open("pv-narrow.md", "# Hi\n\nbody\n");
+    e.set_screen(60, 30);
+    e.ex("preview");
+    let shown = screen(&e, 60, 30);
+    let rows: Vec<&str> = shown.lines().collect();
+    let text = rows.iter().position(|r| r.contains("✶ pv-narrow.md")).expect(&shown);
+    let preview = rows
+        .iter()
+        .position(|r| r.contains("preview · pv-narrow.md"))
+        .expect(&shown);
+    assert!(preview > text, "{shown}");
+    assert!(!shown.contains('│'), "{shown}");
+}
