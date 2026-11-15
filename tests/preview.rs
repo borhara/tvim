@@ -231,3 +231,23 @@ fn space_shows_the_preview_key() {
     let shown = screen(&e, 100, 20);
     assert!(shown.contains("markdown preview"), "{shown}");
 }
+
+#[test]
+fn tab_goes_to_the_preview_and_back() {
+    let mut e = open("pv-tab.md", &sections(10));
+    e.ex("set tabpreview");
+    e.ex("preview");
+    e.keys(&parse("<Tab>"));
+    assert!(e.preview_focused());
+    e.keys(&parse("<Tab>"));
+    assert!(!e.preview_focused() && !e.explorer_focused());
+}
+
+#[test]
+fn tab_leaves_the_preview_alone_by_default() {
+    let mut e = open("pv-notab.md", &sections(10));
+    e.ex("preview");
+    e.keys(&parse("<Tab>"));
+    assert!(!e.preview_focused());
+    assert!(e.explorer_focused());
+}
