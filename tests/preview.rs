@@ -21,6 +21,13 @@ fn open(name: &str, text: &str) -> Editor {
     e
 }
 
+fn sections(n: usize) -> String {
+    (1..=n)
+        .map(|i| format!("## Section {i}\n\nText of part {i}, which goes on a little.\n"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 // the rows the preview takes up: everything right of the divider
 fn right(shown: &str) -> String {
     shown
@@ -96,4 +103,23 @@ fn it_rerenders_as_you_type() {
     assert!(side.contains("Fresh words"), "{side}");
     e.keys(&parse("u"));
     assert!(!right(&screen(&e, 100, 20)).contains("Fresh words"));
+}
+
+#[test]
+fn it_scrolls_with_the_text() {
+    let mut e = open("pv-follow.md", &sections(40));
+    e.ex("preview");
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 1\n") || side.contains("Section 1 "), "{side}");
+    e.keys(&parse("/Section 30<CR>"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 30"), "{side}");
+    assert!(!side.contains("Section 1 "), "{side}");
+    e.keys(&parse("gg"));
+    let top = right(&screen(&e, 100, 24));
+    e.keys(&parse("8<C-e>"));
+    assert_ne!(right(&screen(&e, 100, 24)), top, "scrolling without moving the cursor");
+    e.keys(&parse("G"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 40"), "{side}");
 }
