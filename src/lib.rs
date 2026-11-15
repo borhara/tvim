@@ -16,6 +16,7 @@ pub mod jumps;
 pub mod keys;
 pub mod motion;
 pub mod object;
+mod preview;
 pub mod regex;
 pub mod session;
 pub mod syntax;
