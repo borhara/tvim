@@ -1569,9 +1569,21 @@ impl Editor {
             Act::Select { .. } => {}
             Act::Hunk(_) => self.reset_hunk(),
             Act::Window(k) => self.window_key(k, cmd.count),
+            Act::Leader(c) => self.leader(c),
         }
         if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
             self.dot = self.building.take();
+        }
+    }
+
+    pub(crate) fn leader(&mut self, c: char) {
+        match c {
+            'f' => self.find_files(None),
+            'b' => self.pick_buffer_list(),
+            'm' => self.toggle_preview(),
+            'G' => self.open_git_menu(None),
+            'r' => self.pick_recent(),
+            _ => self.grep(None),
         }
     }
 
