@@ -1817,6 +1817,7 @@ impl Editor {
             Key::Ctrl('i') => self.jump_newer(n),
             // a terminal sends Tab for Ctrl-i
             Key::Tab if self.jumps.has_newer() => self.jump_newer(n),
+            Key::Tab => self.tab_focus(),
             Key::Ctrl('p') => self.find_files(None),
             _ => {}
         }
