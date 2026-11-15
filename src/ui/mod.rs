@@ -360,6 +360,7 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
         let text = Rect::new(r.x, r.y + 1, r.width, r.height - 1);
         let preview = e.is_preview(v.id);
         if preview {
+            let b = preview_window(e, v.id, frame, text, c, v.focused && focused);
             if v.focused {
                 body = b;
             }
@@ -410,6 +411,41 @@ fn other_window(e: &Editor, v: &View, frame: &mut Frame, area: Rect, c: &Colors)
         let bar = Rect::new(area.x + area.width - 1, area.y, 1, area.height);
         draw_scrollbar(e, v, frame, bar, c, false);
     }
+}
+
+fn preview_window(e: &Editor, id: usize, frame: &mut Frame, area: Rect, c: &Colors, focused: bool) -> Rect {
+    let body = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+    if body.width == 0 || body.height == 0 {
+        return body;
+    }
+    let Some((lines, top)) = e.preview_lines(id, body.width, body.height) else {
+        return body;
+    };
+    let t = frame.time();
+    let shown = match e.previews.get(&id) {
+        Some(p) => {
+            let shown = p.glide.step(top, body.height, e.options.smooth && t > 0.0, t);
+            if let Some(end) = p.glide.end() {
+                e.anim.pace(t, end);
+            }
+            shown
+        }
+        None => top,
+    };
+    if lines.is_empty() {
+        frame.print(body, 0, &paint(palette::MUTED, "  nothing to show yet"));
+    }
+    for (i, line) in lines.iter().skip(shown).take(body.height).enumerate() {
+        frame.print(body, i, line);
+    }
+    draw_thumb(
+        frame,
+        Rect::new(body.x + body.width, body.y, 1, body.height),
+        shown,
+        lines.len(),
+        thumb_color(e, focused, c),
+    );
+    body
 }
 
 fn thumb_color(e: &Editor, focused: bool, c: &Colors) -> Rgb {
