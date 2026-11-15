@@ -163,3 +163,25 @@ fn hand_scrolling_holds_until_the_source_moves() {
     let side = right(&screen(&e, 100, 24));
     assert!(side.contains("Section 2") && !side.contains("Section 40"), "{side}");
 }
+
+#[test]
+fn q_and_esc_close_it() {
+    for key in ["q", "<Esc>"] {
+        let mut e = open("pv-q.md", "# Hi\n");
+        e.ex("preview");
+        e.keys(&parse("<C-w>l"));
+        e.keys(&parse(key));
+        assert_eq!(e.window_count(), 1, "{key}");
+        assert!(!e.preview_focused());
+        assert!(!e.should_quit());
+    }
+}
+
+#[test]
+fn only_from_the_preview_keeps_the_text() {
+    let mut e = open("pv-only.md", "# Hi\n");
+    e.ex("preview");
+    e.keys(&parse("<C-w>l<C-w>o"));
+    assert_eq!(e.window_count(), 1);
+    assert!(!e.preview_focused());
+}
