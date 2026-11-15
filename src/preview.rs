@@ -2,7 +2,9 @@ use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
 
 use tinsel::ColorMode;
+use tinsel::app::Key;
 
+use crate::command::{Act, Motion, Parse, parse};
 use crate::editor::{Editor, Text};
 use crate::syntax::Syntax;
 use crate::window::{MIN_COLS, MIN_ROWS, Win};
@@ -272,4 +274,67 @@ impl Editor {
         Some((Ref::map(self.rendered(p, width), |r| r.lines.as_slice()), top))
     }
 
+    fn scroll_preview(&mut self, to: impl FnOnce(usize, usize) -> usize) {
+        let Some(p) = self.previews.get(&self.focus) else {
+            return;
+        };
+        let (width, rows) = p.size.get().unwrap_or_else(|| {
+            let r = self
+                .window_rects(self.region())
+                .into_iter()
+                .find(|(id, _)| *id == self.focus);
+            r.map_or((80, 20), |(_, r)| {
+                (r.width.saturating_sub(1), r.height.saturating_sub(1))
+            })
+        });
+        let rows = rows.max(1);
+        let top = self.preview_top(p, width, rows);
+        p.top.set(to(top, rows));
+        p.pinned.set(true);
+    }
+
+    pub(crate) fn preview_input(&mut self, key: Key) {
+        if self.pending.is_empty() {
+            if key != Key::Char(':') {
+                self.message = None;
+            }
+            if matches!(key, Key::Char('q') | Key::Esc) {
+                return self.close_preview(self.focus);
+            }
+            if key == Key::Tab {
+                self.leave_preview();
+                if self.explorer().is_some() {
+                    self.toggle_explorer_focus();
+                }
+                return;
+            }
+        } else if matches!(key, Key::Esc | Key::Ctrl('c')) {
+            return self.pending.clear();
+        }
+        self.pending.push(key);
+        let cmd = match parse(&self.pending, false) {
+            Parse::More => return,
+            Parse::Invalid => return self.pending.clear(),
+            Parse::Done(cmd) => cmd,
+        };
+        self.pending.clear();
+        let n = cmd.n();
+        let half = |rows: usize| cmd.count.unwrap_or(rows / 2).max(1);
+        match cmd.act {
+            Act::Move(Motion::Down) | Act::Key(Key::Ctrl('e')) => self.scroll_preview(|top, _| top + n),
+            Act::Move(Motion::Up) | Act::Key(Key::Ctrl('y')) => self.scroll_preview(|top, _| top.saturating_sub(n)),
+            Act::Move(Motion::FirstLine) => self.scroll_preview(|_, _| 0),
+            Act::Move(Motion::LastLine) => self.scroll_preview(|_, _| usize::MAX),
+            Act::Key(Key::Ctrl('d')) => self.scroll_preview(|top, rows| top + half(rows)),
+            Act::Key(Key::Ctrl('u')) => self.scroll_preview(|top, rows| top.saturating_sub(half(rows))),
+            Act::Key(Key::Ctrl('f') | Key::PageDown) => self.scroll_preview(|top, rows| top + rows * n),
+            Act::Key(Key::Ctrl('b') | Key::PageUp) => {
+                self.scroll_preview(|top, rows| top.saturating_sub(rows * n));
+            }
+            Act::Key(Key::Char(':')) => self.begin_cmdline(':', String::new()),
+            Act::Window(k) => self.window_key(k, cmd.count),
+            Act::Leader(c) => self.leader(c),
+            _ => {}
+        }
+    }
 }
