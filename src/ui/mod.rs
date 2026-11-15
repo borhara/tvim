@@ -401,6 +401,7 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
             other_window(e, &v, frame, text, c);
         }
         let lit = v.focused && focused;
+        window_title(&v, lit, frame, Rect::new(r.x, r.y, r.width, 1), accent, preview, &scope);
         if r.x + r.width < area.x + area.width {
             vline(frame, r.x + r.width, r.y, r.height, &paint(palette::LINE, "│"));
         }
@@ -484,6 +485,44 @@ fn thumb_color(e: &Editor, focused: bool, c: &Colors) -> Rgb {
     } else {
         c.scrollbar
     }
+}
+
+fn window_title(
+    v: &View,
+    lit: bool,
+    frame: &mut Frame,
+    row: Rect,
+    accent: Rgb,
+    preview: bool,
+    scope: &[(String, Rgb)],
+) {
+    let name = file_name(v.text.path, "untitled");
+    let name = if preview { format!("preview · {name}") } else { name };
+    let line = if lit { accent } else { palette::LINE };
+    let mut label = if lit {
+        format!(" {} {} ", paint(accent, "✶"), bold(&paint(palette::TEXT, &name)))
+    } else {
+        format!(" {} ", paint(palette::MUTED, &name))
+    };
+    if v.text.modified && !preview {
+        label.push_str(&paint(palette::AMBER, "● "));
+    }
+    let sep = paint(palette::LINE, "› ");
+    let room = row.width.saturating_sub(6 + tinsel::text::width(&label));
+    let mut parts: Vec<String> = scope
+        .iter()
+        .map(|(t, color)| format!("{sep}{} ", paint(*color, t)))
+        .collect();
+    while !parts.is_empty() && parts.iter().map(|p| tinsel::text::width(p)).sum::<usize>() > room {
+        parts.remove(0);
+    }
+    label.push_str(&parts.concat());
+    let rest = row.width.saturating_sub(2 + tinsel::text::width(&label));
+    frame.print(
+        row,
+        0,
+        &format!("{}{label}{}", paint(line, "──"), paint(line, &"─".repeat(rest))),
+    );
 }
 
 fn draw_scrollbar(e: &Editor, v: &View, frame: &mut Frame, bar: Rect, c: &Colors, focused: bool) {
