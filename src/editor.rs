@@ -860,6 +860,7 @@ impl Editor {
         }
         if self.mode == Mode::Normal && self.previews.contains_key(&self.focus) {
             if let Input::Key(k) = input {
+                self.preview_input(k);
             }
             return;
         }
