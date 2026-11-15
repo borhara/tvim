@@ -1,0 +1,46 @@
+mod common;
+use common::temp;
+use tinsel::app::Frame;
+use tvim::Editor;
+use tvim::keys::parse;
+use tvim::ui::draw;
+
+fn screen(e: &Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = Frame::new(width, height);
+        draw(e, &mut frame);
+        frame.snapshot().plain()
+    })
+}
+
+fn open(name: &str, text: &str) -> Editor {
+    let p = temp(name);
+    std::fs::write(&p, text).unwrap();
+    let e = Editor::open(&p).unwrap();
+    e.set_screen(100, 30);
+    e
+}
+
+// the rows the preview takes up: everything right of the divider
+fn right(shown: &str) -> String {
+    shown
+        .lines()
+        .filter_map(|r| r.split_once('│').map(|(_, rest)| rest.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn space_m_opens_a_rendered_preview_beside() {
+    let mut e = open("pv-open.md", "# Hello\n\nSome **bold** text.\n");
+    e.keys(&parse("<Space>m"));
+    assert_eq!(e.window_count(), 2);
+    assert_eq!(e.window_index(), 0, "the text keeps the focus");
+    let shown = screen(&e, 100, 20);
+    assert!(shown.contains("✶ pv-open.md"), "{shown}");
+    assert!(shown.contains("preview · pv-open.md"), "{shown}");
+    let side = right(&shown);
+    assert!(side.contains("Some bold text."), "rendered, not raw: {shown}");
+    assert!(!side.contains("**") && !side.contains("# Hello"), "{shown}");
+    assert!(side.contains("─────"), "the heading is underlined: {shown}");
+}
