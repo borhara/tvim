@@ -178,6 +178,32 @@ fn q_and_esc_close_it() {
 }
 
 #[test]
+fn closing_the_source_closes_the_preview() {
+    let mut e = open("pv-close.md", "# Hi\n");
+    e.ex("vsplit");
+    e.ex("preview");
+    assert_eq!(e.window_count(), 3);
+    e.ex("close");
+    assert_eq!(e.window_count(), 1, "the split's preview went with it");
+
+    let mut e = open("pv-bd.md", "# Hi\n");
+    let other = temp("pv-bd.txt");
+    std::fs::write(&other, "other\n").unwrap();
+    e.ex(&format!("e {}", other.display()));
+    e.ex("b 1");
+    e.ex("preview");
+    e.ex("bd");
+    assert_eq!(e.window_count(), 1);
+    assert_eq!(e.text(), "other");
+
+    let mut e = open("pv-bd2.md", "# Hi\n");
+    e.ex("preview");
+    e.keys(&parse("<C-w>l"));
+    e.ex("bd");
+    assert_eq!(e.window_count(), 1, "from the preview too");
+}
+
+#[test]
 fn only_from_the_preview_keeps_the_text() {
     let mut e = open("pv-only.md", "# Hi\n");
     e.ex("preview");
