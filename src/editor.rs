@@ -18,6 +18,7 @@ use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
+use crate::preview::Preview;
 use crate::regex::Regex;
 use crate::syntax::{self, State, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
@@ -465,6 +466,7 @@ pub struct Editor {
     // for shifting other windows on this buffer
     pub(crate) shadow: Option<(usize, Vec<String>)>,
     pub(crate) region: Cell<Option<(usize, usize)>>,
+    pub(crate) previews: HashMap<usize, Preview>,
 }
 
 impl Default for Editor {
@@ -1602,6 +1604,7 @@ impl Editor {
         let quiet = self.mode != Mode::Normal
             || !self.pending.is_empty()
             || self.explorer_focused()
+            || self.preview_focused()
             || self.finder.is_some()
             || self.grep.is_some()
             || self.git_menu.is_some()
