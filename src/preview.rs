@@ -136,6 +136,7 @@ impl Editor {
 
     pub(crate) fn toggle_preview(&mut self) {
         if self.preview_focused() {
+            return self.close_preview(self.focus);
         }
         let mine = self
             .previews
@@ -143,6 +144,7 @@ impl Editor {
             .find(|(_, p)| p.source == self.focus && p.buffer == self.buffer_id)
             .map(|(&id, _)| id);
         if let Some(id) = mine {
+            return self.close_preview(id);
         }
         if !is_markdown(&self.shown_text()) {
             return self.info("Only markdown files have a preview");
@@ -172,6 +174,40 @@ impl Editor {
         self.previews.insert(id, Preview::new(self.buffer_id, self.focus));
         self.fit_screen();
         self.sync_windows();
+    }
+
+    pub(crate) fn close_preview(&mut self, id: usize) {
+        let Some(p) = self.previews.remove(&id) else {
+            return;
+        };
+        if id == self.focus {
+            self.close_window();
+            self.focus_window(p.source);
+        } else {
+            self.layout.remove(id);
+            self.wins.retain(|w| w.id != id);
+            self.fit_screen();
+        }
+    }
+
+    pub(crate) fn leave_preview(&mut self) {
+        if let Some(source) = self.previews.get(&self.focus).map(|p| p.source) {
+            self.focus_window(source);
+        }
+    }
+
+    pub(crate) fn prune_previews(&mut self) {
+        let wins = &self.wins;
+        self.previews.retain(|id, _| wins.iter().any(|w| w.id == *id));
+        let orphans: Vec<usize> = self
+            .previews
+            .iter()
+            .filter(|(_, p)| !self.wins.iter().any(|w| w.id == p.source))
+            .map(|(&id, _)| id)
+            .collect();
+        for id in orphans {
+            self.close_preview(id);
+        }
     }
 
 }
