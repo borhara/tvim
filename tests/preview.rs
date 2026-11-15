@@ -148,3 +148,18 @@ fn the_focused_preview_scrolls_and_ignores_edits() {
     e.keys(&parse("j"));
     assert_eq!(right(&screen(&e, 100, 24)).lines().nth(1).unwrap(), top);
 }
+
+#[test]
+fn hand_scrolling_holds_until_the_source_moves() {
+    let mut e = open("pv-hold.md", &sections(40));
+    e.ex("preview");
+    e.keys(&parse("<C-w>lG<C-w>h"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 40"), "{side}");
+    e.keys(&parse("j"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 40"), "moving inside the screen keeps it: {side}");
+    e.keys(&parse("<C-e>"));
+    let side = right(&screen(&e, 100, 24));
+    assert!(side.contains("Section 2") && !side.contains("Section 40"), "{side}");
+}
