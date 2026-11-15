@@ -190,6 +190,18 @@ impl Editor {
         }
     }
 
+    pub(crate) fn tab_focus(&mut self) {
+        let preview = self
+            .previews
+            .iter()
+            .find(|(_, p)| p.source == self.focus)
+            .map(|(&id, _)| id);
+        match preview.filter(|_| self.options.tab_preview) {
+            Some(id) => self.focus_window(id),
+            None => self.toggle_explorer_focus(),
+        }
+    }
+
     pub(crate) fn leave_preview(&mut self) {
         if let Some(source) = self.previews.get(&self.focus).map(|p| p.source) {
             self.focus_window(source);
