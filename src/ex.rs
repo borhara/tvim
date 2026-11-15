@@ -123,6 +123,7 @@ impl Editor {
         } else if is("Lexplore", 2) || is("lexplore", 3) {
             self.toggle_explorer();
         } else if is("preview", 4) {
+            self.toggle_preview();
         } else if is("git", 3) || is("Git", 3) {
             self.open_git_menu(non_empty(arg));
         } else if is("recent", 3) {
