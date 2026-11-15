@@ -3,7 +3,12 @@ use std::collections::HashMap;
 
 use tinsel::ColorMode;
 
-use crate::editor::Editor;
+use crate::editor::{Editor, Text};
+use crate::syntax::Syntax;
+use crate::window::{MIN_COLS, MIN_ROWS, Win};
+
+// narrower than this and the preview goes underneath
+const SIDE_BY_SIDE: usize = 80;
 
 pub(crate) struct Preview {
     pub buffer: usize,
@@ -115,6 +120,11 @@ fn blocks(lines: &[String]) -> Vec<(usize, usize)> {
     out
 }
 
+fn is_markdown(text: &Text) -> bool {
+    let name = text.path.and_then(|p| p.file_name()).and_then(|n| n.to_str());
+    name.and_then(Syntax::detect) == Some(Syntax::Markdown)
+}
+
 impl Editor {
     pub fn preview_focused(&self) -> bool {
         self.previews.contains_key(&self.focus)
@@ -122,6 +132,46 @@ impl Editor {
 
     pub(crate) fn is_preview(&self, id: usize) -> bool {
         self.previews.contains_key(&id)
+    }
+
+    pub(crate) fn toggle_preview(&mut self) {
+        if self.preview_focused() {
+        }
+        let mine = self
+            .previews
+            .iter()
+            .find(|(_, p)| p.source == self.focus && p.buffer == self.buffer_id)
+            .map(|(&id, _)| id);
+        if let Some(id) = mine {
+        }
+        if !is_markdown(&self.shown_text()) {
+            return self.info("Only markdown files have a preview");
+        }
+        self.sync_windows();
+        let area = self.region();
+        let Some((_, r)) = self.window_rects(area).into_iter().find(|(id, _)| *id == self.focus) else {
+            return;
+        };
+        let across = r.width >= SIDE_BY_SIDE || r.height < MIN_ROWS * 5;
+        let fits = if across {
+            r.width > MIN_COLS * 2
+        } else {
+            r.height >= MIN_ROWS * 2
+        };
+        if !fits {
+            return self.error("E36: Not enough room");
+        }
+        self.save_window();
+        let Some(copy) = self.wins.iter().find(|w| w.id == self.focus).cloned() else {
+            return;
+        };
+        let id = self.next_win;
+        self.next_win += 1;
+        self.wins.push(Win { id, ..copy });
+        self.layout.split(area, self.focus, id, across, true);
+        self.previews.insert(id, Preview::new(self.buffer_id, self.focus));
+        self.fit_screen();
+        self.sync_windows();
     }
 
 }
