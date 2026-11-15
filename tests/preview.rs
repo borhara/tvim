@@ -223,3 +223,11 @@ fn the_preview_window_is_titled() {
     let shown = screen(&e, 100, 20);
     assert!(shown.contains("✶ preview · pv-looks.md"), "{shown}");
 }
+
+#[test]
+fn space_shows_the_preview_key() {
+    let mut e = open("pv-hint.md", "# Hi\n");
+    e.keys(&parse("<Space>"));
+    let shown = screen(&e, 100, 20);
+    assert!(shown.contains("markdown preview"), "{shown}");
+}
