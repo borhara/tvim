@@ -248,3 +248,39 @@ fn where_state_and_config_live() {
     );
     assert_eq!(session::state_dir_in(env(&[])), None);
 }
+
+#[test]
+fn the_config_file_sets_options() {
+    let mut e = Editor::new();
+    let config = "\
+\" my settings
+# also a comment
+
+set tabstop=2 noexpandtab
+  :set noroomy
+se rnu
+";
+    assert_eq!(e.apply_config(config), None);
+    assert_eq!(e.options.tab_stop, 2);
+    assert!(!e.options.expand_tab);
+    assert!(e.options.relative_number);
+    assert!(!e.options.roomy);
+    assert!(e.message().is_none());
+}
+
+#[test]
+fn bad_config_lines_say_so() {
+    let mut e = Editor::new();
+    let problem = e.apply_config("set ts=3\nset bogus\nnormal dd\nset sw=0\n");
+    assert_eq!(
+        problem.as_deref(),
+        Some("config line 2: E518: Unknown option: bogus (and 2 more)")
+    );
+    assert!(e.message().unwrap().error);
+    assert_eq!(e.options.tab_stop, 3, "the good lines still count");
+    let mut e = Editor::new();
+    assert_eq!(
+        e.apply_config("dd").as_deref(),
+        Some("config line 1: only set lines are allowed: dd")
+    );
+}
