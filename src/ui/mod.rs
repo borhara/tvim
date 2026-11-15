@@ -251,6 +251,37 @@ fn styled_line(line: &str, kinds: Option<&[Kind]>, ts: usize, c: &Colors) -> Str
     out
 }
 
+fn accent(e: &Editor) -> Rgb {
+    let mode = e.mode();
+    let base = if e.explorer_focused() && mode != Mode::Command {
+        palette::ROSE
+    } else {
+    };
+    mix(base, palette::BLUSH, 0.3)
+}
+
+// a few dots at a time fade in and out, each lasting 3-6s
+fn twinkle(i: usize, n: usize, t: f32) -> f32 {
+    if t <= 0.0 || n == 0 {
+        return 0.0;
+    }
+    let noise = |a: u32, b: u32| {
+        (a.wrapping_mul(2_654_435_761) ^ b.wrapping_mul(40_503)).wrapping_mul(2_246_822_519) as f32 / u32::MAX as f32
+    };
+    let stars = (n / 14).max(1) as u32;
+    let mut lit: f32 = 0.0;
+    for s in 0..stars {
+        let life = 3.0 + 3.0 * noise(s, 1);
+        let age = t / life + noise(s, 2);
+        let (round, p) = (age.floor() as u32, age.fract());
+        let place = (noise(s.wrapping_mul(7919) ^ round.wrapping_mul(104_729), 3) * n as f32) as usize;
+        if place.min(n - 1) == i {
+            lit = lit.max((p * std::f32::consts::PI).sin().powi(3));
+        }
+    }
+    lit
+}
+
 fn icon(name: &str, dir: bool) -> (&'static str, Rgb) {
     if dir {
         return ("▸", BLUE);
@@ -615,6 +646,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         None
     };
     let bar = if active && focused { bar_on_guide(e) } else { None };
+    let lit = mix(accent, palette::BLUSH, 0.3);
     let lens = if active && focused { e.lens() } else { None };
     if active && focused && lens.is_none() {
     }
@@ -642,6 +674,10 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         };
         let glow = if mode.is_visual() { 0.0 } else { 0.3 * glow };
         if glow + band > 0.0 {
+            frame.tint(
+                Rect::new(gutter.x, y, gutter.width + body.width, 1),
+                mix(c.app, accent, glow + band),
+            );
         }
         if gutter.width > 4 {
             let width = gutter.width - 4;
@@ -727,7 +763,9 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             while col < width {
                 if col >= left && col - left < body.width {
                     let in_scope = scope.is_some_and(|(sc, t, b)| sc == col && row >= t && row <= b);
+                    let color = if in_scope { mix(c.app, accent, 0.45) } else { c.guide };
                     let shown = if on_cursor && bar == Some(col) {
+                        bold(&paint(accent, "┃"))
                     } else {
                         paint(color, "│")
                     };
