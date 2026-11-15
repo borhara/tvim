@@ -85,3 +85,15 @@ fn a_narrow_screen_puts_it_below() {
     assert!(preview > text, "{shown}");
     assert!(!shown.contains('│'), "{shown}");
 }
+
+#[test]
+fn it_rerenders_as_you_type() {
+    let mut e = open("pv-live.md", "# Hi\n");
+    e.ex("preview");
+    assert!(!right(&screen(&e, 100, 20)).contains("Fresh words"));
+    e.keys(&parse("Go<CR>Fresh *words*<Esc>"));
+    let side = right(&screen(&e, 100, 20));
+    assert!(side.contains("Fresh words"), "{side}");
+    e.keys(&parse("u"));
+    assert!(!right(&screen(&e, 100, 20)).contains("Fresh words"));
+}
