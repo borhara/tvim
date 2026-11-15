@@ -391,13 +391,16 @@ impl Editor {
         self.wins.retain(|w| w.id != gone);
         self.previews.remove(&gone);
         self.enter_window(next);
+        self.prune_previews();
         true
     }
 
     pub(crate) fn only_window(&mut self) {
+        self.leave_preview();
         self.wins.retain(|w| w.id == self.focus);
         self.layout = Node::Leaf(self.focus);
         self.shadow = None;
+        self.prune_previews();
         self.fit_screen();
     }
 
@@ -412,6 +415,7 @@ impl Editor {
             self.layout.remove(id);
             self.wins.retain(|w| w.id != id);
         }
+        self.prune_previews();
         self.fit_screen();
     }
 
