@@ -1,5 +1,5 @@
 mod common;
-use common::temp;
+use common::{ed, temp};
 use tinsel::app::Frame;
 use tvim::Editor;
 use tvim::keys::parse;
@@ -43,6 +43,31 @@ fn space_m_opens_a_rendered_preview_beside() {
     assert!(side.contains("Some bold text."), "rendered, not raw: {shown}");
     assert!(!side.contains("**") && !side.contains("# Hello"), "{shown}");
     assert!(side.contains("─────"), "the heading is underlined: {shown}");
+}
+
+#[test]
+fn toggling_closes_it_from_either_window() {
+    let mut e = open("pv-toggle.md", "# Hi\n");
+    e.ex("preview");
+    assert_eq!(e.window_count(), 2);
+    e.ex("preview");
+    assert_eq!(e.window_count(), 1);
+    e.keys(&parse("<Space>m<C-w>l"));
+    assert!(e.preview_focused());
+    e.keys(&parse("<Space>m"));
+    assert_eq!(e.window_count(), 1);
+    assert!(!e.preview_focused());
+}
+
+#[test]
+fn not_markdown_says_so() {
+    let mut e = ed("hello");
+    e.keys(&parse("<Space>m"));
+    assert_eq!(e.window_count(), 1);
+    assert!(e.message().unwrap().text.contains("markdown"));
+    let mut e = open("pv-plain.txt", "# Hi\n");
+    e.ex("preview");
+    assert_eq!(e.window_count(), 1);
 }
 
 #[test]
