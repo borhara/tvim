@@ -1,7 +1,8 @@
 use tinsel::app::{Frame, Rect, hints};
 use tinsel::{Rgb, bold, mix, paint, palette};
 
-use super::{Colors, Drawn, LILAC, accent, diff_totals, display_path, draw_explorer, input, vline, windows};
+use super::{Colors, Drawn, LILAC, accent, diff_totals, display_path, draw_explorer, input, twinkle, vline, windows};
+use crate::diff::Mark;
 use crate::editor::{Editor, Mode};
 
 pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
@@ -248,7 +249,80 @@ fn star_line(e: &Editor, frame: &mut Frame, row: Rect, lit: Rgb, c: &Colors) -> 
         );
     }
     (n > 0).then(|| {
+        constellation(e, frame, map, lit, c);
+        map
     })
+}
+
+// one dot per line when the file fits, so a short file looks short and j moves one dot;
+// otherwise each dot is an even share of the file
+fn constellation(e: &Editor, frame: &mut Frame, area: Rect, accent: Rgb, c: &Colors) {
+    let total = e.buffer().len().max(1);
+    let n = area.width;
+    let bar = c.app;
+    let marks = e.change_marks();
+    let mut mark: Vec<Option<Mark>> = vec![None; n];
+    for line in 0..e.buffer().len() {
+        if let Some(m) = marks.get(line).copied().flatten() {
+            mark[dot(line, total, n)].get_or_insert(m);
+        }
+    }
+    let mut hit = vec![false; n];
+    if total <= 20_000 {
+        for p in e.search_hits().iter().flat_map(|h| h.iter()) {
+            hit[dot(p.row, total, n)] = true;
+        }
+    }
+    // matches everywhere would drown the map, so then they only tint the dots
+    let sparse = hit.iter().filter(|h| **h).count() * 3 <= n;
+    let now = frame.time();
+    // thousandths of the way through the file: steady when the width changes, and fine enough
+    // that a one-line move in a short file still glides
+    let at = e.cursor().row * 1000 / (total - 1).max(1);
+    let shown = e.anim.star.step(at, 1000, e.options.smooth && now > 0.0, now);
+    let here = ((shown * (n - 1) + 500) / 1000).min(n - 1);
+    if let Some(end) = e.anim.star.end() {
+        e.anim.pace(now, end);
+    }
+    let sparkle = if e.mode().is_visual() {
+        [mix(palette::AMBER, bar, 0.45), palette::AMBER, palette::SHINE]
+    } else {
+        [palette::BERRY, palette::ROSE, palette::SHINE]
+    };
+    let t = e.anim.clock();
+    for i in 0..n {
+        let tw = twinkle(i, n, t);
+        let star = |rest: Rgb, ramp: [Rgb; 3]| {
+            if tw >= 0.08 {
+                (["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)], tinsel::sample(&ramp, tw))
+            } else {
+                ("·", mix(rest, bar, 0.3))
+            }
+        };
+        let tinted = |c: Rgb| [mix(c, bar, 0.45), c, palette::SHINE];
+        let flare = |color: Rgb| mix(mix(color, bar, 0.2), palette::SHINE, 0.55 * tw);
+        let (ch, ink) = if i == here {
+            ("✶", accent)
+        } else if hit[i] && sparse {
+            ("◇", flare(palette::BLUSH))
+        } else if let Some(m) = mark[i] {
+            match m {
+                Mark::Added => star(palette::SAGE, tinted(palette::SAGE)),
+                Mark::Changed => star(palette::AMBER, tinted(palette::AMBER)),
+                Mark::Removed | Mark::RemovedAbove => ("×", flare(palette::RED)),
+            }
+        } else if hit[i] {
+            ("·", palette::BLUSH)
+        } else {
+            star(mix(palette::LINE, palette::SOFT, 0.35), sparkle)
+        };
+        let ch = if i == here {
+            bold(&paint(ink, ch))
+        } else {
+            paint(ink, ch)
+        };
+        frame.print(Rect::new(area.x + i, area.y, 1, 1), 0, &ch);
+    }
 }
 
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
