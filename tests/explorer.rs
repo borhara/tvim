@@ -35,6 +35,12 @@ fn browse(name: &str) -> (Editor, std::path::PathBuf) {
     (e, root)
 }
 
+fn screen(e: Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&tvim::ui::Tvim::new(e), width, height).plain()
+    })
+}
+
 #[test]
 fn folders_first_then_files_hidden_ones_left_out() {
     let (mut e, _) = browse("list");
@@ -226,4 +232,27 @@ fn commands_work_from_the_browser() {
     let (mut e, _) = browse("commands");
     e.keys(&parse(":q<CR>"));
     assert!(e.should_quit());
+}
+
+#[test]
+fn on_a_narrow_screen_it_takes_the_whole_width() {
+    let (mut e, _) = browse("narrow");
+    e.keys(&parse("jj"));
+    let shown = screen(e, 50, 9);
+    let rows: Vec<&str> = shown.lines().collect();
+    assert_eq!(rows[0], "  tvim", "{shown}");
+    assert!(
+        rows[1].starts_with("  ╭") && rows[1].contains(" narrow ") && rows[1].ends_with('╮'),
+        "the root's name in a bracket heads the tree: {shown}"
+    );
+    assert_eq!(rows[2], "");
+    assert_eq!(rows[3], "  ◇ sub");
+    assert!(
+        rows[5].starts_with("▎ · b.txt") && !rows[5].contains('┊'),
+        "files hang off dots, the picked one marked, and no rule: {shown}"
+    );
+    assert!(
+        rows[8].starts_with("  …") && rows[8].ends_with("narrow   3 of 4"),
+        "{shown}"
+    );
 }
