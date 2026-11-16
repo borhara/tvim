@@ -1064,6 +1064,75 @@ fn diff_totals(e: &Editor) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
+fn symbol(line: &str) -> Option<(String, Rgb)> {
+    let mut rest = line;
+    for prefix in [
+        "pub(crate) ",
+        "pub(super) ",
+        "pub ",
+        "export ",
+        "async ",
+        "unsafe ",
+        "static ",
+        "default ",
+        "const ",
+    ] {
+        if let Some(r) = rest.strip_prefix(prefix) {
+            rest = r;
+        }
+    }
+    let name = |s: &str| -> String { s.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect() };
+    for (kw, mark, color) in [
+        ("fn ", "ƒ ", LILAC),
+        ("def ", "ƒ ", LILAC),
+        ("function ", "ƒ ", LILAC),
+        ("func ", "ƒ ", LILAC),
+        ("struct ", "", PEACH),
+        ("enum ", "", PEACH),
+        ("trait ", "", PEACH),
+        ("class ", "", PEACH),
+        ("interface ", "", PEACH),
+        ("mod ", "", PEACH),
+    ] {
+        if let Some(r) = rest.strip_prefix(kw) {
+            // a Go method: func (r *T) Name(
+            let r = if kw == "func " && r.starts_with('(') {
+                r.split_once(") ").map_or(r, |x| x.1)
+            } else {
+                r
+            };
+            let n = name(r);
+            if n.is_empty() {
+                return None;
+            }
+            let label = if mark.is_empty() {
+                format!("{kw}{n}")
+            } else {
+                format!("{mark}{n}")
+            };
+            return Some((label, color));
+        }
+    }
+    if let Some(r) = rest.strip_prefix("impl").filter(|r| r.starts_with([' ', '<'])) {
+        let r = r.trim_start_matches(|c: char| c == '<' || c.is_whitespace());
+        let head: String = r
+            .split('{')
+            .next()
+            .unwrap_or("")
+            .replace(" where", "")
+            .trim()
+            .to_string();
+        let head = match head.split_once("> ") {
+            Some((_, h)) => h.to_string(),
+            None => head,
+        };
+        if !head.is_empty() {
+            return Some((format!("impl {head}"), PEACH));
+        }
+    }
+    None
+}
+
 // on tvim's clock so it rests while unfocused
 fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
     if area.width == 0 || area.height == 0 {
