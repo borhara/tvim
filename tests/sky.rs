@@ -1,8 +1,9 @@
 mod common;
 use common::temp;
+use tinsel::app::Frame;
 use tvim::Editor;
 use tvim::keys::parse;
-use tvim::ui::Tvim;
+use tvim::ui::{Tvim, draw};
 
 fn screen(e: Editor, width: usize, height: usize) -> String {
     tinsel::with_color_mode(tinsel::ColorMode::None, || {
@@ -175,4 +176,28 @@ fn the_star_line_and_the_last_row() {
     let mut e = common::ed("abc");
     e.ex("nope");
     assert!(screen(e, 90, 8).contains("✕ E492: Not an editor command: nope"));
+}
+
+#[test]
+fn a_short_file_sits_in_the_middle_of_the_sky() {
+    let mut e = common::ed("a\nb\nc\nd\ne");
+    e.keys(&parse("G"));
+    let line = rows(&screen(e, 40, 8))[6].clone();
+    let colour = tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
+        let e = common::ed("a\nb\nc\nd\ne");
+        let mut frame = Frame::new(40, 8);
+        draw(&e, &mut frame);
+        frame.snapshot().lines()[6].clone()
+    });
+    let cells: Vec<char> = line.chars().collect();
+    assert_eq!(cells.len(), 38, "two cells in from each edge: {line}");
+    assert_eq!(cells.iter().position(|c| *c == '✶'), Some(2 + 15 + 4), "{line}");
+    let inks: Vec<&str> = colour.split("\u{1b}[").filter(|s| s.contains('·')).collect();
+    assert_eq!(inks.len(), 3, "the sky, the file's dots, the sky again: {colour:?}");
+    assert_eq!(inks[0].split('m').next(), inks[2].split('m').next());
+    assert_ne!(
+        inks[0].split('m').next(),
+        inks[1].split('m').next(),
+        "the file is brighter"
+    );
 }
