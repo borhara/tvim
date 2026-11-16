@@ -1,9 +1,11 @@
 use tinsel::app::{Frame, Rect, hints};
+use tinsel::format::plural;
 use tinsel::{Rgb, bold, mix, paint, palette};
 
 use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input, tab_names, twinkle, vline, windows};
 use crate::diff::Mark;
 use crate::editor::{Editor, Message, Mode};
+use crate::keys::show;
 
 pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
     let area = frame.area();
@@ -83,6 +85,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
     let typing_at = if status {
         let fits = panes.height >= 6 && panes.width >= 30;
         let row = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+        draw_status(e, frame, row, !fits, c, map)
     } else {
         None
     };
@@ -361,6 +364,104 @@ fn path_parts(path: &str, c: &Colors) -> String {
         None => ("", path),
     };
     format!("{}{}", paint(c.faint, dir), paint(palette::SOFT, name))
+}
+
+fn draw_status(
+    e: &Editor,
+    frame: &mut Frame,
+    row: Rect,
+    command_here: bool,
+    c: &Colors,
+    map: Option<Rect>,
+) -> Option<(usize, usize)> {
+    let mode = e.mode();
+    let in_files = e.explorer_focused() && mode != Mode::Command;
+    let mid_x = row.x + 2;
+
+    let typing = mode == Mode::Search || mode == Mode::Command && command_here;
+    let busy = in_files || typing || e.message().is_some();
+    let mut parts = Vec::new();
+    if let Some(r) = e.recording() {
+        parts.push(paint(palette::RED, &format!("● rec @{r}")));
+    }
+    let pending: String = e.pending().iter().map(|k| show(*k)).collect();
+    if !pending.is_empty() {
+        parts.push(paint(palette::MUTED, &pending));
+    }
+    let place = if in_files {
+        let x = e.explorer().expect("in files");
+        let shown = x.visible().len();
+        let at = (x.selected() + 1).min(shown);
+        paint(palette::MUTED, &format!("{at} of {shown}"))
+    } else {
+        if !busy {
+            if let Some((n, total)) = e.search_count() {
+                parts.push(format!(
+                    "{} {}",
+                    paint(palette::AMBER, "/"),
+                    paint(palette::MUTED, &format!("{n}/{total}"))
+                ));
+            }
+            if let Some(sel) = e.selection() {
+                let rows = sel.end.row - sel.start.row + 1;
+                let size = if sel.linewise || rows > 1 {
+                    plural(rows as u64, "line")
+                } else {
+                    plural((sel.end.col - sel.start.col) as u64, "character")
+                };
+                parts.push(paint(quiet(mode), &size));
+            }
+        }
+        let p = e.cursor();
+        let col = crate::text::vcol(e.buffer().line(p.row), p.col, e.options.tab_stop) + 1;
+        if e.is_blank_slate() {
+            String::new()
+        } else {
+            paint(quiet(mode), &format!("{}:{col}", p.row + 1))
+        }
+    };
+    let end = (row.x + row.width).saturating_sub(2);
+    let room = end.saturating_sub(mid_x);
+    let mut right = String::new();
+    for n in (0..=parts.len()).rev() {
+        let mut all = parts[parts.len() - n..].to_vec();
+        if !place.is_empty() {
+            all.push(place.clone());
+        }
+        let text = all.join("    ");
+        if tinsel::text::width(&text) + 6 <= room {
+            right = text;
+            break;
+        }
+    }
+    if let Some(map) = map.filter(|_| !busy && !e.is_blank_slate()) {
+        star_chart(e, frame, row, map, c, &right, !parts.is_empty());
+        return None;
+    }
+    let right_width = tinsel::text::width(&right);
+    if right_width > 0 {
+        frame.print(Rect::new(end - right_width, row.y, right_width, 1), 0, &right);
+    }
+    let mid_end = end.saturating_sub(right_width + if right_width > 0 { 3 } else { 0 });
+    if mid_end <= mid_x {
+        return None;
+    }
+    let mid = Rect::new(mid_x, row.y, mid_end - mid_x, 1);
+
+    if in_files {
+        return explorer_status(e, frame, row, mid, c);
+    }
+    if typing {
+        return Some(typing_line(e, frame, mid));
+    }
+    if let Some(m) = e.message().filter(|_| mode != Mode::Command) {
+        frame.print(mid, 0, &message(m));
+        return None;
+    }
+    if !e.is_blank_slate() {
+        path_line(e, frame, mid, c);
+    }
+    None
 }
 
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
