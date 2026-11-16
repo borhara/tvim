@@ -14,7 +14,7 @@ use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
 use crate::explorer::Explorer;
 use crate::git::FileState;
-use crate::syntax::Kind;
+use crate::syntax::{Kind, Syntax};
 use crate::text::{caret, cell_width, char_count, is_word, vcol};
 
 const HINT_DELAY: f32 = 0.4;
@@ -401,6 +401,7 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
             other_window(e, &v, frame, text, c);
         }
         let lit = v.focused && focused;
+        let scope = if lit && !preview { crumb_scope(e) } else { Vec::new() };
         window_title(&v, lit, frame, Rect::new(r.x, r.y, r.width, 1), accent, preview, &scope);
         if r.x + r.width < area.x + area.width {
             vline(frame, r.x + r.width, r.y, r.height, &paint(palette::LINE, "│"));
@@ -1062,6 +1063,46 @@ fn diff_totals(e: &Editor) -> Option<String> {
     .map(|(n, sign, color)| paint(color, &format!("{sign}{n}")))
     .collect();
     (!parts.is_empty()).then(|| parts.join(" "))
+}
+
+fn crumb_scope(e: &Editor) -> Vec<(String, Rgb)> {
+    let syntax = e.syntax();
+    let buf = e.buffer();
+    let row = e.cursor().row;
+    let mut found = Vec::new();
+    if syntax == Some(Syntax::Markdown) {
+        let mut level = usize::MAX;
+        for r in (0..=row).rev() {
+            let line = buf.line(r);
+            let hashes = line.chars().take_while(|c| *c == '#').count();
+            if hashes > 0 && hashes < level && line.chars().nth(hashes) == Some(' ') {
+                found.push((format!("# {}", line[hashes..].trim()), palette::ROSE));
+                level = hashes;
+                if level == 1 {
+                    break;
+                }
+            }
+        }
+    } else if syntax.is_some() {
+        let ts = e.options.tab_stop;
+        let mut limit = indent_width(buf.line(row), ts).unwrap_or(usize::MAX).saturating_add(1);
+        for r in (row.saturating_sub(3000)..=row).rev() {
+            let line = buf.line(r);
+            let Some(ind) = indent_width(line, ts) else { continue };
+            if ind >= limit {
+                continue;
+            }
+            if let Some(symbol) = symbol(line.trim()) {
+                found.push(symbol);
+                limit = ind;
+                if ind == 0 {
+                    break;
+                }
+            }
+        }
+    }
+    found.reverse();
+    found
 }
 
 fn symbol(line: &str) -> Option<(String, Rgb)> {
