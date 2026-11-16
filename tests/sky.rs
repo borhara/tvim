@@ -53,3 +53,38 @@ fn the_open_files_are_listed_across_the_top() {
         "folders tell apart two of the same name, and the changed one is marked: {top}"
     );
 }
+
+fn chart_file(name: &str) -> std::path::PathBuf {
+    let dir = temp(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let body = |head: &str| format!("{head} {{\n{}}}\n", "    x();\n".repeat(16));
+    let text = format!(
+        "use a;\nuse b;\n\n{}\n{}\nstruct Gamma {{\n{}}}\n",
+        body("fn alpha()"),
+        body("fn beta()"),
+        "    a: u8,\n".repeat(6)
+    );
+    let path = dir.join("chart.rs");
+    std::fs::write(&path, text).unwrap();
+    path
+}
+
+#[test]
+fn the_last_row_names_the_stretches_of_the_star_line() {
+    let mut e = Editor::open(&chart_file("chart")).unwrap();
+    e.keys(&parse("31G"));
+    let shown = rows(&screen(e, 90, 10));
+    // 49 lines on a 49-dot map from column 20, so line n is column 20 + n
+    assert_eq!(shown[8].chars().position(|c| c == '✶'), Some(50), "{}", shown[8]);
+    let expected = format!(
+        "{}╰╯ ╰─── ƒ alpha ────╯ ╰──── ƒ beta ────╯ ╰──────╯{}31:5",
+        " ".repeat(20),
+        " ".repeat(15)
+    );
+    assert_eq!(
+        shown[9], expected,
+        "a bracket under each item's dots; every label centred, \
+         too-short brackets bare, and the place at the end where there's room"
+    );
+}
