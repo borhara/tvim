@@ -1209,6 +1209,20 @@ mod tests {
     }
 
     #[test]
+    fn breadcrumbs_follow_the_cursor_in() {
+        let path = std::env::temp_dir().join(format!("tvim-crumb-{}.rs", std::process::id()));
+        std::fs::write(
+            &path,
+            "impl Editor {\n    pub fn scroll(&self) {\n        let x = 1;\n    }\n}\n",
+        )
+        .unwrap();
+        let mut e = Editor::open(&path).unwrap();
+        e.keys(&crate::keys::parse("3G"));
+        let crumbs: Vec<String> = crumb_scope(&e).into_iter().map(|c| c.0).collect();
+        assert_eq!(crumbs, ["impl Editor", "ƒ scroll"]);
+    }
+
+    #[test]
     fn icons_by_kind() {
         assert_eq!(icon("main.rs", false).0, "⊛");
         assert_eq!(icon("Cargo.toml", false).0, "≡");
