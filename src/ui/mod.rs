@@ -251,11 +251,22 @@ fn styled_line(line: &str, kinds: Option<&[Kind]>, ts: usize, c: &Colors) -> Str
     out
 }
 
+fn mode_color(mode: Mode) -> Rgb {
+    match mode {
+        Mode::Normal => palette::ROSE,
+        Mode::Command | Mode::Search => palette::BLUSH,
+        Mode::Insert => palette::SAGE,
+        Mode::Replace => palette::RED,
+        Mode::Visual | Mode::VisualLine => palette::AMBER,
+    }
+}
+
 fn accent(e: &Editor) -> Rgb {
     let mode = e.mode();
     let base = if e.explorer_focused() && mode != Mode::Command {
         palette::ROSE
     } else {
+        mode_color(mode)
     };
     mix(base, palette::BLUSH, 0.3)
 }
@@ -336,6 +347,9 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
     if hints && !e.explorer_focused() {
     }
+    if let Some((x, y, _)) = text_cursor(e, e.mode(), d.body).filter(|_| e.completion().is_some()) {
+        overlays::completion(e, frame, d.panes, (x, y), &c);
+    }
     if let Some(f) = e.finder() {
         typing_at = overlays::finder(f, frame, d.panes, &c);
     }
@@ -356,9 +370,11 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     } else if e.is_blank_slate() || d.body.width == 0 || e.preview_focused() {
         None
     } else {
+        text_cursor(e, e.mode(), d.body).filter(|_| bar_on_guide(e).is_none())
     };
     if let Some((x, y, shape)) = cursor {
         frame.set_cursor(x, y, shape);
+        frame.set_cursor_color(mode_color(e.mode()));
     }
 }
 
@@ -373,6 +389,26 @@ fn bar_on_guide(e: &Editor) -> Option<usize> {
     let ts = e.options.tab_stop;
     let col = vcol(buf.line(p.row), p.col, ts);
     (col % e.options.shift_width.max(1) == 0 && col < resolved_indent(buf, ts, p.row)).then_some(col)
+}
+
+fn text_cursor(e: &Editor, mode: Mode, body: Rect) -> Option<(usize, usize, CursorShape)> {
+    let p = e.cursor();
+    let line = e.buffer().line(p.row);
+    let ts = e.options.tab_stop;
+    let start = vcol(line, p.col, ts);
+    // vim draws the block cursor at the end of a tab
+    let col = match (mode, line.chars().nth(p.col)) {
+        (Mode::Insert, _) | (_, None) => start,
+        (_, Some(ch)) => (start + cell_width(ch, start, ts)).saturating_sub(1),
+    };
+    let shape = match mode {
+        Mode::Insert => CursorShape::Bar,
+        Mode::Replace => CursorShape::Underline,
+        _ => CursorShape::Block,
+    };
+    let row = p.row.checked_sub(e.anim.shown()).filter(|r| *r < body.height)?;
+    let x = col.checked_sub(e.left()).filter(|x| *x < body.width)?;
+    Some((body.x + x, body.y + row, shape))
 }
 
 fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool, scrollbar: bool) -> Rect {
@@ -413,6 +449,7 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
     if e.window_count() == 1 {
         return text_area(e, frame, area, c, focused, scrollbar);
     }
+    let accent = if focused { mode_color(e.mode()) } else { palette::LINE };
     let mut body = Rect::default();
     for v in e.views(area) {
         let r = v.rect;
@@ -514,6 +551,7 @@ fn preview_window(e: &Editor, id: usize, frame: &mut Frame, area: Rect, c: &Colo
 
 fn thumb_color(e: &Editor, focused: bool, c: &Colors) -> Rgb {
     if focused {
+        mix(c.app, mode_color(e.mode()), 0.6)
     } else {
         c.scrollbar
     }
@@ -716,6 +754,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     } else {
         None
     };
+    let accent = if active { mode_color(mode) } else { palette::SOFT };
     let bar = if active && focused { bar_on_guide(e) } else { None };
     let lit = mix(accent, palette::BLUSH, 0.3);
     let lens = if active && focused { e.lens() } else { None };
