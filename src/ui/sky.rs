@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Rect, hints};
 use tinsel::{Rgb, bold, mix, paint, palette};
 
-use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, input, twinkle, vline, windows};
+use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input, tab_names, twinkle, vline, windows};
 use crate::diff::Mark;
 use crate::editor::{Editor, Message, Mode};
 
@@ -35,6 +35,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
     let mut body = Rect::default();
     if text.width > 0 && text.height > 0 {
         body = windows(e, frame, text, c, editor_focused, false);
+        let welcome = e.is_blank_slate() && e.mode() == Mode::Normal;
         if !editor_focused && !welcome && e.options.dim {
             let faded = Rect::new(column.x, text.y, column.width, text.height);
             frame.dim(faded);
@@ -64,9 +65,14 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         };
         // the first star sits over the line numbers' last digit
         let start = match e.window_count() {
+            1 if !e.is_blank_slate() && e.gutter() > 4 && body.x > row.x + 6 => body.x - 4,
             _ => row.x + 2,
         };
         draw_top(e, frame, row, start, lit, c, !ruled);
+        if roomy && !e.is_blank_slate() {
+            let sky = Rect::new(start, area.y + 1, (column.x + column.width).saturating_sub(start + 2), 1);
+            super::sparkles(frame, sky, e.anim.clock() * 0.4, 0.15);
+        }
     }
     let mut map = None;
     if stars {
@@ -120,6 +126,21 @@ fn thousands(n: usize) -> String {
 // drops the clock first, then crlf, length, language
 fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> String {
     let mut facts = Vec::new();
+    if !e.is_blank_slate() {
+        if let Some(lang) = e.syntax() {
+            let color = super::icon(&file_name(e.file().path.as_deref(), ""), false).1;
+            facts.push(paint(color, lang.name()));
+        }
+        let lines = e.buffer().len();
+        facts.push(paint(
+            palette::MUTED,
+            &format!("{} {}", thousands(lines), if lines == 1 { "line" } else { "lines" }),
+        ));
+        // only the unusual line ending is worth a mention
+        if e.file().crlf {
+            facts.push(paint(palette::MUTED, "crlf"));
+        }
+    }
     let branch = if branch {
         Some(branch_info(e).unwrap_or_else(|| {
             let cwd = std::env::current_dir().map(|d| display_path(&d)).unwrap_or_default();
@@ -142,6 +163,7 @@ fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> Str
         }
         groups.join("    ")
     };
+    let mut shown = build(&facts, timed && !e.is_blank_slate());
     while tinsel::text::width(&shown) > room {
         if !shown.ends_with(&clock) && facts.pop().is_none() {
             return String::new();
@@ -152,6 +174,7 @@ fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> Str
 }
 
 fn draw_top(e: &Editor, frame: &mut Frame, row: Rect, start: usize, lit: Rgb, c: &Colors, branch: bool) {
+    let names = if e.is_blank_slate() { Vec::new() } else { tab_names(e) };
     // the current file's star and name come before anything in the corner
     let own = names
         .iter()

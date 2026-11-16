@@ -720,6 +720,14 @@ impl Editor {
         self.version
     }
 
+    pub fn is_blank_slate(&self) -> bool {
+        self.wins.len() == 1
+            && self.file.path.is_none()
+            && self.buf.is_empty()
+            && self.version == 0
+            && self.undo.is_empty()
+    }
+
     pub fn selection(&self) -> Option<Range> {
         self.mode.is_visual().then(|| self.visual_range())
     }
@@ -1629,6 +1637,7 @@ impl Editor {
             || self.finder.is_some()
             || self.grep.is_some()
             || self.git_menu.is_some()
+            || self.is_blank_slate();
         if !self.options.gitlens || quiet {
             return None;
         }
