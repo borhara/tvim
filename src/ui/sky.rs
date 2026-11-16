@@ -1,5 +1,5 @@
 use tinsel::app::{Frame, Rect, hints};
-use tinsel::{paint, palette};
+use tinsel::{mix, paint, palette};
 
 use super::{Colors, Drawn, LILAC, accent, diff_totals, display_path, draw_explorer, input, vline, windows};
 use crate::editor::{Editor, Mode};
@@ -55,6 +55,12 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         }
     }
     if head {
+        // the open files start over the text when the sidebar has the corner
+        let row = if ruled {
+            Rect::new(column.x - 1, area.y, area.x + area.width - (column.x - 1), 1)
+        } else {
+            Rect::new(area.x, area.y, area.width, 1)
+        };
         // the first star sits over the line numbers' last digit
         let start = match e.window_count() {
             _ => row.x + 2,
@@ -94,6 +100,52 @@ pub(super) fn branch_info(e: &Editor) -> Option<String> {
     }
     parts.extend(diff_totals(e));
     Some(parts.join("  "))
+}
+
+fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+// drops the clock first, then crlf, length, language
+fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> String {
+    let mut facts = Vec::new();
+    let branch = if branch {
+        Some(branch_info(e).unwrap_or_else(|| {
+            let cwd = std::env::current_dir().map(|d| display_path(&d)).unwrap_or_default();
+            paint(palette::MUTED, &cwd)
+        }))
+    } else {
+        None
+    };
+    let (h, m) = crate::time::clock();
+    let faint = mix(palette::MUTED, palette::LINE, 0.5);
+    let clock = paint(mix(faint, c.app, 0.3), &format!("{h:02}:{m:02}"));
+    let build = |facts: &[String], timed: bool| {
+        let mut groups = Vec::new();
+        if !facts.is_empty() {
+            groups.push(facts.join(&paint(faint, " · ")));
+        }
+        groups.extend(branch.clone().filter(|b| !b.is_empty()));
+        if timed {
+            groups.push(clock.clone());
+        }
+        groups.join("    ")
+    };
+    while tinsel::text::width(&shown) > room {
+        if !shown.ends_with(&clock) && facts.pop().is_none() {
+            return String::new();
+        }
+        shown = build(&facts, false);
+    }
+    shown
 }
 
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
