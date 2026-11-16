@@ -246,3 +246,44 @@ fn there_is_one_look() {
     e.ex("set look?");
     assert!(e.message().unwrap().text.starts_with("E518"), "{:?}", e.message());
 }
+
+#[test]
+fn the_cursor_takes_the_mode_colour_and_the_app_its_own_background() {
+    tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
+        let mut e = common::ed("abc");
+        let mut frame = Frame::new(40, 8);
+        draw(&e, &mut frame);
+        assert!(frame.background().is_some());
+        e.keys(&parse("i"));
+        let mut typing = Frame::new(40, 8);
+        draw(&e, &mut typing);
+        assert!(typing.cursor().is_some());
+    });
+}
+
+#[test]
+fn the_lit_label_is_in_the_modes_colour() {
+    let last_row = |keys: &str| {
+        let mut e = common::ed(&"abc\n".repeat(20));
+        e.keys(&parse(keys));
+        tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
+            let mut frame = Frame::new(60, 8);
+            draw(&e, &mut frame);
+            frame.snapshot().lines().last().unwrap().clone()
+        })
+    };
+    let normal = last_row("");
+    let insert = last_row("i");
+    let ink = |row: &str, word: &str| {
+        let at = row.find(word).unwrap();
+        let start = row[..at].rfind('\x1b').unwrap();
+        row[start..at].split("48;").next().unwrap().to_string()
+    };
+    assert!(ink(&normal, "untitled").contains("38;"), "{normal:?}");
+    assert_ne!(
+        ink(&normal, "untitled"),
+        ink(&insert, "untitled"),
+        "each mode its own colour"
+    );
+    assert_ne!(ink(&normal, "╰"), ink(&insert, "╰"), "the bracket too");
+}
