@@ -3,7 +3,7 @@ use tinsel::{Rgb, bold, mix, paint, palette};
 
 use super::{Colors, Drawn, LILAC, accent, diff_totals, display_path, draw_explorer, input, twinkle, vline, windows};
 use crate::diff::Mark;
-use crate::editor::{Editor, Mode};
+use crate::editor::{Editor, Message, Mode};
 
 pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
     let area = frame.area();
@@ -376,4 +376,21 @@ fn typing_line(e: &Editor, frame: &mut Frame, mid: Rect) -> (usize, usize) {
     }
     let label = format!("{} ", paint(palette::ROSE, &cmd.prompt.to_string()));
     input(frame, Rect::new(mid.x, mid.y, room, 1), &label, &cmd.text, cmd.cursor, None)
+}
+
+// insert, replace and visual colour the labels row; normal leaves it quiet
+fn tone(mode: Mode) -> Option<Rgb> {
+    matches!(mode, Mode::Insert | Mode::Replace | Mode::Visual | Mode::VisualLine).then(|| super::mode_color(mode))
+}
+
+fn quiet(mode: Mode) -> Rgb {
+    tone(mode).map_or(palette::MUTED, |m| mix(m, palette::MUTED, 0.4))
+}
+
+fn message(m: &Message) -> String {
+    if m.error {
+        format!("{} {}", paint(palette::RED, "✕"), paint(palette::RED, &m.text))
+    } else {
+        format!("{} {}", paint(palette::BLUSH, "›"), m.text)
+    }
 }
