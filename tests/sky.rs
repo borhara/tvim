@@ -314,3 +314,36 @@ fn typing_on_the_status_row_puts_the_cursor_after_it() {
     let (x, y, _) = cursor.unwrap();
     assert_eq!((x, y), (last.chars().position(|c| c == 'b').unwrap() + 1, 4));
 }
+
+#[test]
+fn only_windows_line_endings_are_mentioned() {
+    let dir = temp("endings");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("dos.txt"), "a\r\nb\r\n").unwrap();
+    let mut e = Editor::new();
+    e.ex(&format!("e {}", dir.join("dos.txt").display()));
+    let top = rows(&screen(e, 80, 10))[0].clone();
+    assert!(top.ends_with("2 lines · crlf"), "{top}");
+}
+
+#[test]
+fn the_open_files_are_a_constellation() {
+    let dir = temp("tab-words");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut e = Editor::new();
+    for f in ["notes.md", "Cargo.toml", "main.rs"] {
+        std::fs::write(dir.join(f), "x\n").unwrap();
+        e.ex(&format!("e {}", dir.join(f).display()));
+    }
+    let top = rows(&screen(e, 100, 10))[0].clone();
+    assert!(top.starts_with("    ⋆ notes.md ─── ⋆ Cargo.toml ─── ✶ main.rs  "), "{top}");
+    assert!(top.ends_with("rust · 1 line"), "the current file's facts in the corner: {top}");
+    assert_eq!(rows(&screen(common::ed("x"), 60, 10))[0].trim_start().split("  ").next(), Some("✶ untitled"));
+    assert_eq!(
+        rows(&screen(Editor::new(), 60, 10))[0],
+        "  tvim",
+        "the name when nothing's open"
+    );
+}
