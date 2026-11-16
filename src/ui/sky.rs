@@ -2,7 +2,7 @@ use tinsel::app::{Frame, Rect, hints};
 use tinsel::format::plural;
 use tinsel::{Rgb, bold, mix, paint, palette};
 
-use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input, tab_names, twinkle, vline, windows};
+use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input, outline, tab_names, twinkle, vline, windows};
 use crate::diff::Mark;
 use crate::editor::{Editor, Message, Mode};
 use crate::keys::show;
@@ -549,6 +549,54 @@ fn path_line(e: &Editor, frame: &mut Frame, mid: Rect, c: &Colors) {
     let mut line = path_parts(&tail(&path, mid.width - width(&scope)), c);
     line.push_str(&scope.concat());
     frame.print(mid, 0, &line);
+}
+
+struct Bracket {
+    x: usize,
+    width: usize,
+    label: String,
+    lit: bool,
+}
+
+// each top-level item spans the dots its lines map to; neighbours sharing a dot give way to the
+// one the cursor is in, then to the one before them
+fn brackets(e: &Editor, map: Rect) -> Vec<Bracket> {
+    let total = e.buffer().len().max(1);
+    let n = map.width;
+    let items = outline(e);
+    if items.is_empty() {
+        return vec![Bracket {
+            x: map.x,
+            width: n,
+            label: file_name(e.file().path.as_deref(), "untitled"),
+            lit: true,
+        }];
+    }
+    let row = e.cursor().row;
+    let lit = items.iter().position(|s| (s.start..=s.end).contains(&row));
+    let span = |i: usize| (dot(items[i].start, total, n), dot(items[i].end, total, n));
+    let mut out = Vec::new();
+    let mut free = 0;
+    for i in 0..items.len() {
+        let (mut a, mut b) = span(i);
+        if lit != Some(i) {
+            a = a.max(free);
+            if let Some(edge) = lit.filter(|l| *l > i).and_then(|l| span(l).0.checked_sub(1)) {
+                b = b.min(edge);
+            }
+            if a > b {
+                continue;
+            }
+        }
+        free = b + 1;
+        out.push(Bracket {
+            x: map.x + a,
+            width: b - a + 1,
+            label: items[i].label.clone(),
+            lit: lit == Some(i),
+        });
+    }
+    out
 }
 
 // insert, replace and visual colour the labels row; normal leaves it quiet
