@@ -1,5 +1,5 @@
 use tinsel::app::{Frame, Rect, hints};
-use tinsel::{mix, paint, palette};
+use tinsel::{Rgb, bold, mix, paint, palette};
 
 use super::{Colors, Drawn, LILAC, accent, diff_totals, display_path, draw_explorer, input, vline, windows};
 use crate::editor::{Editor, Mode};
@@ -65,6 +65,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         let start = match e.window_count() {
             _ => row.x + 2,
         };
+        draw_top(e, frame, row, start, lit, c, !ruled);
     }
     let mut map = None;
     if stars {
@@ -146,6 +147,72 @@ fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> Str
         shown = build(&facts, false);
     }
     shown
+}
+
+fn draw_top(e: &Editor, frame: &mut Frame, row: Rect, start: usize, lit: Rgb, c: &Colors, branch: bool) {
+    // the current file's star and name come before anything in the corner
+    let own = names
+        .iter()
+        .find(|t| t.current)
+        .map_or(12, |t| tinsel::text::width(&t.name) + 9);
+    // frames from the running app always have a time; a still frame shows no clock
+    let timed = frame.time() > 0.0;
+    let right = corner(e, branch, (row.x + row.width).saturating_sub(start + own + 5), timed, c);
+    let right_width = tinsel::text::width(&right);
+    if names.is_empty() {
+        frame.print(Rect::new(start, row.y, 4, 1), 0, &bold(&paint(palette::MUTED, "tvim")));
+    }
+    let end = (row.x + row.width).saturating_sub(2);
+    let fits = right_width > 0 && start + right_width + 12 < end;
+    if fits {
+        frame.print(Rect::new(end - right_width, row.y, right_width, 1), 0, &right);
+    }
+    let room = end.saturating_sub(start + if fits { right_width + 3 } else { 0 });
+
+    let sep = paint(c.faint, " ─── ");
+    let width = |i: usize| tinsel::text::width(&names[i].name) + 7 + if names[i].modified { 2 } else { 0 };
+    let current = names.iter().position(|t| t.current).unwrap_or(0);
+    let (mut first, mut last) = (current, current);
+    let mut used = if names.is_empty() { 0 } else { width(current) };
+    loop {
+        let mut grew = false;
+        if last + 1 < names.len() && used + width(last + 1) + 2 <= room {
+            last += 1;
+            used += width(last);
+            grew = true;
+        }
+        if first > 0 && used + width(first - 1) + 2 <= room {
+            first -= 1;
+            used += width(first);
+            grew = true;
+        }
+        if !grew {
+            break;
+        }
+    }
+    if names.is_empty() {
+        return;
+    }
+    let mut line = String::new();
+    if first > 0 {
+        line.push_str(&paint(palette::MUTED, "‹ "));
+    }
+    for (i, tab) in names.iter().enumerate().take(last + 1).skip(first) {
+        if i > first {
+            line.push_str(&sep);
+        }
+        line.push_str(&if tab.current {
+            format!("{} {}", bold(&paint(lit, "✶")), bold(&paint(palette::TEXT, &tab.name)))
+        } else {
+            format!("{} {}", paint(palette::LINE, "⋆"), paint(palette::MUTED, &tab.name))
+        });
+        if tab.modified {
+        }
+    }
+    if last + 1 < names.len() {
+        line.push_str(&paint(palette::MUTED, " ›"));
+    }
+    frame.print(Rect::new(start, row.y, room, 1), 0, &line);
 }
 
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
