@@ -137,3 +137,19 @@ fn every_kind_of_file_has_a_chart() {
         "one bracket over the lot, named for the file: {plain}"
     );
 }
+
+#[test]
+fn messages_and_typing_take_the_row_back() {
+    let mut e = Editor::open(&chart_file("chart-busy")).unwrap();
+    e.keys(&parse("31G:nope<CR>"));
+    let last = rows(&screen(e, 90, 10)).pop().unwrap();
+    assert!(
+        last.starts_with("  ✕ E492") && last.ends_with("31:5") && !last.contains('╰'),
+        "{last}"
+    );
+    let mut e = Editor::open(&chart_file("chart-pending")).unwrap();
+    e.keys(&parse("31G\"a"));
+    let last = rows(&screen(e, 70, 10)).pop().unwrap();
+    assert!(last.contains("ƒ beta") && last.ends_with("\"a    31:5"), "{last}");
+    assert!(!last.contains("╰──────╯"), "labels in the way give way: {last}");
+}
