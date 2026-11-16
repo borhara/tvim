@@ -220,3 +220,29 @@ fn stars_drift_only_past_the_end() {
         "the same moment draws the same sky"
     );
 }
+
+#[test]
+fn everything_sits_on_the_darkest_colour() {
+    tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
+        let mut e = common::ed(" abc\n def");
+        e.keys(&parse("j"));
+        // the cursor's line has its own faint band
+        e.options.cursor_line = false;
+        let mut frame = Frame::new(60, 12);
+        draw(&e, &mut frame);
+        for line in frame.snapshot().lines() {
+            for part in line.split("48;2;").skip(1) {
+                assert!(part.starts_with("23;18;27m"), "no bands or tints: {line:?}");
+            }
+        }
+    });
+}
+
+#[test]
+fn there_is_one_look() {
+    let mut e = common::ed("abc");
+    e.ex("set look=frames");
+    assert!(e.message().unwrap().error, "{:?}", e.message());
+    e.ex("set look?");
+    assert!(e.message().unwrap().text.starts_with("E518"), "{:?}", e.message());
+}
