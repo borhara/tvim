@@ -1,10 +1,15 @@
 mod common;
+use tinsel::app::{CursorShape, Frame};
 use tvim::Editor;
 use tvim::keys::parse;
-use tvim::ui::Tvim;
+use tvim::ui::{Tvim, draw};
 
 fn ed(text: &str) -> Editor {
     common::ed(text)
+}
+
+fn blank() -> Editor {
+    Editor::new()
 }
 
 fn screen(e: Editor, width: usize, height: usize) -> String {
@@ -15,6 +20,12 @@ fn screen(e: Editor, width: usize, height: usize) -> String {
 
 fn rows(shown: &str) -> Vec<&str> {
     shown.lines().collect()
+}
+
+fn cursor(e: &Editor, width: usize, height: usize) -> Option<(usize, usize, CursorShape)> {
+    let mut frame = Frame::new(width, height);
+    draw(e, &mut frame);
+    frame.cursor()
 }
 
 #[test]
@@ -115,6 +126,27 @@ fn searching_shows_how_many_matches() {
     let mut e = ed("abc");
     e.keys(&parse("/z"));
     assert!(screen(e, 40, 5).contains("no match"));
+}
+
+#[test]
+fn a_blank_slate_says_hello() {
+    let shown = screen(blank(), 70, 24);
+    assert!(shown.contains("▀█▀ █ █ █ █▀▄▀█"), "{shown}");
+    assert!(
+        shown.contains("start writing") && shown.contains("browse files"),
+        "{shown}"
+    );
+    assert!(shown.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
+    assert_eq!(rows(&shown)[0], "  tvim", "no open files to list yet");
+    assert_eq!(
+        shown.lines().nth(23).unwrap_or(""),
+        "",
+        "nothing to say about where the cursor is yet"
+    );
+    assert_eq!(cursor(&blank(), 70, 24), None);
+    let mut e = blank();
+    e.keys(&parse("ihi<Esc>"));
+    assert!(!screen(e, 70, 24).contains("start writing"));
 }
 
 #[test]
