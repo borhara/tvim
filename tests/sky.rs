@@ -106,3 +106,34 @@ fn the_lit_label_stays_put_while_the_star_moves() {
     assert_eq!(label_at("31G"), 50);
     assert_eq!(label_at("40G"), 50);
 }
+
+#[test]
+fn every_kind_of_file_has_a_chart() {
+    let dir = temp("chart-kinds");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let write = |name: &str, text: String| {
+        let p = dir.join(name);
+        std::fs::write(&p, text).unwrap();
+        let mut e = Editor::open(&p).unwrap();
+        e.clear_message();
+        let shown = rows(&screen(e, 90, 10));
+        shown[9].clone()
+    };
+    let filler = |n: usize| "text\n".repeat(n);
+    let md = write(
+        "notes.md",
+        format!("# Notes\n\n## Intro\n{}## Usage\n{}", filler(20), filler(20)),
+    );
+    assert!(
+        md.contains(" Intro ") && md.contains(" Usage ") && !md.contains("Notes"),
+        "{md}"
+    );
+    let toml = write("conf.toml", format!("[package]\n{}[deps]\n{}", filler(20), filler(20)));
+    assert!(toml.contains(" [package] ") && toml.contains(" [deps] "), "{toml}");
+    let plain = write("story.txt", filler(30));
+    assert!(
+        plain.contains(" story.txt ") && plain.matches('╰').count() == 1,
+        "one bracket over the lot, named for the file: {plain}"
+    );
+}
