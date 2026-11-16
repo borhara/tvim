@@ -59,6 +59,26 @@ fn relative_numbers() {
 }
 
 #[test]
+fn the_last_row_follows_the_mode() {
+    let last = |keys: &str| {
+        let mut e = ed("abc");
+        e.keys(&parse(keys));
+        rows(&screen(e, 50, 8)).last().unwrap().to_string()
+    };
+    // the mode is the colour of the star, the cursor and the labels, not a word
+    for keys in ["", "i", "v", "V", "R", ":"] {
+        let row = last(keys);
+        assert!(row.contains('╰') && !row.contains("normal"), "{keys}: {row}");
+    }
+    assert!(last("/").starts_with("  / "), "{}", last("/"));
+    assert!(last("<Tab>").ends_with("1 of 8"), "{}", last("<Tab>"));
+    let mut e = ed("abc");
+    e.keys(&parse("x"));
+    assert!(rows(&screen(e, 50, 8))[0].contains("untitled ●"), "modified");
+    assert!(last("qa").contains("● rec @a"));
+}
+
+#[test]
 fn searching_shows_how_many_matches() {
     let mut e = ed("a b a b a");
     e.keys(&parse("/a"));
