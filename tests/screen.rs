@@ -181,6 +181,18 @@ fn the_view_follows_the_cursor_down() {
 }
 
 #[test]
+fn tiny_screens_dont_break() {
+    for (w, h) in [(1, 1), (2, 2), (5, 3), (80, 1), (0, 0), (12, 4), (3, 5)] {
+        for keys in ["jl", ":abc", "/x", "d", "Vj", "<Tab>", "<Tab>/x"] {
+            let mut e = ed("hello\nworld");
+            e.keys(&parse(keys));
+            let _ = screen(e, w, h);
+        }
+        let _ = screen(blank(), w, h);
+    }
+}
+
+#[test]
 fn lines_changed_since_saving_are_marked() {
     let path = common::temp("marks.txt");
     std::fs::write(&path, "one\ntwo\nthree\n").unwrap();
