@@ -389,6 +389,7 @@ type RegexCache = (String, (bool, bool), Rc<Regex>);
 // keyed on (buffer version, git answer)
 type HitsCache = (usize, u64, Rc<Regex>, Rc<[Pos]>);
 type DiffCache = ((u64, u64), Rc<[Hunk]>, Rc<[Option<Mark>]>);
+pub(crate) type OutlineCache = ((usize, u64, Option<Syntax>), Vec<crate::ui::Section>);
 
 const MAX_UNDO: usize = 1000;
 const MAX_HISTORY: usize = 100;
@@ -458,6 +459,8 @@ pub struct Editor {
     pub(crate) buffer_id: usize,
     next_id: usize,
     pub(crate) recent: Vec<crate::session::Place>,
+    // keyed on (buffer, version, syntax)
+    pub(crate) outline: RefCell<Option<OutlineCache>>,
     // the focused window's cursor and scroll live in the fields above; wins has the rest
     pub(crate) wins: Vec<Win>,
     pub(crate) layout: Node,
@@ -711,6 +714,10 @@ impl Editor {
         if let Some(x) = &self.explorer {
             self.tree.refresh(x.root());
         }
+    }
+
+    pub(crate) fn version(&self) -> u64 {
+        self.version
     }
 
     pub fn selection(&self) -> Option<Range> {
