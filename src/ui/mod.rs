@@ -1449,6 +1449,26 @@ mod tests {
     }
 
     #[test]
+    fn headings_and_sections() {
+        let md = "# Title\n\n## One\ntext\n### Deeper\n\n## Two\n```\n## not a heading\n```\n";
+        assert_eq!(
+            outline_of(md, Syntax::Markdown),
+            [(2, 4, "One".to_string()), (6, 9, "Two".into())],
+            "a lone title gives way to the level below"
+        );
+        let md = "# A\nx\n## a\n# B\n";
+        assert_eq!(
+            outline_of(md, Syntax::Markdown),
+            [(0, 2, "A".to_string()), (3, 3, "B".into())]
+        );
+        let toml = "name = 1\n\n[package]\nx = 1\n\n[[bin]]\ny = 2\n";
+        assert_eq!(
+            outline_of(toml, Syntax::Toml),
+            [(2, 3, "[package]".to_string()), (5, 6, "[[bin]]".into())]
+        );
+    }
+
+    #[test]
     fn icons_by_kind() {
         assert_eq!(icon("main.rs", false).0, "⊛");
         assert_eq!(icon("Cargo.toml", false).0, "≡");
