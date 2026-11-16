@@ -128,6 +128,27 @@ fn long_lines_scroll_sideways() {
 }
 
 #[test]
+fn the_view_follows_the_cursor_down() {
+    let text: Vec<String> = (1..=50).map(|n| format!("line {n}")).collect();
+    let mut e = ed(&text.join("\n"));
+    e.keys(&parse("30G"));
+    let shown = screen(e, 40, 13);
+    let r = rows(&shown);
+    assert!(!r[1].contains("line"), "roomy leaves a row of sky under the top line: {shown}");
+    assert_eq!(
+        r[9], "   33   line 33",
+        "three lines below the cursor stay in view: {shown}"
+    );
+    assert!(
+        !shown.contains('▐'),
+        "no scrollbar: the star line shows the place: {shown}"
+    );
+    let stars = r[11];
+    let star = stars.chars().position(|c| c == '✶').unwrap();
+    assert_eq!(star, 2 + (29 * 35 + 24) / 49, "line 30 of 50 on a map 36 wide: {stars}");
+}
+
+#[test]
 fn lines_changed_since_saving_are_marked() {
     let path = common::temp("marks.txt");
     std::fs::write(&path, "one\ntwo\nthree\n").unwrap();
