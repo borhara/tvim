@@ -1,6 +1,44 @@
 mod common;
 use tvim::Editor;
 use tvim::keys::parse;
+use tvim::ui::Tvim;
+
+fn ed(text: &str) -> Editor {
+    common::ed(text)
+}
+
+fn screen(e: Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&Tvim::new(e), width, height).plain()
+    })
+}
+
+fn rows(shown: &str) -> Vec<&str> {
+    shown.lines().collect()
+}
+
+#[test]
+fn the_text_sits_on_the_night_sky() {
+    let mut e = ed("first\n\tsecond");
+    e.keys(&parse("j"));
+    let expected = [
+        "    ✶ untitled                           2 lines",
+        "    1   first",
+        "    2 ›     second",
+        "",
+        "",
+        "              ⋆",
+        "  ·······················✶······················",
+        "                        ╰ untitled ╯         2:1",
+    ];
+    assert_eq!(
+        screen(e, 50, 8),
+        expected.join("\n"),
+        "a change dot, the number and › for the cursor's line; a wandering star past the end; \
+         the star line; then the file's bracket, widened to name it, and the place; the file's length \
+         and line ending in the corner"
+    );
+}
 
 #[test]
 fn line_numbers_can_start_with_zeros() {
