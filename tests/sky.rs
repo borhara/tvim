@@ -88,3 +88,21 @@ fn the_last_row_names_the_stretches_of_the_star_line() {
          too-short brackets bare, and the place at the end where there's room"
     );
 }
+
+#[test]
+fn the_lit_label_stays_put_while_the_star_moves() {
+    let path = chart_file("chart-slide");
+    let label_at = |keys: &str| {
+        let mut e = Editor::open(&path).unwrap();
+        e.keys(&parse(keys));
+        let shown = rows(&screen(e, 90, 10));
+        let chars: Vec<char> = shown[9].chars().collect();
+        chars
+            .windows(4)
+            .position(|w| w.iter().collect::<String>() == "beta")
+            .unwrap()
+    };
+    assert_eq!(label_at("24G"), 50, "centred in its bracket");
+    assert_eq!(label_at("31G"), 50);
+    assert_eq!(label_at("40G"), 50);
+}
