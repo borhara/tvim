@@ -153,3 +153,26 @@ fn messages_and_typing_take_the_row_back() {
     assert!(last.contains("ƒ beta") && last.ends_with("\"a    31:5"), "{last}");
     assert!(!last.contains("╰──────╯"), "labels in the way give way: {last}");
 }
+
+#[test]
+fn the_star_line_and_the_last_row() {
+    let mut e = common::ed("first\n\tsecond");
+    e.keys(&parse("j"));
+    let shown = rows(&screen(e, 50, 8));
+    assert_eq!(
+        shown[6], "  ·······················✶······················",
+        "the star line runs the full width, with the file's two dots in the middle and the cursor's line as the star"
+    );
+    assert_eq!(
+        shown[7],
+        format!("{}╰ untitled ╯{}2:1", " ".repeat(24), " ".repeat(9)),
+        "the file's bracket, widened to name it, and the place"
+    );
+    let mut e = common::ed("a b a b a");
+    e.keys(&parse("/a"));
+    let last = rows(&screen(e, 70, 8)).pop().unwrap();
+    assert!(last.contains("/ a") && last.contains("2 of 3"), "{last}");
+    let mut e = common::ed("abc");
+    e.ex("nope");
+    assert!(screen(e, 90, 8).contains("✕ E492: Not an editor command: nope"));
+}
