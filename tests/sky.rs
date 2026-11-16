@@ -201,3 +201,22 @@ fn a_short_file_sits_in_the_middle_of_the_sky() {
         "the file is brighter"
     );
 }
+
+#[test]
+fn stars_drift_only_past_the_end() {
+    let text: String = (1..=4).map(|_| format!("{}\n", "x".repeat(70))).collect();
+    let shown = rows(&screen(common::ed(&text), 80, 24));
+    for row in &shown[2..6] {
+        assert!(!row.contains('·') && !row.contains('⋆'), "never over the text: {row}");
+    }
+    let sky: usize = shown[7..21]
+        .iter()
+        .map(|r| r.chars().filter(|c| "⋆✧✦".contains(*c)).count())
+        .sum();
+    assert!((1..40).contains(&sky), "a few, not a field: {sky}");
+    assert_eq!(
+        rows(&screen(common::ed(&text), 80, 24)),
+        shown,
+        "the same moment draws the same sky"
+    );
+}
