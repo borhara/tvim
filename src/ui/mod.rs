@@ -5,7 +5,7 @@ mod sky;
 use std::io::Write;
 use std::path::Path;
 
-use tinsel::app::{self, App, Event, Flow, Frame, Rect, Sparkles, Toasts};
+use tinsel::app::{self, App, CursorShape, Event, Flow, Frame, Rect, Sparkles, Toasts};
 use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
 
 use crate::buffer::Buffer;
@@ -351,6 +351,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         || matches!(e.mode(), Mode::Command | Mode::Search)
         || e.explorer_focused();
     let cursor = if typing {
+        typing_at.map(|(x, y)| (x, y, CursorShape::Bar))
     } else if e.is_blank_slate() || d.body.width == 0 || e.preview_focused() {
         None
     } else {
