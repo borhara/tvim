@@ -599,6 +599,86 @@ fn brackets(e: &Editor, map: Rect) -> Vec<Bracket> {
     out
 }
 
+fn star_chart(e: &Editor, frame: &mut Frame, row: Rect, map: Rect, c: &Colors, right: &str, keep_right: bool) {
+    let lit = accent(e);
+    let end = (row.x + row.width).saturating_sub(2);
+    let mut all = brackets(e, map);
+    // a lone dot is too small to bracket unless the cursor is in it
+    all.retain(|b| b.width > 1 || b.lit);
+    // the item the cursor is in is always wide enough to name
+    if let Some(i) = all.iter().position(|b| b.lit) {
+        let want = tinsel::text::width(&all[i].label) + 4;
+        if all[i].width < want {
+            let right = (map.x + map.width).max(map.x + want);
+            let middle = all[i].x + all[i].width / 2;
+            let x = middle.saturating_sub(want / 2).clamp(map.x, right - want);
+            let lit = Bracket {
+                x,
+                width: want,
+                ..all.remove(i)
+            };
+            // anything underneath keeps whichever side of it is bigger
+            let (lo, hi) = (x.saturating_sub(1), x + want + 1);
+            all = all
+                .into_iter()
+                .filter_map(|mut b| {
+                    let end = b.x + b.width;
+                    if end <= lo || b.x >= hi {
+                        return Some(b);
+                    }
+                    let (left, right) = (lo.saturating_sub(b.x), end.saturating_sub(hi));
+                    if left >= right {
+                        b.width = left;
+                    } else {
+                        (b.x, b.width) = (hi, right);
+                    }
+                    (b.width > 1).then_some(b)
+                })
+                .collect();
+            all.push(lit);
+            all.sort_by_key(|b| b.x);
+        }
+    }
+    let w = tinsel::text::width(right);
+    let limit = end.saturating_sub(w + 2);
+    // line:col only shows where no label needs the room; recording, pending keys and counts do
+    let clear = all.iter().all(|b| b.x + b.width <= limit);
+    if w > 0 && (clear || keep_right) {
+        // brackets running into the right end are cut short there rather than dropped
+        all.retain(|b| b.x + 2 <= limit || b.lit && b.x < limit);
+        for b in &mut all {
+            b.width = b.width.min(limit.saturating_sub(b.x)).max(1);
+        }
+        frame.print(Rect::new(end - w, row.y, w, 1), 0, right);
+    }
+    let tone = tone(e.mode());
+    for b in &all {
+        let ink = match (b.lit, tone) {
+            (true, Some(m)) => m,
+            (true, None) => mix(lit, c.app, 0.45),
+            (false, Some(m)) => mix(m, c.app, 0.55),
+            (false, None) => c.faint,
+        };
+        let line = if b.width == 1 {
+            "─".to_string()
+        } else {
+            format!("╰{}╯", "─".repeat(b.width - 2))
+        };
+        frame.print(Rect::new(b.x, row.y, b.width, 1), 0, &paint(ink, &line));
+        let label_width = tinsel::text::width(&b.label) + 2;
+        if label_width + 2 > b.width {
+            continue;
+        }
+        let at = b.x + (b.width - label_width) / 2;
+        let label = if b.lit {
+            bold(&paint(lit, &b.label))
+        } else {
+            paint(quiet(e.mode()), &b.label)
+        };
+        frame.print(Rect::new(at, row.y, label_width, 1), 0, &format!(" {label} "));
+    }
+}
+
 // insert, replace and visual colour the labels row; normal leaves it quiet
 fn tone(mode: Mode) -> Option<Rgb> {
     matches!(mode, Mode::Insert | Mode::Replace | Mode::Visual | Mode::VisualLine).then(|| super::mode_color(mode))
