@@ -350,6 +350,11 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         || e.grep_picker().is_some()
         || matches!(e.mode(), Mode::Command | Mode::Search)
         || e.explorer_focused();
+    let cursor = if typing {
+    } else if e.is_blank_slate() || d.body.width == 0 || e.preview_focused() {
+        None
+    } else {
+    };
     if let Some((x, y, shape)) = cursor {
         frame.set_cursor(x, y, shape);
     }
@@ -374,6 +379,30 @@ fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: boo
     e.scroll();
     e.anim.follow(e, frame.time());
     let (gutter, body) = split_gutter(area, e.gutter());
+    if e.is_blank_slate() && e.mode() == Mode::Normal {
+        draw_welcome(e, frame, area, c);
+    } else {
+        let v = View {
+            id: e.focus,
+            rect: area,
+            focused: true,
+            cursor: e.cursor(),
+            top: e.anim.shown(),
+            left: e.left(),
+            text: e.shown_text(),
+        };
+        draw_text(e, &v, frame, gutter, body, c, focused);
+        if scrollbar && area.width > 0 {
+            draw_scrollbar(
+                e,
+                &v,
+                frame,
+                Rect::new(area.x + area.width - 1, area.y, 1, area.height),
+                c,
+                focused,
+            );
+        }
+    }
     body
 }
 
