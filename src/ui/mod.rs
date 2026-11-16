@@ -1414,6 +1414,40 @@ mod tests {
         assert_eq!(crumbs, ["impl Editor", "ƒ scroll"]);
     }
 
+    fn outline_of(text: &str, syntax: Syntax) -> Vec<(usize, usize, String)> {
+        let lines: Vec<String> = text.lines().map(str::to_string).collect();
+        sections(&lines, Some(syntax))
+            .into_iter()
+            .map(|s| (s.start, s.end, s.label))
+            .collect()
+    }
+
+    #[test]
+    fn the_top_level_items_of_code() {
+        let rust = "mod a;\nmod b;\n\nuse std::io;\nuse x::{\n    y,\n};\n\n#[derive(Debug)]\npub struct S {\n    a: u8,\n}\n\nconst N: u8 = 1;\n\nfn long(\n    a: u8,\n) -> u8 {\n    a\n}\n\nimpl S {\n    fn f() {}\n}\n";
+        assert_eq!(
+            outline_of(rust, Syntax::Rust),
+            [
+                (0, 1, "mod".to_string()),
+                (3, 6, "use".into()),
+                (8, 11, "struct S".into()),
+                (15, 19, "ƒ long".into()),
+                (21, 23, "impl S".into()),
+            ],
+            "mod lines run together, attributes join their item, constants are bare"
+        );
+        let py = "import os\nfrom x import y\n\n@cache\ndef run():\n    pass\n\n\nclass A:\n    x = 1\n";
+        assert_eq!(
+            outline_of(py, Syntax::Python),
+            [
+                (0, 1, "use".to_string()),
+                (3, 5, "ƒ run".into()),
+                (8, 9, "class A".into())
+            ]
+        );
+        assert_eq!(symbol("implement = 1"), None);
+    }
+
     #[test]
     fn icons_by_kind() {
         assert_eq!(icon("main.rs", false).0, "⊛");
