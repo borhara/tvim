@@ -1193,7 +1193,79 @@ fn sections(lines: &[String], syntax: Option<Syntax>) -> Vec<Section> {
                 .collect()
         }
         Some(Syntax::Yaml | Syntax::Json) | None => Vec::new(),
+        Some(_) => code_sections(lines, &trim),
     }
+}
+
+fn code_sections(lines: &[String], trim: &dyn Fn(usize, usize) -> usize) -> Vec<Section> {
+    let top = |r: usize| lines[r].starts_with(|c: char| !c.is_whitespace());
+    let blank = |r: usize| lines[r].trim().is_empty();
+    let import = |r: usize| {
+        let l = lines[r].trim_start_matches("pub ").trim_start_matches("pub(crate) ");
+        ["use ", "import ", "from ", "#include", "require"]
+            .iter()
+            .any(|w| l.starts_with(w))
+    };
+    // `}` ends an item, but `) -> T {` closing a long signature opens its body
+    let closer = |r: usize| {
+        let l = lines[r].trim_end();
+        l.starts_with(['}', ')', ']']) && !l.ends_with(['{', '(', '[']) || l == "end"
+    };
+    let lead = |r: usize| ["#[", "//", "@"].iter().any(|w| lines[r].starts_with(w));
+    let mut out: Vec<Section> = Vec::new();
+    let (mut body_seen, mut use_seen, mut mods) = (false, false, false);
+    let mut r = 0;
+    while r < lines.len() {
+        if !top(r) {
+            r += 1;
+            continue;
+        }
+        let is_use = import(r) && !use_seen && !body_seen;
+        let Some(label) = (if is_use {
+            Some("use".to_string())
+        } else {
+            symbol(lines[r].trim_end()).map(|s| s.0)
+        }) else {
+            r += 1;
+            continue;
+        };
+        let floor = out.last().map_or(0, |s| s.end + 1);
+        let mut start = r;
+        while start > floor && lead(start - 1) {
+            start -= 1;
+        }
+        let mut k = r + 1;
+        while k < lines.len() {
+            let more = lines[k].starts_with([')', ']', '{']) || lines[k].starts_with("where");
+            if blank(k)
+                || !top(k)
+                || is_use && (import(k) || closer(k) || lines[k].starts_with("//"))
+                || more && !closer(k)
+            {
+                k += 1;
+                continue;
+            }
+            if closer(k) {
+                k += 1;
+            }
+            break;
+        }
+        let end = trim(r, k - 1);
+        let one_mod = label.starts_with("mod ") && end == r && lines[r].trim_end().ends_with(';');
+        match out.last_mut() {
+            // a run of `mod x;` lines is one item
+            Some(prev) if one_mod && mods => {
+                prev.end = end;
+                prev.label = "mod".into();
+            }
+            _ => out.push(Section { start, end, label }),
+        }
+        mods = one_mod;
+        use_seen |= is_use;
+        body_seen |= !is_use && !one_mod;
+        r = k;
+    }
+    out
 }
 
 fn symbol(line: &str) -> Option<(String, Rgb)> {
