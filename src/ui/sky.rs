@@ -71,6 +71,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
     if stars {
         let y = area.y + area.height - 2;
         let row = Rect::new(area.x + 2, y, area.width.saturating_sub(4), 1);
+        map = star_line(e, frame, row, lit, c);
     }
     let typing_at = if status {
         let fits = panes.height >= 6 && panes.width >= 30;
@@ -207,12 +208,47 @@ fn draw_top(e: &Editor, frame: &mut Frame, row: Rect, start: usize, lit: Rgb, c:
             format!("{} {}", paint(palette::LINE, "⋆"), paint(palette::MUTED, &tab.name))
         });
         if tab.modified {
+            let dot = if tab.current {
+                palette::AMBER
+            } else {
+                mix(palette::AMBER, palette::MUTED, 0.5)
+            };
+            line.push_str(&paint(dot, " ●"));
         }
     }
     if last + 1 < names.len() {
         line.push_str(&paint(palette::MUTED, " ›"));
     }
     frame.print(Rect::new(start, row.y, room, 1), 0, &line);
+}
+
+// the one mapping from a line to its dot on the map, so a change on the cursor's line is always
+// under the star; the first and last lines are the end dots
+fn dot(line: usize, total: usize, n: usize) -> usize {
+    ((line * (n - 1) + (total - 1) / 2) / (total - 1).max(1)).min(n - 1)
+}
+
+// the whole row is sky; the file's map is the brighter stretch in its middle; returns the map's rect
+fn star_line(e: &Editor, frame: &mut Frame, row: Rect, lit: Rgb, c: &Colors) -> Option<Rect> {
+    if row.width == 0 {
+        return None;
+    }
+    let total = e.buffer().len().max(1);
+    let n = if row.width < 8 { 0 } else { total.min(row.width) };
+    let map = Rect::new(row.x + (row.width - n) / 2, row.y, n, 1);
+    for x in row.x..row.x + row.width {
+        if x >= map.x && x < map.x + map.width {
+            continue;
+        }
+        // dots with no lines behind them stay still
+        frame.print(
+            Rect::new(x, row.y, 1, 1),
+            0,
+            &paint(mix(palette::LINE, c.app, 0.82), "·"),
+        );
+    }
+    (n > 0).then(|| {
+    })
 }
 
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
