@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Rect, hints};
 use tinsel::{Rgb, bold, mix, paint, palette};
 
-use super::{Colors, Drawn, LILAC, accent, diff_totals, display_path, draw_explorer, input, twinkle, vline, windows};
+use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, input, twinkle, vline, windows};
 use crate::diff::Mark;
 use crate::editor::{Editor, Message, Mode};
 
@@ -325,6 +325,21 @@ fn constellation(e: &Editor, frame: &mut Frame, area: Rect, accent: Rgb, c: &Col
     }
 }
 
+fn tail(path: &str, room: usize) -> String {
+    if room < 2 {
+        return path.to_string();
+    }
+    super::cut_left(path, room)
+}
+
+fn path_parts(path: &str, c: &Colors) -> String {
+    let (dir, name) = match path.rfind('/') {
+        Some(i) => path.split_at(i + 1),
+        None => ("", path),
+    };
+    format!("{}{}", paint(c.faint, dir), paint(palette::SOFT, name))
+}
+
 fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colors) -> Option<(usize, usize)> {
     let x = e.explorer().expect("in files");
     if let Some(m) = e.message() {
@@ -344,9 +359,11 @@ fn explorer_status(e: &Editor, frame: &mut Frame, row: Rect, mid: Rect, c: &Colo
         (".", "hidden"),
         ("q", "hide"),
     ];
+    let full = path_parts(&path, c);
     let path = if tinsel::text::width(&full) <= mid.width {
         full
     } else {
+        path_parts(&tail(&path, mid.width), c)
     };
     let path_w = tinsel::text::width(&path);
     let keys = hints(&keys).to_string();
@@ -376,6 +393,38 @@ fn typing_line(e: &Editor, frame: &mut Frame, mid: Rect) -> (usize, usize) {
     }
     let label = format!("{} ", paint(palette::ROSE, &cmd.prompt.to_string()));
     input(frame, Rect::new(mid.x, mid.y, room, 1), &label, &cmd.text, cmd.cursor, None)
+}
+
+fn path_line(e: &Editor, frame: &mut Frame, mid: Rect, c: &Colors) {
+    let path = e
+        .file()
+        .path
+        .as_ref()
+        .map_or_else(|| "untitled".to_string(), |p| display_path(p));
+    // with several windows the focused one's title carries the scope
+    let mut scope: Vec<String> = if e.window_count() == 1 {
+        crumb_scope(e)
+            .into_iter()
+            .map(|(s, color)| {
+                format!(
+                    "{}{}",
+                    paint(c.faint, " › "),
+                    paint(mix(color, palette::MUTED, 0.35), &s)
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let width = |s: &[String]| s.iter().map(|p| tinsel::text::width(p)).sum::<usize>();
+    // the folder gives way before the scope does, the scope before the file's name
+    let name = tinsel::text::width(path.rsplit('/').next().unwrap_or(&path)) + 1;
+    while !scope.is_empty() && name + width(&scope) > mid.width {
+        scope.remove(0);
+    }
+    let mut line = path_parts(&tail(&path, mid.width - width(&scope)), c);
+    line.push_str(&scope.concat());
+    frame.print(mid, 0, &line);
 }
 
 // insert, replace and visual colour the labels row; normal leaves it quiet
