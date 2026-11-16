@@ -256,3 +256,54 @@ fn on_a_narrow_screen_it_takes_the_whole_width() {
         "{shown}"
     );
 }
+
+#[test]
+fn beside_the_file_on_a_wide_screen() {
+    let (mut e, _) = browse("wide");
+    e.keys(&parse("j<CR>"));
+    e.clear_message();
+    let shown = screen(e, 100, 8);
+    let rows: Vec<&str> = shown.lines().collect();
+    assert!(
+        rows[0].starts_with("  ╭") && rows[0].contains(" wide ") && rows[0].contains("╮  ┊    ✶ a.rs"),
+        "the sidebar's title and the open files share the top row, the star over the line numbers: {shown}"
+    );
+    assert!(
+        rows[0].ends_with("rust · 1 line"),
+        "the file's facts in the corner: {shown}"
+    );
+    assert!(
+        rows[1].starts_with("                         ┊    1 › fn a() {}"),
+        "{shown}"
+    );
+    assert!(
+        rows[3].starts_with("  ✶ a.rs                 ┊"),
+        "the open file starred, and no sizes: {shown}"
+    );
+    assert!(
+        rows[7].contains(" ƒ a ") && rows[7].ends_with("   1:1"),
+        "a one-line file is one dot, still named: {shown}"
+    );
+}
+
+#[test]
+fn the_sidebar_is_ruled_off_from_the_text() {
+    let root = folder("sky");
+    let mut e = Editor::new();
+    e.explore(&root);
+    let shown = screen(e, 80, 9);
+    let rows: Vec<&str> = shown.lines().collect();
+    assert!(
+        rows[0].contains(" sky ") && rows[0].ends_with("╮  ┊ tvim"),
+        "the sidebar's title beside the top row: {shown}"
+    );
+    for row in &rows[0..7] {
+        assert_eq!(row.chars().nth(25), Some('┊'), "a dotted rule down its edge: {shown}");
+    }
+    assert!(rows[2].starts_with("▎ ◇ sub"), "{shown}");
+    assert!(
+        rows[7].starts_with("  ·") && !rows[7].contains('┊'),
+        "the star line runs under it: {shown}"
+    );
+    assert!(rows[8].starts_with("  …") && rows[8].contains("sky"), "{shown}");
+}
