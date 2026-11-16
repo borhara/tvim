@@ -299,3 +299,18 @@ fn the_lit_label_is_in_the_modes_colour() {
     );
     assert_ne!(ink(&normal, "╰"), ink(&insert, "╰"), "the bracket too");
 }
+
+#[test]
+fn typing_on_the_status_row_puts_the_cursor_after_it() {
+    let mut e = common::ed("abc");
+    e.keys(&parse(":ab"));
+    let (shown, cursor) = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = Frame::new(60, 5);
+        draw(&e, &mut frame);
+        (frame.snapshot().plain(), frame.cursor())
+    });
+    let last = rows(&shown).pop().unwrap();
+    assert!(last.starts_with("  : ab"), "{last}");
+    let (x, y, _) = cursor.unwrap();
+    assert_eq!((x, y), (last.chars().position(|c| c == 'b').unwrap() + 1, 4));
+}
