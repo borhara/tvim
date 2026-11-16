@@ -79,6 +79,30 @@ fn the_last_row_follows_the_mode() {
 }
 
 #[test]
+fn messages_on_the_bottom_line() {
+    let mut e = ed("abc");
+    e.ex("nope");
+    let last = rows(&screen(e, 60, 4)).last().unwrap().to_string();
+    assert!(
+        last.starts_with("  ✕ E492: Not an editor command: nope") && last.ends_with(" 1:1"),
+        "{last}"
+    );
+    let mut e = ed("abc");
+    e.keys(&parse("u"));
+    let last = rows(&screen(e, 50, 4)).pop().unwrap().to_string();
+    assert!(last.starts_with("  › Already at oldest change"), "{last}");
+    let mut e = ed("abc");
+    e.keys(&parse("\"a2d"));
+    assert!(screen(e, 30, 4).lines().last().unwrap().ends_with("\"a2d    1:1"));
+    let mut e = ed("abc\ndef");
+    e.keys(&parse("Vj"));
+    assert!(screen(e, 40, 4).ends_with("2 lines    2:1"));
+    let mut e = ed("abc");
+    e.keys(&parse("vl"));
+    assert!(screen(e, 40, 4).ends_with("2 characters    1:2"));
+}
+
+#[test]
 fn searching_shows_how_many_matches() {
     let mut e = ed("a b a b a");
     e.keys(&parse("/a"));
