@@ -1121,6 +1121,7 @@ fn outline(e: &Editor) -> std::cell::Ref<'_, Vec<Section>> {
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .and_then(Syntax::detect);
+    let key = (e.buffer_id, e.version(), syntax);
     if e.outline.borrow().as_ref().is_none_or(|(k, _)| *k != key) {
         let found = sections(e.buffer().lines(), syntax);
         *e.outline.borrow_mut() = Some((key, found));
