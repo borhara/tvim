@@ -1158,6 +1158,16 @@ mod tests {
     }
 
     #[test]
+    fn symbols() {
+        assert_eq!(symbol("pub fn scroll(&self) {").unwrap().0, "ƒ scroll");
+        assert_eq!(symbol("impl Editor {").unwrap().0, "impl Editor");
+        assert_eq!(symbol("def run(self):").unwrap().0, "ƒ run");
+        assert_eq!(symbol("func (s *Server) Start() {").unwrap().0, "ƒ Start");
+        assert_eq!(symbol("pub struct Pos {").unwrap().0, "struct Pos");
+        assert_eq!(symbol("let x = 1;"), None);
+    }
+
+    #[test]
     fn icons_by_kind() {
         assert_eq!(icon("main.rs", false).0, "⊛");
         assert_eq!(icon("Cargo.toml", false).0, "≡");
