@@ -347,3 +347,44 @@ fn the_open_files_are_a_constellation() {
         "the name when nothing's open"
     );
 }
+
+#[test]
+fn roomy_leaves_a_blank_row_around_the_text() {
+    let text: String = (1..=40).map(|n| format!("line {n}")).collect::<Vec<_>>().join("\n");
+    let paths = project("roomy");
+    let draw_at = |e: &Editor| {
+        tinsel::with_color_mode(tinsel::ColorMode::None, || {
+            let mut frame = Frame::new(60, 14);
+            draw(e, &mut frame);
+            (rows(&frame.snapshot().plain()), frame.cursor())
+        })
+    };
+    let mut e = common::ed(&text);
+    e.keys(&parse("G"));
+    let (shown, cursor) = draw_at(&e);
+    assert!(
+        shown[0].starts_with("    ✶ untitled") && !shown[1].contains("line"),
+        "under the top line: {shown:?}"
+    );
+    assert!(shown[2].contains("line 32"), "{shown:?}");
+    assert!(shown[10].contains("line 40") && shown[11].is_empty(), "{shown:?}");
+    assert!(shown[12].contains('✶') && shown[13].contains(" untitled "), "{shown:?}");
+    assert_eq!(e.text_rows(), 9, "scrolling knows the real height");
+    assert_eq!(cursor.map(|c| c.1), Some(10));
+
+    e.ex("set noroomy");
+    let (shown, cursor) = draw_at(&e);
+    assert!(shown[1].contains("line 32"), "keeps its scroll, as vim does: {shown:?}");
+    assert_eq!(e.text_rows(), 11);
+    assert_eq!(cursor.map(|c| c.1), Some(9));
+
+    let mut e = Editor::new();
+    e.explore(paths[0].parent().unwrap());
+    let (shown, _) = draw_at(&e);
+    assert!(
+        shown[0].contains(" roomy ") && shown[0].ends_with("╮  ┊ tvim"),
+        "the sidebar's title level with the top row: {shown:?}"
+    );
+    assert_eq!(shown[1].trim_end(), format!("{}┊", " ".repeat(25)), "{shown:?}");
+    assert!(shown[2].contains("◇ a"), "the tree level with the text: {shown:?}");
+}
