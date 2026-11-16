@@ -1105,6 +1105,96 @@ fn crumb_scope(e: &Editor) -> Vec<(String, Rgb)> {
     found
 }
 
+// a top-level item of the file, named on the row under the star line
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Section {
+    pub start: usize,
+    pub end: usize,
+    pub label: String,
+}
+
+fn outline(e: &Editor) -> std::cell::Ref<'_, Vec<Section>> {
+    let syntax = e
+        .file()
+        .path
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .and_then(Syntax::detect);
+    if e.outline.borrow().as_ref().is_none_or(|(k, _)| *k != key) {
+        let found = sections(e.buffer().lines(), syntax);
+        *e.outline.borrow_mut() = Some((key, found));
+    }
+    std::cell::Ref::map(e.outline.borrow(), |o| &o.as_ref().expect("just filled").1)
+}
+
+fn sections(lines: &[String], syntax: Option<Syntax>) -> Vec<Section> {
+    let blank = |r: usize| lines[r].trim().is_empty();
+    // an item's stretch stops at its last non-blank line
+    let trim = |start: usize, mut end: usize| {
+        while end > start && blank(end) {
+            end -= 1;
+        }
+        end
+    };
+    match syntax {
+        Some(Syntax::Markdown) => {
+            let mut heads = Vec::new();
+            let mut fenced = false;
+            for (r, line) in lines.iter().enumerate() {
+                if line.trim_start().starts_with("```") || line.trim_start().starts_with("~~~") {
+                    fenced = !fenced;
+                }
+                let hashes = line.chars().take_while(|c| *c == '#').count();
+                if !fenced && (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') {
+                    heads.push((r, hashes, line[hashes..].trim().to_string()));
+                }
+            }
+            let mut top = heads.iter().map(|h| h.1).min().unwrap_or(0);
+            // a lone title says nothing the file name doesn't, so then it's the level below
+            if heads.iter().filter(|h| h.1 == top).count() == 1 {
+                top = heads.iter().map(|h| h.1).filter(|l| *l > top).min().unwrap_or(top);
+            }
+            heads
+                .iter()
+                .filter(|h| h.1 == top)
+                .map(|(r, _, label)| {
+                    let next = heads
+                        .iter()
+                        .find(|h| h.0 > *r && h.1 <= top)
+                        .map_or(lines.len(), |h| h.0);
+                    Section {
+                        start: *r,
+                        end: trim(*r, next - 1),
+                        label: label.clone(),
+                    }
+                })
+                .collect()
+        }
+        Some(Syntax::Toml) => {
+            let heads: Vec<(usize, String)> = lines
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.starts_with('['))
+                .filter_map(|(r, l)| l.rfind(']').map(|end| (r, l[..=end].to_string())))
+                .collect();
+            heads
+                .iter()
+                .enumerate()
+                .map(|(i, (r, label))| {
+                    let next = heads.get(i + 1).map_or(lines.len(), |h| h.0);
+                    Section {
+                        start: *r,
+                        end: trim(*r, next - 1),
+                        label: label.clone(),
+                    }
+                })
+                .collect()
+        }
+        Some(Syntax::Yaml | Syntax::Json) | None => Vec::new(),
+    }
+}
+
 fn symbol(line: &str) -> Option<(String, Rgb)> {
     let mut rest = line;
     for prefix in [
