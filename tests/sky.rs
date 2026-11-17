@@ -248,6 +248,19 @@ fn there_is_one_look() {
 }
 
 #[test]
+fn hints_for_a_pending_key_sit_in_a_strip() {
+    let mut e = common::ed("abc");
+    e.keys(&parse("d"));
+    let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = Frame::new(90, 16);
+        draw(&e, &mut frame);
+        frame.snapshot().plain()
+    });
+    assert!(shown.contains("── delete … ───"), "{shown}");
+    assert!(shown.contains("dd     the whole line"), "{shown}");
+}
+
+#[test]
 fn the_cursor_takes_the_mode_colour_and_the_app_its_own_background() {
     tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
         let mut e = common::ed("abc");
