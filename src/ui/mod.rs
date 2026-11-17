@@ -77,6 +77,9 @@ impl App for Tvim {
         match event {
             Event::Key(k) => self.editor.key(*k),
             Event::Paste(text) => self.editor.paste(text),
+            Event::Focus(on) => {
+                return Flow::Continue;
+            }
             Event::Wake | Event::Tick => {
                 self.editor.tick();
                 return Flow::Continue;
