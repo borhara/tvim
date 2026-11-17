@@ -51,6 +51,7 @@ impl Tvim {
             .message()
             .filter(|m| !m.error && m.text.ends_with(" written"));
         if let Some(m) = written {
+            let text = saved(&m.text);
             self.toasts.push(Tone::Success, text);
             self.editor.clear_message();
         }
@@ -125,6 +126,25 @@ impl App for Tvim {
     }
 }
 
+fn saved(message: &str) -> String {
+    let (path, rest) = match (message.find('"'), message.rfind('"')) {
+        (Some(a), Some(b)) if b > a => (&message[a + 1..b], &message[b + 1..]),
+        _ => ("", message),
+    };
+    let name = Path::new(path).file_name().map_or(path.into(), |n| n.to_string_lossy());
+    let mut parts = vec![format!("saved {name}")];
+    let rest = rest.trim().trim_end_matches("written").trim();
+    for word in rest.split([' ', ',']).filter(|w| !w.is_empty()) {
+        parts.push(match word {
+            "[New]" => "new".to_string(),
+            w if w.ends_with('L') => plural(&w[..w.len() - 1], "line"),
+            w if w.ends_with('B') => plural(&w[..w.len() - 1], "byte"),
+            w => w.to_string(),
+        });
+    }
+    parts.join(" · ")
+}
+
 fn file_name(path: Option<&Path>, or: &str) -> String {
     path.and_then(Path::file_name)
         .map_or_else(|| or.to_string(), |n| n.to_string_lossy().into_owned())
@@ -146,6 +166,14 @@ fn cut_left(s: &str, room: usize) -> String {
         .last()
         .map_or(s.len(), |(i, _)| i);
     format!("…{}", &s[start..])
+}
+
+fn plural(n: &str, what: &str) -> String {
+    if n == "1" {
+        format!("1 {what}")
+    } else {
+        format!("{n} {what}s")
+    }
 }
 
 fn run_effect(editor: &mut Editor, effect: Effect) {
