@@ -27,6 +27,7 @@ pub struct Tvim {
     pub editor: Editor,
     toasts: Toasts,
     pending_since: Option<f32>,
+    settled: std::cell::Cell<bool>,
 }
 
 impl Tvim {
@@ -35,6 +36,7 @@ impl Tvim {
             editor,
             toasts: Toasts::new().life(3.0),
             pending_since: None,
+            settled: std::cell::Cell::new(false),
         }
     }
 
@@ -57,6 +59,11 @@ impl Tvim {
 
 impl App for Tvim {
     fn view(&self, frame: &mut Frame) {
+        // iTerm can keep its old margin colour through the opening glide, so send it all again
+        if !self.settled.get() && frame.time() > 0.3 && !self.editor.anim.moving(frame.time()) {
+            self.settled.set(true);
+            app::redraw();
+        }
         let hints = self.pending_since.is_some_and(|t| frame.time() - t >= HINT_DELAY);
         draw_with(&self.editor, frame, hints);
         let area = frame.area();

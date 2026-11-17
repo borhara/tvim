@@ -112,7 +112,10 @@ fn a_search_lights_up_the_line_it_lands_on() {
     frame_at(&e, 1.0, ColorMode::TrueColor);
     e.keys(&parse("/line 150<CR>"));
     let html = |t| frame_at(&e, t, ColorMode::TrueColor).html();
+    let (glowing, settled) = (html(1.3), html(3.0));
+    assert_ne!(glowing, settled);
     assert_ne!(html(1.45), glowing, "it fades");
+    assert_eq!(html(4.0), settled);
 
     let mut e = still();
     frame_at(&e, 1.0, ColorMode::TrueColor);
