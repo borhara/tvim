@@ -932,6 +932,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         frame.print_from(Rect::new(body.x, y, body.width, 1), 0, &shown, left);
 
         if colored {
+            tab_arrows(frame, Rect::new(body.x, y, body.width, 1), line, left, ts, c.guide);
         }
 
         if guides {
@@ -985,6 +986,18 @@ fn whole_words<'a>(line: &'a str, w: &'a str) -> impl Iterator<Item = (usize, us
         .into_iter()
         .map(|at| (at, at + char_count(w)))
         .filter(move |&(at, end)| whole(at.checked_sub(1)) && whole(Some(end)))
+}
+
+fn tab_arrows(frame: &mut Frame, row: Rect, line: &str, left: usize, ts: usize, ink: Rgb) {
+    let lead = crate::text::first_non_blank(line);
+    for (i, ch) in line.chars().enumerate().skip(lead) {
+        if ch == '\t' {
+            let at = vcol(line, i, ts);
+            if at >= left && at - left < row.width {
+                frame.print(Rect::new(row.x + at - left, row.y, 1, 1), 0, &paint(ink, "→"));
+            }
+        }
+    }
 }
 
 fn draw_lens(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, text: &str, c: &Colors) {
