@@ -225,6 +225,16 @@ fn the_preview_window_is_titled() {
 }
 
 #[test]
+fn zen_from_the_text_shows_only_the_text() {
+    let mut e = open("pv-zen.md", "# Hi\n\nbody text\n");
+    e.ex("preview");
+    e.ex("zen");
+    let shown = screen(&e, 120, 20);
+    assert_eq!(shown.matches("body text").count(), 1, "{shown}");
+    assert!(shown.contains("# Hi"), "{shown}");
+}
+
+#[test]
 fn space_shows_the_preview_key() {
     let mut e = open("pv-hint.md", "# Hi\n");
     e.keys(&parse("<Space>"));
