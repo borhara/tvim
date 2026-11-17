@@ -397,7 +397,7 @@ const INTRO: [(&str, &str, bool); 10] = [
     ("█▀▄▀█", "█ ▀ █", true),
     ("✶", " ", true),
 ];
-const INTRO_HOLD: f32 = 0.35;
+const INTRO_HOLD: f32 = 1.0;
 const INTRO_CLOSE: f32 = 1.0;
 const INTRO_END: f32 = INTRO_HOLD + INTRO_CLOSE;
 
