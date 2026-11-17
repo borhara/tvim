@@ -90,7 +90,12 @@ fn the_last_row_follows_the_mode() {
         assert!(row.contains('╰') && !row.contains("normal"), "{keys}: {row}");
     }
     assert!(last("/").starts_with("  / "), "{}", last("/"));
-    assert!(last("<Tab>").ends_with("1 of 8"), "{}", last("<Tab>"));
+    // Tab opens the explorer on the folder the tests run in, showing what isn't hidden
+    let shown = std::fs::read_dir(".")
+        .unwrap()
+        .filter(|entry| !entry.as_ref().unwrap().file_name().to_string_lossy().starts_with('.'))
+        .count();
+    assert!(last("<Tab>").ends_with(&format!("1 of {shown}")), "{}", last("<Tab>"));
     let mut e = ed("abc");
     e.keys(&parse("x"));
     assert!(rows(&screen(e, 50, 8))[0].contains("untitled ●"), "modified");
