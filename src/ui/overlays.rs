@@ -591,3 +591,46 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         }
     })
 }
+
+pub(super) fn hint_strip(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
+    let Some((title, items)) = hints_for(e) else { return };
+    if area.width < 20 {
+        return;
+    }
+    let key_width = items.iter().map(|(k, _)| tinsel::text::width(k)).max().unwrap_or(0);
+    let desc_width = items
+        .iter()
+        .map(|(_, d)| tinsel::text::width(d))
+        .max()
+        .unwrap_or(0)
+        .min(28);
+    let col_width = key_width + 2 + desc_width + 3;
+    let cols = ((area.width - 2) / col_width).max(1);
+    let rows = items.len().div_ceil(cols);
+    let height = rows + 1;
+    if area.height < height + 2 {
+        return;
+    }
+    let strip = Rect::new(area.x, area.y + area.height - height, area.width, height);
+    frame.clear(strip);
+    frame.tint(strip, c.bar);
+    let accent = super::mode_color(e.mode());
+    let rule = format!(
+        "{}{}{}",
+        paint(palette::LINE, "──"),
+        bold(&paint(accent, &format!(" {title} "))),
+        paint(palette::LINE, &"─".repeat(area.width))
+    );
+    frame.print(strip, 0, &rule);
+    for (i, (k, d)) in items.iter().enumerate() {
+        let (col, row) = (i / rows, i % rows);
+        let x = strip.x + 2 + col * col_width;
+        let d: String = d.chars().take(desc_width).collect();
+        let text = format!(
+            "{}  {}",
+            bold(&paint(accent, &format!("{k:<key_width$}"))),
+            paint(palette::SOFT, &d)
+        );
+        frame.print(Rect::new(x, strip.y + 1 + row, col_width, 1), 0, &text);
+    }
+}
