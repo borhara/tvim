@@ -1,11 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-
-use tinsel::app::{Key, Waker};
-
-use crate::sync::lock;
+use tinsel::app::{Job, Key};
 
 const MAX_LINES: usize = 3000;
 const LOG_LENGTH: usize = 30;
@@ -98,49 +94,15 @@ struct Done {
 
 type Peek = (String, Vec<String>);
 
-struct Slot<T> {
-    shared: Arc<Mutex<(u64, Option<T>)>>,
-    ticket: u64,
-    waiting: bool,
-}
-
-impl<T> Default for Slot<T> {
-    fn default() -> Self {
-        Slot {
-            shared: Arc::new(Mutex::new((0, None))),
-            ticket: 0,
-            waiting: false,
-        }
+// the result of a job once it's ready, letting go of the job then (or once it's failed)
+fn take<T>(slot: &mut Option<Job<T>>) -> Option<T> {
+    let job = slot.as_mut()?;
+    let finished = job.is_finished();
+    let out = job.poll();
+    if out.is_some() || finished {
+        *slot = None;
     }
-}
-
-impl<T: Send + 'static> Slot<T> {
-    fn run(&mut self, work: impl FnOnce() -> T + Send + 'static) {
-        self.ticket += 1;
-        self.waiting = true;
-        let ticket = self.ticket;
-        let shared = self.shared.clone();
-        let waker = Waker::new();
-        std::thread::spawn(move || {
-            let out = work();
-            let mut s = lock(&shared);
-            if ticket >= s.0 {
-                *s = (ticket, Some(out));
-            }
-            drop(s);
-            waker.wake();
-        });
-    }
-
-    fn take(&mut self) -> Option<T> {
-        let mut s = lock(&self.shared);
-        if s.0 != self.ticket {
-            return None;
-        }
-        let out = s.1.take()?;
-        self.waiting = false;
-        Some(out)
-    }
+    out
 }
 
 pub struct GitMenu {
@@ -158,8 +120,8 @@ pub struct GitMenu {
     output: Option<Output>,
     note: Option<Note>,
     busy: Option<String>,
-    job: Slot<Done>,
-    peek: Slot<Peek>,
+    job: Option<Job<Done>>,
+    peek: Option<Job<Peek>>,
     peeking: Option<String>,
     pub(crate) history: Vec<String>,
     recall: Option<usize>,
@@ -186,8 +148,8 @@ impl GitMenu {
             output: None,
             note: None,
             busy: None,
-            job: Slot::default(),
-            peek: Slot::default(),
+            job: None,
+            peek: None,
             peeking: None,
             history,
             recall: None,
@@ -197,10 +159,10 @@ impl GitMenu {
         };
         let start = m.start.clone();
         m.busy = Some("reading".into());
-        m.job.run(move || Done {
+        m.job = Some(Job::spawn(move || Done {
             status: Some(read_status(&start)),
             ..Done::default()
-        });
+        }));
         m
     }
 
@@ -266,7 +228,7 @@ impl GitMenu {
     }
 
     pub fn working(&self) -> bool {
-        self.job.waiting || self.peek.waiting
+        self.job.is_some() || self.peek.is_some()
     }
 
     pub fn opened(&self) -> Option<f64> {
@@ -305,7 +267,7 @@ impl GitMenu {
 
     pub fn tick(&mut self) -> bool {
         let mut changed = false;
-        if let Some(done) = self.job.take() {
+        if let Some(done) = take(&mut self.job) {
             self.busy = None;
             changed = done.changed;
             if changed {
@@ -342,7 +304,7 @@ impl GitMenu {
                 self.command(&cmd);
             }
         }
-        if let Some((key, lines)) = self.peek.take() {
+        if let Some((key, lines)) = take(&mut self.peek) {
             self.peeking = None;
             self.peeks.insert(key, lines);
         }
@@ -367,11 +329,11 @@ impl GitMenu {
             Tab::Branches => Peeking::Branch(self.branches[self.selected].id.clone()),
         };
         self.peeking = Some(key.clone());
-        self.peek.run(move || (key, peek(&root, what)));
+        self.peek = Some(Job::spawn(move || (key, peek(&root, what))));
     }
 
     fn start(&mut self, label: &str, work: impl FnOnce(&Path) -> Done + Send + 'static) -> bool {
-        if self.job.waiting {
+        if self.job.is_some() {
             self.note = Some(error("still busy, one moment"));
             return false;
         }
@@ -381,7 +343,7 @@ impl GitMenu {
         let tab = self.tab;
         self.busy = Some(label.to_string());
         self.note = None;
-        self.job.run(move || {
+        self.job = Some(Job::spawn(move || {
             let mut done = work(&root);
             if done.status.is_none() {
                 done.status = Some(read_status(&root));
@@ -392,7 +354,7 @@ impl GitMenu {
                 _ => {}
             }
             done
-        });
+        }));
         true
     }
 
