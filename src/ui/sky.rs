@@ -323,7 +323,7 @@ fn constellation(e: &Editor, frame: &mut Frame, area: Rect, accent: Rgb, c: &Col
         let tw = twinkle(i, n, t);
         let star = |rest: Rgb, ramp: [Rgb; 3]| {
             if tw >= 0.08 {
-                (["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)], tinsel::sample(&ramp, tw))
+                (["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)], tinsel::style::sample(&ramp, tw))
             } else {
                 ("·", mix(rest, bar, 0.3))
             }
