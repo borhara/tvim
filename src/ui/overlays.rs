@@ -221,7 +221,7 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         let name_start = path.rfind('/').map_or(0, |b| path[..b].chars().count() + 1);
         let file = &path[path.rfind('/').map_or(0, |b| b + 1)..];
         let (glyph, color) = icon(file, false);
-        let shown = with_hits(path, |j| hits.contains(&j), |j, s| {
+        let shown = with_hits(path, hits, |j, s| {
             paint(if j < name_start { palette::MUTED } else { palette::TEXT }, s)
         });
         frame.print(
@@ -250,7 +250,8 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
     let name_start = dir.chars().count();
     let (glyph, color) = icon(file, false);
     let at = f.line(i).map_or(String::new(), |r| format!(":{}", r + 1));
-    let name = with_hits(file, |j| hits.contains(&(name_start + j)), |_, s| {
+    let in_name: Vec<usize> = hits.iter().filter_map(|h| h.checked_sub(name_start)).collect();
+    let name = with_hits(file, &in_name, |_, s| {
         if selected {
             bold(&paint(palette::TEXT, s))
         } else {
@@ -333,11 +334,8 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         let line = line.as_str();
         let lead = line.len() - line.trim_start().len();
         let col = hit.col.saturating_sub(line[..lead].chars().count());
-        let shown = with_hits(
-            line.trim_start(),
-            |j| j >= col && j < col + query_len,
-            |_, s| paint(palette::TEXT, s),
-        );
+        let found: Vec<usize> = (col..col + query_len).collect();
+        let shown = with_hits(line.trim_start(), &found, |_, s| paint(palette::TEXT, s));
         frame.print(
             Rect::new(list.x, y, list.width, 1),
             0,

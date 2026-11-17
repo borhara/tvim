@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use tinsel::app::Key;
+use tinsel::text::fuzzy;
 
 const SKIP: &[&str] = &["target", "node_modules", "__pycache__", "venv", "dist", "build"];
 
@@ -182,12 +183,11 @@ impl Finder {
     }
 
     fn refresh(&mut self) {
-        let query = needle(&self.query);
         let mut scored: Vec<(i64, usize, Vec<usize>)> = self
             .files
             .iter()
             .enumerate()
-            .filter_map(|(i, f)| score(f, &query).map(|(s, hits)| (s, i, hits)))
+            .filter_map(|(i, f)| fuzzy(f, &self.query).map(|m| (m.score, i, m.hits)))
             .collect();
         if self.lines.is_none() || !self.query.trim().is_empty() {
             scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
@@ -256,88 +256,8 @@ impl Finder {
 
 // scrolls as little as it can to keep selected in view
 pub(crate) fn follow(top: &Cell<usize>, selected: usize, rows: usize) -> usize {
-    let rows = rows.max(1);
-    let mut at = top.get();
-    if selected < at {
-        at = selected;
-    }
-    if selected >= at + rows {
-        at = selected + 1 - rows;
-    }
-    top.set(at);
-    at
-}
-
-fn needle(query: &str) -> Vec<char> {
-    query
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-fn score(path: &str, query: &[char]) -> Option<(i64, Vec<usize>)> {
-    let chars: Vec<char> = path.chars().collect();
-    if query.is_empty() {
-        return Some((-(chars.len() as i64), Vec::new()));
-    }
-    let name_start = chars.iter().rposition(|c| *c == '/').map_or(0, |i| i + 1);
-    let hits = subsequence(&chars[name_start..], query)
-        .map(|h| h.into_iter().map(|i| i + name_start).collect::<Vec<_>>())
-        .or_else(|| subsequence(&chars, query))?;
-    let mut score: i64 = 0;
-    for (n, &i) in hits.iter().enumerate() {
-        score += 10;
-        if i >= name_start {
-            score += 12;
-        }
-        if n > 0 && hits[n - 1] + 1 == i {
-            score += 18;
-        }
-        let boundary = i == 0
-            || matches!(chars[i - 1], '/' | '_' | '-' | '.' | ' ')
-            || chars[i].is_uppercase() && chars[i - 1].is_lowercase();
-        if boundary {
-            score += 20;
-        }
-        if i == name_start {
-            score += 25;
-        }
-    }
-    let spread = hits.last().unwrap_or(&0) - hits.first().unwrap_or(&0);
-    score -= spread as i64;
-    score -= chars.len() as i64 / 3;
-    Some((score, hits))
-}
-
-fn subsequence(chars: &[char], query: &[char]) -> Option<Vec<usize>> {
-    let lower: Vec<char> = chars.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
-    // leftmost match, then pull letters right so they cluster
-    let mut hits = Vec::with_capacity(query.len());
-    let mut from = 0;
-    for q in query {
-        let at = (from..lower.len()).find(|&i| lower[i] == *q)?;
-        hits.push(at);
-        from = at + 1;
-    }
-    let mut limit = lower.len();
-    for k in (0..hits.len()).rev() {
-        let latest = (hits[k]..limit)
-            .rev()
-            .find(|&i| lower[i] == query[k])
-            .unwrap_or(hits[k]);
-        hits[k] = latest;
-        limit = latest;
-    }
-    for k in (0..hits.len().saturating_sub(1)).rev() {
-        if hits[k] + 1 != hits[k + 1] && hits[k + 1] > 0 && lower[hits[k + 1] - 1] == query[k] {
-            let lowest = if k == 0 { 0 } else { hits[k - 1] + 1 };
-            if hits[k + 1] > lowest {
-                hits[k] = hits[k + 1] - 1;
-            }
-        }
-    }
-    Some(hits)
+    top.set(tinsel::app::keep_in_view(top.get(), selected, rows));
+    top.get()
 }
 
 struct Ignore {
@@ -394,31 +314,10 @@ mod tests {
     fn best(files: &[&str], query: &str) -> String {
         let mut scored: Vec<(i64, &str)> = files
             .iter()
-            .filter_map(|f| score(f, &needle(query)).map(|(s, _)| (s, *f)))
+            .filter_map(|f| fuzzy(f, query).map(|m| (m.score, *f)))
             .collect();
         scored.sort_by(|a, b| b.0.cmp(&a.0));
         scored.first().map(|x| x.1.to_string()).unwrap_or_default()
-    }
-
-    #[test]
-    fn letters_in_order_match() {
-        let score = |path: &str, query: &str| score(path, &needle(query));
-        assert!(score("src/editor.rs", "edrs").is_some());
-        assert!(score("src/editor.rs", "zz").is_none());
-        assert_eq!(score("src/ui.rs", "UI").unwrap().1, [4, 5], "case is ignored");
-        assert_eq!(
-            score("a b", "a b").unwrap().1,
-            [0, 2],
-            "spaces in the query are ignored"
-        );
-    }
-
-    #[test]
-    fn matches_bunch_together() {
-        assert_eq!(
-            subsequence(&"xaxab".chars().collect::<Vec<_>>(), &['a', 'b']),
-            Some(vec![3, 4])
-        );
     }
 
     #[test]
