@@ -634,3 +634,24 @@ pub(super) fn hint_strip(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) 
         frame.print(Rect::new(x, strip.y + 1 + row, col_width, 1), 0, &text);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hints_skip_the_register_and_count() {
+        let mut e = Editor::with_text("a");
+        e.keys(&crate::keys::parse("\"a3d"));
+        assert_eq!(hints_for(&e).unwrap().0, "delete …");
+        let mut e = Editor::with_text("a");
+        e.keys(&crate::keys::parse("2gu"));
+        assert_eq!(hints_for(&e).unwrap().1[0].0, "guu");
+        let mut e = Editor::with_text("a");
+        e.keys(&crate::keys::parse("ci"));
+        assert_eq!(hints_for(&e).unwrap().0, "change inside …");
+        let mut e = Editor::with_text("a");
+        e.keys(&crate::keys::parse("vi"));
+        assert_eq!(hints_for(&e).unwrap().1.len(), OBJECTS.len());
+    }
+}
