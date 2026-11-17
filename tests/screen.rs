@@ -33,7 +33,7 @@ fn rows(shown: &str) -> Vec<&str> {
 fn cursor(e: &Editor, width: usize, height: usize) -> Option<(usize, usize, CursorShape)> {
     let mut frame = Frame::new(width, height);
     draw(e, &mut frame);
-    frame.cursor()
+    frame.cursor().map(|c| (c.x, c.y, c.shape))
 }
 
 #[test]

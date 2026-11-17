@@ -324,7 +324,7 @@ fn typing_on_the_status_row_puts_the_cursor_after_it() {
     });
     let last = rows(&shown).pop().unwrap();
     assert!(last.starts_with("  : ab"), "{last}");
-    let (x, y, _) = cursor.unwrap();
+    let (x, y) = cursor.map(|c| (c.x, c.y)).unwrap();
     assert_eq!((x, y), (last.chars().position(|c| c == 'b').unwrap() + 1, 4));
 }
 
@@ -383,13 +383,13 @@ fn roomy_leaves_a_blank_row_around_the_text() {
     assert!(shown[10].contains("line 40") && shown[11].is_empty(), "{shown:?}");
     assert!(shown[12].contains('✶') && shown[13].contains(" untitled "), "{shown:?}");
     assert_eq!(e.text_rows(), 9, "scrolling knows the real height");
-    assert_eq!(cursor.map(|c| c.1), Some(10));
+    assert_eq!(cursor.map(|c| c.y), Some(10));
 
     e.ex("set noroomy");
     let (shown, cursor) = draw_at(&e);
     assert!(shown[1].contains("line 32"), "keeps its scroll, as vim does: {shown:?}");
     assert_eq!(e.text_rows(), 11);
-    assert_eq!(cursor.map(|c| c.1), Some(9));
+    assert_eq!(cursor.map(|c| c.y), Some(9));
 
     let mut e = Editor::new();
     e.explore(paths[0].parent().unwrap());

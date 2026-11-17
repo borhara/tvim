@@ -219,7 +219,7 @@ fn the_cursor_is_in_the_focused_window() {
     e.keys(&parse("<C-w>v<C-w>l"));
     let mut frame = Frame::new(60, 12);
     draw(&e, &mut frame);
-    let (x, _, _) = frame.cursor().unwrap();
+    let x = frame.cursor().unwrap().x;
     assert!(x > 30, "the right window has it: {x}");
 }
 
