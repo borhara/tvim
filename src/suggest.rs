@@ -1,3 +1,5 @@
+use crate::editor::Options;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Suggestion {
     pub label: String,
@@ -46,3 +48,36 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("help", "h", "a quick reminder"),
     ("version", "ve", "show the version"),
 ];
+
+const OPTIONS: &[(&str, &str, &str)] = &[
+    ("number", "", "line numbers"),
+    ("relativenumber", "", "number lines from the cursor"),
+    ("cursorline", "", "mark the cursor's line with ›"),
+    ("indentguides", "", "lines down each indent"),
+    ("syntax", "", "colour code"),
+    ("expandtab", "", "tab types spaces"),
+    ("tabstop", "=", "how wide a tab shows"),
+    ("shiftwidth", "=", "how far >> and << move"),
+    ("ignorecase", "", "search ignores case"),
+    ("smartcase", "", "unless it has capitals"),
+    ("hlsearch", "", "highlight matches"),
+    ("incsearch", "", "search as you type"),
+    ("autoindent", "", "new lines keep the indent"),
+    ("autopairs", "", "brackets and quotes close themselves"),
+    ("scrolloff", "=", "lines kept around the cursor"),
+    ("smooth", "", "glide when the view jumps"),
+    ("tabpreview", "", "tab moves into the markdown preview"),
+    ("dim", "", "fade whichever of text and sidebar is not in use"),
+    ("gitlens", "", "who last changed the cursor's line, and when"),
+    ("roomy", "", "a twinkling row under the top line and a blank one above the stars"),
+    ("zeropad", "", "line numbers start with zeros, as in 01"),
+];
+
+fn option_value(name: &str, o: &Options) -> String {
+    match name {
+        "tabstop" => o.tab_stop.to_string(),
+        "shiftwidth" => o.shift_width.to_string(),
+        "scrolloff" => o.scroll_off.to_string(),
+        _ => o.flag(name).map_or_else(String::new, |on| if on { "on" } else { "off" }.to_string()),
+    }
+}
