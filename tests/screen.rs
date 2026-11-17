@@ -248,6 +248,19 @@ fn tiny_screens_dont_break() {
 }
 
 #[test]
+fn saving_shows_a_toast_instead_of_a_message() {
+    use tinsel::app::{App, Event};
+    let path = common::temp("toast.txt");
+    let _ = std::fs::remove_file(&path);
+    let mut app = Tvim::new(ed("hi"));
+    for k in parse(&format!(":w {}<CR>", path.display())) {
+        app.event(&Event::Key(k));
+    }
+    assert!(app.editor.message().is_none(), "{:?}", app.editor.message());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\n");
+}
+
+#[test]
 fn lines_changed_since_saving_are_marked() {
     let path = common::temp("marks.txt");
     std::fs::write(&path, "one\ntwo\nthree\n").unwrap();
