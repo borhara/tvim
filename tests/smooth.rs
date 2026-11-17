@@ -129,3 +129,20 @@ fn a_search_lights_up_the_line_it_lands_on() {
     };
     assert_eq!(html(1.01), html(3.0), "nothing for a small move");
 }
+
+#[test]
+fn far_jumps_light_up_too_but_not_near_ones() {
+    let glows = |keys: &str| {
+        let mut e = still();
+        frame_at(&e, 1.0, ColorMode::TrueColor);
+        e.keys(&parse(keys));
+        // after any glide, while a glow would still be fading
+        frame_at(&e, 1.01, ColorMode::TrueColor);
+        frame_at(&e, 1.25, ColorMode::TrueColor).html() != frame_at(&e, 3.0, ColorMode::TrueColor).html()
+    };
+    assert!(glows("G"));
+    assert!(glows(":150<CR>"));
+    assert!(glows("*"), "a search, even nearby");
+    assert!(!glows("5G"));
+    assert!(!glows("<C-d>"));
+}
