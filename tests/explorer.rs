@@ -252,7 +252,10 @@ fn on_a_narrow_screen_it_takes_the_whole_width() {
         "files hang off dots, the picked one marked, and no rule: {shown}"
     );
     assert!(
-        rows[8].starts_with("  …") && rows[8].ends_with("narrow   3 of 4"),
+        // the temporary folder's path is long on macOS, cut short from the start, and short on Linux
+        (rows[8].starts_with("  …") || rows[8].starts_with("  /"))
+            && rows[8].contains("narrow ")
+            && rows[8].ends_with(" 3 of 4"),
         "{shown}"
     );
 }
@@ -305,5 +308,8 @@ fn the_sidebar_is_ruled_off_from_the_text() {
         rows[7].starts_with("  ·") && !rows[7].contains('┊'),
         "the star line runs under it: {shown}"
     );
-    assert!(rows[8].starts_with("  …") && rows[8].contains("sky"), "{shown}");
+    assert!(
+        (rows[8].starts_with("  …") || rows[8].starts_with("  /")) && rows[8].contains("sky"),
+        "{shown}"
+    );
 }
