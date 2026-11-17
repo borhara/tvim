@@ -165,9 +165,15 @@ fn space_r_lists_recent_files() {
     assert_eq!(f.title(), "recent files");
     assert!(f.is_recent());
     let shown = screen(e, 100, 30);
-    let alpha = shown.lines().find(|l| l.contains("alpha.rs")).unwrap();
+    let alpha = shown
+        .lines()
+        .find(|l| l.contains("alpha.rs"))
+        .unwrap_or_else(|| panic!("{shown}"));
     assert!(alpha.contains("▎ ⊛ alpha.rs") && alpha.contains(":12"), "{alpha}");
-    let beta = shown.lines().find(|l| l.contains("beta.md")).unwrap();
+    let beta = shown
+        .lines()
+        .find(|l| l.contains("beta.md"))
+        .unwrap_or_else(|| panic!("{shown}"));
     assert!(!beta.contains('▎') && beta.contains(":3"), "{beta}");
     assert!(
         shown.find("alpha.rs").unwrap() < shown.find("beta.md").unwrap(),
