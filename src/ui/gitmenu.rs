@@ -23,12 +23,18 @@ fn letter_color(l: char) -> Rgb {
     }
 }
 
+const SPIN_FPS: u32 = 30;
+
 pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Option<(usize, usize)> {
     let area = frame.area();
     if !m.ready() || area.width < 24 || area.height < 8 {
         return None;
     }
     let t = frame.time();
+    // the spinners turn while git works
+    if m.working() {
+        frame.animate_at(SPIN_FPS);
+    }
     let open = e.anim.opening(m.opened(), frame);
     frame.fade_by(area, open);
     let width = area.width.saturating_sub(6).clamp(24, 132);
