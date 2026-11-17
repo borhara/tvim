@@ -47,6 +47,33 @@ fn half_pages_glide_into_place() {
 }
 
 #[test]
+fn the_editor_is_already_there() {
+    let mut e = long();
+    first_line(&e, 1.0);
+    e.keys(&parse("G"));
+    assert!(first_line(&e, 1.02) < 150, "still gliding");
+    e.keys(&parse("dd"));
+    assert!(
+        e.text().ends_with("line 198\nline 199"),
+        "the last line went, not one on screen"
+    );
+}
+
+#[test]
+fn small_scrolls_snap() {
+    let mut e = long();
+    first_line(&e, 1.0);
+    e.keys(&parse("<C-e>"));
+    assert_eq!(first_line(&e, 1.01), 2);
+    e.keys(&parse("<C-e><C-e>"));
+    assert_eq!(first_line(&e, 1.02), 4);
+    e.keys(&parse("40G"));
+    first_line(&e, 1.03);
+    e.keys(&parse("j"));
+    assert_eq!(first_line(&e, 1.5), e.top() + 1);
+}
+
+#[test]
 fn every_kind_of_jump_glides() {
     for keys in ["G", "<C-f>", ":120<CR>", "/line 150<CR>", "zt"] {
         let mut e = long();
