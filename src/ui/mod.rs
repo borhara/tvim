@@ -201,6 +201,20 @@ fn run_effect(editor: &mut Editor, effect: Effect) {
     }
 }
 
+#[cfg(unix)]
+fn suspend(editor: &mut Editor) {
+    let pid = std::process::id().to_string();
+    let stopped = app::suspend(|| std::process::Command::new("kill").args(["-TSTP", &pid]).status());
+    if !matches!(stopped, Ok(Ok(s)) if s.success()) {
+        editor.error("Couldn't suspend");
+    }
+}
+
+#[cfg(not(unix))]
+fn suspend(editor: &mut Editor) {
+    editor.error("Suspending isn't supported here");
+}
+
 // dark colours; tinsel flips them on light terminals
 struct Colors {
     app: Rgb,
