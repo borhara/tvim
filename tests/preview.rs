@@ -243,6 +243,24 @@ fn space_shows_the_preview_key() {
 }
 
 #[test]
+fn it_glides_when_the_cursor_jumps() {
+    let mut e = open("pv-glide.md", &sections(40));
+    e.ex("preview");
+    let side_at = |e: &Editor, t: f32| {
+        tinsel::with_color_mode(tinsel::ColorMode::None, || {
+            let mut frame = Frame::new(100, 24).at(t);
+            draw(e, &mut frame);
+            right(&frame.snapshot().plain())
+        })
+    };
+    side_at(&e, 1.0);
+    e.keys(&parse("G"));
+    let mid = side_at(&e, 1.04);
+    assert!(!mid.contains("Section 40"), "on its way: {mid}");
+    assert!(side_at(&e, 1.5).contains("Section 40"));
+}
+
+#[test]
 fn tab_goes_to_the_preview_and_back() {
     let mut e = open("pv-tab.md", &sections(10));
     e.ex("set tabpreview");
