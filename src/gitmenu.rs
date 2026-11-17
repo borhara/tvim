@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use tinsel::app::{Job, Key};
+use tinsel::app::{Edit, Event, History, Job, Key, TextInput};
 
 const MAX_LINES: usize = 3000;
 const LOG_LENGTH: usize = 30;
@@ -115,7 +115,7 @@ pub struct GitMenu {
     branches: Vec<Entry>,
     peeks: HashMap<String, Vec<String>>,
     peek_scroll: usize,
-    typing: Option<(Typing, String, usize)>,
+    typing: Option<(Typing, TextInput)>,
     confirm: Option<Change>,
     output: Option<Output>,
     note: Option<Note>,
@@ -124,7 +124,6 @@ pub struct GitMenu {
     peek: Option<Job<Peek>>,
     peeking: Option<String>,
     pub(crate) history: Vec<String>,
-    recall: Option<usize>,
     queued: Option<String>,
     // typed before the first status came back, played once it has
     pub(crate) early: Vec<Key>,
@@ -152,7 +151,6 @@ impl GitMenu {
             peek: None,
             peeking: None,
             history,
-            recall: None,
             queued: command.filter(|c| !c.trim().is_empty()),
             early: Vec::new(),
             opened: None,
@@ -207,8 +205,8 @@ impl GitMenu {
         }
     }
 
-    pub fn typing(&self) -> Option<(Typing, &str, usize)> {
-        self.typing.as_ref().map(|(t, s, c)| (*t, s.as_str(), *c))
+    pub fn typing(&self) -> Option<(Typing, String, usize)> {
+        self.typing.as_ref().map(|(t, input)| (*t, input.value(), input.cursor()))
     }
 
     pub fn confirming(&self) -> Option<&Change> {
@@ -412,8 +410,7 @@ impl GitMenu {
                 self.start("refreshing", |_| Done::default());
             }
             Key::Char(':' | '!') => {
-                self.typing = Some((Typing::Command, String::new(), 0));
-                self.recall = None;
+                self.start_typing(Typing::Command);
             }
             Key::Char('l') => self.switch_tab(if self.tab == Tab::Log { Tab::Files } else { Tab::Log }),
             Key::Char('b') => self.switch_tab(if self.tab == Tab::Branches {
@@ -445,7 +442,7 @@ impl GitMenu {
             }
             Key::Char('c') if files => {
                 if self.changes().iter().any(|c| c.group == Group::Staged) {
-                    self.typing = Some((Typing::Commit, String::new(), 0));
+                    self.start_typing(Typing::Commit);
                 } else {
                     self.note = Some(error("nothing staged: s stages a file, a stages them all"));
                 }
@@ -632,74 +629,40 @@ impl GitMenu {
     }
 
     fn type_key(&mut self, key: Key) {
-        let Some((kind, text, at)) = self.typing.as_mut() else {
+        let Some((kind, input)) = self.typing.as_mut() else {
             return;
         };
         let kind = *kind;
-        let byte = |s: &str, i: usize| s.char_indices().nth(i).map_or(s.len(), |(b, _)| b);
-        match key {
-            Key::Esc | Key::Ctrl('c') => self.typing = None,
-            Key::Enter => {
-                let line = std::mem::take(text);
+        let key = if key == Key::Ctrl('c') { Key::Esc } else { key };
+        match input.edit(&Event::Key(key)) {
+            Edit::Cancelled => self.typing = None,
+            Edit::Submitted => {
+                let line = input.value();
+                if let Some(h) = input.history() {
+                    self.history = h.entries().to_vec();
+                }
                 self.typing = None;
                 match kind {
                     Typing::Commit if line.trim().is_empty() => {
                         self.note = Some(error("an empty message, so no commit"))
                     }
                     Typing::Commit => self.commit(line.trim().to_string()),
-                    Typing::Command => {
-                        if !line.trim().is_empty() {
-                            self.history.retain(|h| h != &line);
-                            self.history.push(line.clone());
-                            if self.history.len() > 100 {
-                                self.history.remove(0);
-                            }
-                        }
-                        self.command(&line);
-                    }
-                }
-            }
-            Key::Char(c) => {
-                let b = byte(text, *at);
-                text.insert(b, c);
-                *at += 1;
-            }
-            Key::Backspace if *at > 0 => {
-                *at -= 1;
-                let b = byte(text, *at);
-                text.remove(b);
-            }
-            Key::Delete if *at < text.chars().count() => {
-                let b = byte(text, *at);
-                text.remove(b);
-            }
-            Key::Left => *at = at.saturating_sub(1),
-            Key::Right => *at = (*at + 1).min(text.chars().count()),
-            Key::Home | Key::Ctrl('a') => *at = 0,
-            Key::End | Key::Ctrl('e') => *at = text.chars().count(),
-            Key::Ctrl('u') => {
-                let b = byte(text, *at);
-                text.replace_range(..b, "");
-                *at = 0;
-            }
-            Key::Up | Key::Down if kind == Typing::Command && !self.history.is_empty() => {
-                let last = self.history.len() - 1;
-                let next = match (self.recall, key) {
-                    (None, Key::Up) => Some(last),
-                    (None, _) => None,
-                    (Some(i), Key::Up) => Some(i.saturating_sub(1)),
-                    (Some(i), _) if i < last => Some(i + 1),
-                    (Some(_), _) => None,
-                };
-                self.recall = next;
-                let line = next.map_or_else(String::new, |i| self.history[i].clone());
-                if let Some((_, text, at)) = self.typing.as_mut() {
-                    *at = line.chars().count();
-                    *text = line;
+                    Typing::Command => self.command(&line),
                 }
             }
             _ => {}
         }
+    }
+
+    // a line to type into: a git command, with those run before to go back through, or a
+    // commit's message
+    fn start_typing(&mut self, kind: Typing) {
+        let mut input = TextInput::new();
+        if kind == Typing::Command {
+            input = input.with_history(History::from(self.history.clone()).limit(100));
+        }
+        input.focus(true);
+        self.typing = Some((kind, input));
     }
 
     pub fn paste(&mut self, s: &str) {
