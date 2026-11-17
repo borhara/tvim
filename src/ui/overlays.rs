@@ -16,6 +16,7 @@ pub(super) fn float(frame: &mut Frame, rect: Rect, panel: Panel, c: &Colors) -> 
 
 pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
     let cmd = e.cmdline();
+    let (suggestions, picked) = e.cmd_suggestions();
     let error = e.message().filter(|m| m.error).map(|m| m.text.clone());
     let width = area.width.saturating_sub(8).clamp(30.min(area.width), 76);
     let list_rows = suggestions.len().min(8).min(area.height.saturating_sub(10));
