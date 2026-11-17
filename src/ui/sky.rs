@@ -118,18 +118,6 @@ pub(super) fn branch_info(e: &Editor) -> Option<String> {
     Some(parts.join("  "))
 }
 
-fn thousands(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 // drops the clock first, then crlf, length, language
 fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> String {
     let mut facts = Vec::new();
@@ -141,7 +129,7 @@ fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> Str
         let lines = e.buffer().len();
         facts.push(paint(
             palette::MUTED,
-            &format!("{} {}", thousands(lines), if lines == 1 { "line" } else { "lines" }),
+            &format!("{} {}", tinsel::format::grouped(lines as u64), if lines == 1 { "line" } else { "lines" }),
         ));
         // only the unusual line ending is worth a mention
         if e.file().crlf {
@@ -156,9 +144,8 @@ fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> Str
     } else {
         None
     };
-    let (h, m) = crate::time::clock();
     let faint = mix(palette::MUTED, palette::LINE, 0.5);
-    let clock = paint(mix(faint, c.app, 0.3), &format!("{h:02}:{m:02}"));
+    let clock = paint(mix(faint, c.app, 0.3), &tinsel::format::local_clock());
     let build = |facts: &[String], timed: bool| {
         let mut groups = Vec::new();
         if !facts.is_empty() {
