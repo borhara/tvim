@@ -281,6 +281,15 @@ fn tiny_screens_dont_break() {
 }
 
 #[test]
+fn the_window_title_names_the_file() {
+    use tinsel::app::App;
+    let mut e = ed("a");
+    assert_eq!(Tvim::new(ed("a")).title().as_deref(), Some("[No Name] · tvim"));
+    e.keys(&parse("x"));
+    assert_eq!(Tvim::new(e).title().as_deref(), Some("[No Name] ● · tvim"));
+}
+
+#[test]
 fn saving_shows_a_toast_instead_of_a_message() {
     use tinsel::app::{App, Event};
     let path = common::temp("toast.txt");
