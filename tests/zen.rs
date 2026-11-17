@@ -50,3 +50,25 @@ fn a_narrow_screen_uses_all_of_it() {
     e.ex("zen");
     assert_eq!(rows(&screen(&e, 40, 8))[0], "hello");
 }
+
+#[test]
+fn the_sidebar_hides_and_comes_back_with_its_focus() {
+    let dir = common::temp("zen-side");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("notes.txt"), "hi\n").unwrap();
+    let mut e = common::ed("hello");
+    e.explore(&dir);
+    assert!(e.explorer_focused());
+    e.toggle_zen();
+    assert!(!e.explorer_focused(), "keys go to the text");
+    assert!(!screen(&e, 100, 12).contains("notes.txt"));
+    e.keys(&parse("<space>z"));
+    assert!(e.explorer_focused());
+    assert!(screen(&e, 100, 12).contains("notes.txt"));
+
+    e.keys(&parse("<Tab>"));
+    e.toggle_zen();
+    e.keys(&parse("<Tab>"));
+    assert!(!e.zen(), "going to the sidebar leaves zen");
+    assert!(e.explorer_focused());
+}
