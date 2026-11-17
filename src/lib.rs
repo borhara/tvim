@@ -19,6 +19,7 @@ pub mod object;
 mod preview;
 pub mod regex;
 pub mod session;
+pub mod suggest;
 pub mod syntax;
 mod sync;
 pub mod text;

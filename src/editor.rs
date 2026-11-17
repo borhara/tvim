@@ -206,6 +206,7 @@ pub struct CmdLine {
     browse: Option<usize>,
     origin: Pos,
     origin_top: usize,
+    completing: Option<(Vec<crate::suggest::Suggestion>, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
