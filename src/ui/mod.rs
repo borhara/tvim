@@ -1,6 +1,7 @@
 mod gitmenu;
 mod overlays;
 mod sky;
+mod zen;
 
 use std::io::Write;
 use std::path::Path;
