@@ -422,3 +422,55 @@ fn preview_lines(
         );
     }
 }
+
+const MOTIONS: &[(&str, &str)] = &[
+    ("w b e", "words"),
+    ("0 ^ $", "line start, text, end"),
+    ("j k", "lines down, up"),
+    ("gg G", "the top, the end"),
+    ("f t", "to a character"),
+    ("{ }", "paragraphs"),
+    ("%", "matching bracket"),
+    ("n N", "next search match"),
+];
+
+const OBJECTS: &[(&str, &str)] = &[
+    ("w W", "a word, a WORD"),
+    ("p", "a paragraph"),
+    ("\" ' `", "quoted text"),
+    ("( b", "( parentheses )"),
+    ("[", "[ brackets ]"),
+    ("{ B", "{ braces }"),
+    ("<", "< angle brackets >"),
+];
+
+const G: &[(&str, &str)] = &[
+    ("gg", "to the top"),
+    ("gt gT", "next, previous file"),
+    ("ge", "back to a word's end"),
+    ("g_", "last text on the line"),
+    ("gv", "select again"),
+    ("gu gU g~", "lower, upper, swap"),
+    ("gc", "comment, uncomment"),
+    ("gJ", "join, no spaces"),
+    ("gp gP", "put, go past it"),
+    ("gi", "type where you left off"),
+];
+
+const Z: &[(&str, &str)] = &[
+    ("zz", "line to the middle"),
+    ("zt", "line to the top"),
+    ("zb", "line to the bottom"),
+];
+
+const WINDOW: &[(&str, &str)] = &[
+    ("s v", "split, above or beside"),
+    ("n", "split with an empty file"),
+    ("h j k l", "the window that way"),
+    ("w W", "next, previous window"),
+    ("q", "close this window"),
+    ("o", "only this window"),
+    ("=", "make them all even"),
+    ("+ -", "taller, shorter"),
+    ("< >", "narrower, wider"),
+];
