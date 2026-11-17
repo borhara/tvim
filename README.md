@@ -58,3 +58,31 @@ There is no line wrapping and no block visual mode (`Ctrl-v`) yet.
 
 **Colours.** Syntax colouring covers Rust, Python, JavaScript and TypeScript, Go, C and C++, Java, shell, Lua, TOML, YAML, JSON and Markdown. tvim uses its own colour scheme rather than your terminal's, and switches to a light one on a light background.
 
+## Settings
+
+Put `:set` lines in `~/.config/tvim/config`, one per line:
+
+```
+set tabstop=2 noexpandtab
+set relativenumber
+```
+
+`:set` on its own lists every option with its current value. The ones you're most likely to want:
+
+| Option | Short | Default | |
+| --- | --- | --- | --- |
+| `number` | `nu` | on | line numbers |
+| `relativenumber` | `rnu` | off | count lines from the cursor |
+| `zeropad` | `zp` | off | line numbers start with zeros, as in `01` |
+| `tabstop` | `ts` | 4 | how wide a tab shows |
+| `shiftwidth` | `sw` | 4 | how far `>>` and `<<` move |
+| `expandtab` | `et` | on | `Tab` types spaces |
+| `ignorecase` | `ic` | on | search ignores case |
+| `smartcase` | `scs` | on | unless the search has capitals |
+| `scrolloff` | `so` | 3 | lines kept above and below the cursor |
+| `autopairs` | `ap` | on | brackets and quotes close themselves |
+| `smooth` | `sm` | on | scroll smoothly on big jumps |
+| `gitlens` | `gl` | on | show who last changed the cursor's line |
+| `roomy` | `ro` | on | a little space above and below the text |
+| `dim` | | on | fade the sidebar while you're in the file, and the other way round |
+
