@@ -237,6 +237,16 @@ fn every_window_is_drawn() {
 }
 
 #[test]
+fn zen_shows_only_the_focused_window() {
+    let mut e = ed("alpha");
+    e.keys(&parse("<C-w>v"));
+    e.ex("zen");
+    let shown = screen(&e, 120, 12);
+    assert_eq!(shown.matches("alpha").count(), 1, "{shown}");
+    assert!(!shown.contains('│'));
+}
+
+#[test]
 fn resizing_and_evening_out() {
     let mut e = ed("alpha");
     e.keys(&parse("<C-w>v"));
