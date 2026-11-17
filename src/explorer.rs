@@ -418,3 +418,18 @@ fn fuzzy(name: &str, pattern: &str) -> Option<Vec<usize>> {
     }
     want.peek().is_none().then_some(hits)
 }
+
+pub fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1000.0 && unit < UNITS.len() - 1 {
+        size /= 1000.0;
+        unit += 1;
+    }
+    if unit == 0 || size >= 10.0 {
+        format!("{} {}", size.round() as u64, UNITS[unit])
+    } else {
+        format!("{size:.1} {}", UNITS[unit])
+    }
+}
