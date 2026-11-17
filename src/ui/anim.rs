@@ -7,6 +7,7 @@ const FRAME: f32 = 1.0 / 60.0;
 const SNAP: f32 = 2.0;
 const LENS_WAIT: f32 = 0.35;
 const LENS_FADE: f32 = 0.25;
+const OPEN: f32 = 0.2;
 
 pub(crate) struct Anim {
     scroll: Glider,
@@ -129,6 +130,15 @@ impl Anim {
 
     pub(crate) fn lens_gone(&self) {
         self.lens.replace(None);
+    }
+
+    pub(crate) fn opening(&self, opened: Option<f32>, t: f32) -> f32 {
+        let Some(at) = opened.filter(|_| t > 0.0) else {
+            return 1.0;
+        };
+        self.pace(t, at + OPEN);
+        let p = ((t - at) / OPEN).clamp(0.0, 1.0);
+        1.0 - (1.0 - p).powi(3)
     }
 
     pub(crate) fn pace(&self, t: f32, until: f32) {
