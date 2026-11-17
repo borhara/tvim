@@ -303,6 +303,32 @@ fn saving_shows_a_toast_instead_of_a_message() {
 }
 
 #[test]
+fn ctrl_c_doesnt_end_it() {
+    use tinsel::app::{App, Event, Flow, Key};
+    let mut app = Tvim::new(ed("a"));
+    assert!(!app.ctrl_c_quits());
+    assert_eq!(app.event(&Event::Key(Key::Ctrl('c'))), Flow::Continue);
+    for k in parse(":q<CR>") {
+        let flow = app.event(&Event::Key(k));
+        if k == Key::Enter {
+            assert_eq!(flow, Flow::Quit);
+        }
+    }
+}
+
+#[test]
+fn the_mouse_is_caught_and_ignored() {
+    use tinsel::app::{App, Event, Flow, Mouse, MouseKind};
+    let mut app = Tvim::new(ed("a\nb\nc"));
+    assert!(app.mouse(), "caught, so the wheel doesn't arrive as arrow keys");
+    for kind in [MouseKind::ScrollDown, MouseKind::ScrollUp, MouseKind::Click] {
+        let flow = app.event(&Event::Mouse(Mouse { kind, x: 3, y: 1 }));
+        assert_eq!(flow, Flow::Continue);
+    }
+    assert_eq!(app.editor.cursor(), tvim::Pos::new(0, 0));
+}
+
+#[test]
 fn lines_changed_since_saving_are_marked() {
     let path = common::temp("marks.txt");
     std::fs::write(&path, "one\ntwo\nthree\n").unwrap();
