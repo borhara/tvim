@@ -176,3 +176,44 @@ fn files(head: &str, word: &str) -> Vec<Suggestion> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels(text: &str) -> Vec<String> {
+        suggestions(text, &Options::default(), &["src/a.rs".into(), "README.md".into()])
+            .into_iter()
+            .map(|s| s.label)
+            .collect()
+    }
+
+    #[test]
+    fn commands_by_name_or_short_name() {
+        assert_eq!(labels("wq"), ["wq", "wqall"]);
+        assert_eq!(labels("se"), ["set"]);
+        assert_eq!(labels("Ex"), ["Explore"]);
+        assert!(labels("42").is_empty());
+        assert!(labels("").len() > 10);
+    }
+
+    #[test]
+    fn options_with_their_values() {
+        let s = suggestions("set rel", &Options::default(), &[]);
+        assert_eq!(s[0].label, "relativenumber");
+        assert_eq!(s[0].replace, "set relativenumber");
+        assert_eq!(s[0].value, "off");
+        assert_eq!(suggestions("set ts", &Options::default(), &[]).len(), 0);
+        assert_eq!(
+            suggestions("set tab", &Options::default(), &[])[0].replace,
+            "set tabstop="
+        );
+        assert_eq!(labels("set nonu"), ["nonumber"]);
+        assert_eq!(labels("set roo"), ["roomy"]);
+    }
+
+    #[test]
+    fn open_buffers() {
+        assert_eq!(labels("b rs"), ["src/a.rs"]);
+    }
+}
