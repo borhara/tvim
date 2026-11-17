@@ -34,6 +34,9 @@ fn repo(name: &str, committed: &str) -> Option<PathBuf> {
         eprintln!("no git, skipping");
         return None;
     }
+    // in the repo's own config, so tvim's git commands see it too: files come back from git
+    // as they went in, not with Windows line endings
+    assert!(git(&dir, &["config", "core.autocrlf", "false"]));
     git(&dir, &["symbolic-ref", "HEAD", "refs/heads/trunk"]);
     std::fs::write(dir.join("a.txt"), committed).unwrap();
     assert!(git(&dir, &["add", "a.txt"]));

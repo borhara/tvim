@@ -30,6 +30,8 @@ fn repo(name: &str, committed: &str) -> Option<PathBuf> {
         ("user.email", "t@t"),
         ("commit.gpgsign", "false"),
         ("core.hooksPath", "/dev/null"),
+        // files come back from git as they went in, not with Windows line endings
+        ("core.autocrlf", "false"),
     ] {
         git(&dir, &["config", k, v]).unwrap();
     }
