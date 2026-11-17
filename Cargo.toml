@@ -2,9 +2,12 @@
 name = "tvim"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "A vim-like terminal text editor written in Rust."
 license = "MIT"
 repository = "https://github.com/borhara/tvim"
+keywords = ["editor", "vim", "terminal", "tui"]
+categories = ["text-editors", "command-line-utilities"]
 
 [dependencies]
 tinsel = { path = "../tinsel" }
