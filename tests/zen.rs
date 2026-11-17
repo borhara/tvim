@@ -72,3 +72,16 @@ fn the_sidebar_hides_and_comes_back_with_its_focus() {
     assert!(!e.zen(), "going to the sidebar leaves zen");
     assert!(e.explorer_focused());
 }
+
+#[test]
+fn messages_stay_quiet() {
+    let mut e = common::ed("hello");
+    e.ex("zen");
+    e.ex("nope");
+    let shown = screen(&e, 100, 12);
+    let last = rows(&shown)[11];
+    assert_eq!(last.trim(), "E492: Not an editor command: nope");
+    e.keys(&parse("/hel"));
+    let shown = screen(&e, 100, 12);
+    assert_eq!(rows(&shown)[11].trim(), "/ hel", "the search is typed at the bottom");
+}
