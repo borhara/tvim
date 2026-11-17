@@ -158,7 +158,7 @@ impl Explorer {
             let mut inner = Vec::new();
             let below =
                 *is_dir && self.expanded.contains(&entry.path) && self.matches(&entry.path, depth + 1, &mut inner);
-            let hits = fuzzy(name, &self.filter);
+            let hits = tinsel::text::fuzzy(name, &self.filter).map(|m| m.hits);
             if hits.is_some() || below {
                 out.push((entry, hits.unwrap_or_default()));
                 out.append(&mut inner);
@@ -406,19 +406,6 @@ impl Explorer {
     }
 }
 
-fn fuzzy(name: &str, pattern: &str) -> Option<Vec<usize>> {
-    let mut hits = Vec::new();
-    let mut want = pattern.chars().flat_map(char::to_lowercase).peekable();
-    for (i, c) in name.chars().enumerate() {
-        let Some(&w) = want.peek() else { break };
-        if c.to_lowercase().eq(std::iter::once(w)) {
-            hits.push(i);
-            want.next();
-        }
-    }
-    want.peek().is_none().then_some(hits)
-}
-
 pub fn human_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
@@ -437,14 +424,6 @@ pub fn human_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn fuzzy_matching() {
-        assert_eq!(fuzzy("editor.rs", "edrs"), Some(vec![0, 1, 5, 8]));
-        assert_eq!(fuzzy("Editor.rs", "ED"), Some(vec![0, 1]));
-        assert_eq!(fuzzy("main.rs", "x"), None);
-        assert_eq!(fuzzy("main.rs", ""), Some(vec![]));
-    }
 
     #[test]
     fn sizes() {

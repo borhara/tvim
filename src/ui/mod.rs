@@ -1153,7 +1153,7 @@ fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Co
         } else {
             base
         };
-        let name = with_hits(&entry.name, |j| hits.contains(&j), |_, s| paint(base, s));
+        let name = with_hits(&entry.name, hits, |_, s| paint(base, s));
         let (glyph, name) = if is_current {
             (bold(&paint(ink, glyph)), bold(&name))
         } else {
@@ -1171,18 +1171,9 @@ fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Co
     }
 }
 
-fn with_hits(text: &str, hit: impl Fn(usize) -> bool, other: impl Fn(usize, &str) -> String) -> String {
-    let mut out = String::new();
-    let mut buf = [0; 4];
-    for (j, ch) in text.chars().enumerate() {
-        let s = ch.encode_utf8(&mut buf);
-        out.push_str(&if hit(j) {
-            bold(&paint(palette::ROSE, s))
-        } else {
-            other(j, s)
-        });
-    }
-    out
+// what matched a search drawn bold in rose, the rest as `other` says
+fn with_hits(text: &str, hits: &[usize], other: impl Fn(usize, &str) -> String) -> String {
+    tinsel::text::highlight(text, hits, |s| bold(&paint(palette::ROSE, s)), other)
 }
 
 fn file_state_color(state: FileState) -> Rgb {
