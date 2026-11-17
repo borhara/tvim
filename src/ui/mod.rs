@@ -382,6 +382,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         typing_at = overlays::palette(e, frame, d.panes, &c);
     }
     if hints && !e.explorer_focused() {
+        overlays::hint_strip(e, frame, d.text, &c);
     }
     if let Some((x, y, _)) = text_cursor(e, e.mode(), d.body).filter(|_| e.completion().is_some()) {
         overlays::completion(e, frame, d.panes, (x, y), &c);
