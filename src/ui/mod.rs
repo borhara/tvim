@@ -1,3 +1,4 @@
+pub(crate) mod anim;
 mod gitmenu;
 mod overlays;
 mod sky;
