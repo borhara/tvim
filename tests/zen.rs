@@ -89,7 +89,7 @@ fn messages_stay_quiet() {
 #[test]
 fn the_column_slides_in() {
     let mut e = common::ed("hello");
-    let column = |e: &Editor, t: f32| {
+    let column = |e: &Editor, t: f64| {
         let mut frame = Frame::new(121, 16).at(t);
         tinsel::with_color_mode(tinsel::ColorMode::None, || draw(e, &mut frame));
         let shown = frame.snapshot().plain();

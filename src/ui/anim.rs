@@ -2,15 +2,15 @@ use std::cell::{Cell, RefCell};
 
 use crate::editor::Editor;
 
-const FRAME: f32 = 1.0 / 60.0;
-const PULSE: f32 = 0.4;
-const SLIDE: f32 = 0.18;
-pub(crate) const FADE: f32 = 0.15;
+const FRAME: f64 = 1.0 / 60.0;
+const PULSE: f64 = 0.4;
+const SLIDE: f64 = 0.18;
+pub(crate) const FADE: f64 = 0.15;
 // scrolls this small just snap, so holding j or k never lags
 const SNAP: f32 = 2.0;
-const LENS_WAIT: f32 = 0.35;
-const LENS_FADE: f32 = 0.25;
-const OPEN: f32 = 0.2;
+const LENS_WAIT: f64 = 0.35;
+const LENS_FADE: f64 = 0.25;
+const OPEN: f64 = 0.2;
 
 // a frame at time 0 (tests, snapshots) always draws settled
 #[derive(Default)]
@@ -18,15 +18,15 @@ pub(crate) struct Anim {
     scroll: Glider,
     shown: Cell<usize>,
     landed: Cell<bool>,
-    pulse: Cell<Option<(usize, f32)>>,
-    zen: Cell<Option<(bool, f32)>>,
+    pulse: Cell<Option<(usize, f64)>>,
+    zen: Cell<Option<(bool, f64)>>,
     slide: Cell<Option<Glide>>,
     text_x: Cell<usize>,
-    busy_until: Cell<f32>,
+    busy_until: Cell<f64>,
     pub(crate) star: Glider,
     // the moment the terminal lost focus, while it's away
-    paused: Cell<Option<f32>>,
-    lens: RefCell<Option<(String, f32)>>,
+    paused: Cell<Option<f64>>,
+    lens: RefCell<Option<(String, f64)>>,
 }
 
 #[derive(Default)]
@@ -41,7 +41,7 @@ impl Glider {
         self.glide.set(None);
     }
 
-    pub(crate) fn step(&self, top: usize, rows: usize, on: bool, t: f32) -> usize {
+    pub(crate) fn step(&self, top: usize, rows: usize, on: bool, t: f64) -> usize {
         let before = self.seen.replace(Some((top, rows)));
         let running = self.glide.get().filter(|g| t < g.end());
         match before {
@@ -52,7 +52,7 @@ impl Glider {
                     from,
                     to: top as f32,
                     start: t - FRAME,
-                    length: 0.12 + 0.06 * (distance / rows.max(1) as f32).min(1.0),
+                    length: 0.12 + 0.06 * (distance / rows.max(1) as f32).min(1.0) as f64,
                 }));
             }
             Some(_) if on => self.glide.set(running),
@@ -61,7 +61,7 @@ impl Glider {
         self.glide.get().map_or(top, |g| g.at(t).round().max(0.0) as usize)
     }
 
-    pub(crate) fn end(&self) -> Option<f32> {
+    pub(crate) fn end(&self) -> Option<f64> {
         self.glide.get().map(|g| g.end())
     }
 }
@@ -70,17 +70,17 @@ impl Glider {
 struct Glide {
     from: f32,
     to: f32,
-    start: f32,
-    length: f32,
+    start: f64,
+    length: f64,
 }
 
 impl Glide {
-    fn end(&self) -> f32 {
+    fn end(&self) -> f64 {
         self.start + self.length
     }
 
-    fn at(&self, t: f32) -> f32 {
-        let p = ((t - self.start) / self.length).clamp(0.0, 1.0);
+    fn at(&self, t: f64) -> f32 {
+        let p = ((t - self.start) / self.length).clamp(0.0, 1.0) as f32;
         let eased = 1.0 - (1.0 - p).powi(3);
         self.from + (self.to - self.from) * eased
     }
@@ -96,7 +96,7 @@ impl Anim {
         self.landed.set(true);
     }
 
-    pub(crate) fn follow(&self, e: &Editor, t: f32) -> usize {
+    pub(crate) fn follow(&self, e: &Editor, t: f64) -> usize {
         let (top, rows) = (e.top(), e.text_rows());
         let on = e.options.smooth && t > 0.0;
         let shown = self.scroll.step(top, rows, on, t);
@@ -118,17 +118,17 @@ impl Anim {
         self.shown.get()
     }
 
-    pub(crate) fn glow(&self, row: usize, t: f32) -> f32 {
+    pub(crate) fn glow(&self, row: usize, t: f64) -> f32 {
         match self.pulse.get() {
             Some((r, start)) if r == row => {
-                let left = 1.0 - ((t - start) / PULSE).clamp(0.0, 1.0);
+                let left = 1.0 - ((t - start) / PULSE).clamp(0.0, 1.0) as f32;
                 left * left
             }
             _ => 0.0,
         }
     }
 
-    pub(crate) fn zen(&self, zen: bool, t: f32) -> f32 {
+    pub(crate) fn zen(&self, zen: bool, t: f64) -> f64 {
         let since = match self.zen.get() {
             Some((was, at)) if was == zen => at,
             Some(_) if t > 0.0 => {
@@ -141,20 +141,20 @@ impl Anim {
                 self.pace(t, t + SLIDE.max(FADE));
                 t
             }
-            _ => f32::NEG_INFINITY,
+            _ => f64::NEG_INFINITY,
         };
         self.zen.set(Some((zen, since)));
-        if t > 0.0 { t - since } else { f32::INFINITY }
+        if t > 0.0 { t - since } else { f64::INFINITY }
     }
 
-    pub(crate) fn column_x(&self, x: usize, t: f32) -> usize {
+    pub(crate) fn column_x(&self, x: usize, t: f64) -> usize {
         match self.slide.get().filter(|g| t > 0.0 && t < g.end()) {
             Some(g) => Glide { to: x as f32, ..g }.at(t).round().max(0.0) as usize,
             None => x,
         }
     }
 
-    pub(crate) fn lens(&self, key: &str, t: f32) -> f32 {
+    pub(crate) fn lens(&self, key: &str, t: f64) -> f32 {
         if t <= 0.0 {
             return 1.0;
         }
@@ -167,19 +167,19 @@ impl Anim {
             }
         };
         self.pace(t, since + LENS_WAIT + LENS_FADE);
-        ((t - since - LENS_WAIT) / LENS_FADE).clamp(0.0, 1.0)
+        ((t - since - LENS_WAIT) / LENS_FADE).clamp(0.0, 1.0) as f32
     }
 
     pub(crate) fn lens_gone(&self) {
         self.lens.replace(None);
     }
 
-    pub(crate) fn opening(&self, opened: Option<f32>, t: f32) -> f32 {
+    pub(crate) fn opening(&self, opened: Option<f64>, t: f64) -> f32 {
         let Some(at) = opened.filter(|_| t > 0.0) else {
             return 1.0;
         };
         self.pace(t, at + OPEN);
-        let p = ((t - at) / OPEN).clamp(0.0, 1.0);
+        let p = ((t - at) / OPEN).clamp(0.0, 1.0) as f32;
         1.0 - (1.0 - p).powi(3)
     }
 
@@ -193,17 +193,17 @@ impl Anim {
 
     // the clock ambient animations run on: it stands still while the terminal is in the background,
     // so an unwatched tab sends nothing
-    pub(crate) fn clock(&self) -> f32 {
+    pub(crate) fn clock(&self) -> f64 {
         self.paused.get().unwrap_or_else(tinsel::app::time)
     }
 
-    pub(crate) fn pace(&self, t: f32, until: f32) {
+    pub(crate) fn pace(&self, t: f64, until: f64) {
         if until > t {
             self.busy_until.set(self.busy_until.get().max(until + FRAME));
         }
     }
 
-    pub(crate) fn moving(&self, now: f32) -> bool {
+    pub(crate) fn moving(&self, now: f64) -> bool {
         now < self.busy_until.get()
     }
 }

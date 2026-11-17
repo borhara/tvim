@@ -17,7 +17,7 @@ fn still() -> Editor {
     e
 }
 
-fn frame_at(e: &Editor, t: f32, mode: ColorMode) -> Frame {
+fn frame_at(e: &Editor, t: f64, mode: ColorMode) -> Frame {
     tinsel::with_color_mode(mode, || {
         let mut frame = Frame::new(80, 24).at(t);
         draw(e, &mut frame);
@@ -25,7 +25,7 @@ fn frame_at(e: &Editor, t: f32, mode: ColorMode) -> Frame {
     })
 }
 
-fn first_line(e: &Editor, t: f32) -> usize {
+fn first_line(e: &Editor, t: f64) -> usize {
     let shown = frame_at(e, t, ColorMode::None).snapshot().plain();
     shown
         .lines()

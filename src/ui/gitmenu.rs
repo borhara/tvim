@@ -101,7 +101,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
     at
 }
 
-fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32) {
+fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f64) {
     let Some(s) = m.status() else { return };
     let mut text = format!(
         "{}  {}",
@@ -146,7 +146,7 @@ fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32) {
     }
 }
 
-fn working(what: &str, t: f32) -> String {
+fn working(what: &str, t: f64) -> String {
     format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::BLUSH, &format!("{what}…")))
 }
 
@@ -296,7 +296,7 @@ fn diff_line(l: &str) -> String {
     }
 }
 
-fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f32) {
+fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f64) {
     if pane.width < 4 || pane.height < 2 {
         return;
     }
@@ -365,7 +365,7 @@ fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f32) {
     }
 }
 
-fn prompt(m: &GitMenu, frame: &mut Frame, row: Rect, t: f32, c: &Colors) -> Option<(usize, usize)> {
+fn prompt(m: &GitMenu, frame: &mut Frame, row: Rect, t: f64, c: &Colors) -> Option<(usize, usize)> {
     if let Some(ch) = m.confirming() {
         let text = format!(
             "{} {}{}   {} {}",
