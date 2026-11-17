@@ -348,6 +348,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
     let c = colors();
     frame.set_background(c.app);
+    frame.set_window_color(c.app);
     let since_zen = e.anim.zen(e.zen(), frame.time());
     let d = if e.zen() {
         zen::draw(e, frame, &c)
