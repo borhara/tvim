@@ -38,3 +38,36 @@ fn half_pages_glide_into_place() {
     assert!(first_line(&e, 1.08) >= mid);
     assert_eq!(first_line(&e, 1.3), to);
 }
+
+#[test]
+fn every_kind_of_jump_glides() {
+    for keys in ["G", "<C-f>", ":120<CR>", "/line 150<CR>", "zt"] {
+        let mut e = long();
+        e.keys(&parse("15G"));
+        first_line(&e, 1.0);
+        e.keys(&parse(keys));
+        let mid = first_line(&e, 1.03);
+        let to = e.top() + 1;
+        assert!(mid != to, "{keys} glides");
+        assert_eq!(first_line(&e, 2.0), to, "{keys} lands");
+    }
+}
+
+#[test]
+fn without_smooth_it_snaps() {
+    let mut e = long();
+    e.ex("set nosmooth");
+    first_line(&e, 1.0);
+    e.keys(&parse("G"));
+    assert_eq!(first_line(&e, 1.01), e.top() + 1);
+    e.ex("set smooth?");
+    assert_eq!(e.message().unwrap().text, "nosmooth");
+}
+
+#[test]
+fn snapshots_show_where_it_ends_up() {
+    let mut e = long();
+    first_line(&e, 0.0);
+    e.keys(&parse("G"));
+    assert_eq!(first_line(&e, 0.0), e.top() + 1);
+}
