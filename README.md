@@ -86,3 +86,17 @@ set relativenumber
 | `roomy` | `ro` | on | a little space above and below the text |
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
 
+## Contributing
+
+```sh
+cargo test
+cargo clippy --all-targets
+```
+
+The editor doesn't need a terminal to run, so tests type keys in vim's notation and check the result:
+
+```rust
+let mut e = Editor::with_text("one two");
+e.keys(&tvim::keys::parse("cwhello<Esc>"));
+assert_eq!(e.text(), "hello two");
+```
