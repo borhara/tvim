@@ -433,3 +433,24 @@ pub fn human_size(bytes: u64) -> String {
         format!("{size:.1} {}", UNITS[unit])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fuzzy_matching() {
+        assert_eq!(fuzzy("editor.rs", "edrs"), Some(vec![0, 1, 5, 8]));
+        assert_eq!(fuzzy("Editor.rs", "ED"), Some(vec![0, 1]));
+        assert_eq!(fuzzy("main.rs", "x"), None);
+        assert_eq!(fuzzy("main.rs", ""), Some(vec![]));
+    }
+
+    #[test]
+    fn sizes() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(812), "812 B");
+        assert_eq!(human_size(4200), "4.2 kB");
+        assert_eq!(human_size(13_000_000), "13 MB");
+    }
+}
