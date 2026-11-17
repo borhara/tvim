@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{Rgb, Spinner, bold, italic, mix, paint, palette};
 
-use super::{Colors, LILAC, icon, input, vline};
+use super::{Colors, LILAC, icon, input, overlays::float, vline};
 use crate::editor::Editor;
 use crate::gitmenu::{GitMenu, Group, Tab, Typing};
 
@@ -54,6 +54,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         Tab::Branches => "branches".to_string(),
     };
     let panel = Panel::new(m.repo_name()).status(status).focused(true);
+    let inner = float(frame, rect, panel, c);
     if inner.height < 6 || inner.width < 20 {
         return None;
     }

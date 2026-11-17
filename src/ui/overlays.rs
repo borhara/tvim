@@ -1,11 +1,97 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{bold, mix, paint, palette};
 
-use super::{Colors, file_name, icon, styled_line, vline, with_hits};
+use super::{Colors, file_name, icon, input, styled_line, vline, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
 use crate::grep::Grep;
 use crate::syntax::{self, State, Syntax};
+
+pub(super) fn float(frame: &mut Frame, rect: Rect, panel: Panel, c: &Colors) -> Rect {
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
+    frame.tint(rect, c.bar);
+    inner
+}
+
+pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
+    let cmd = e.cmdline();
+    let error = e.message().filter(|m| m.error).map(|m| m.text.clone());
+    let width = area.width.saturating_sub(8).clamp(30.min(area.width), 76);
+    let list_rows = suggestions.len().min(8).min(area.height.saturating_sub(10));
+    let height = 3 + if list_rows > 0 { list_rows + 1 } else { 0 } + usize::from(error.is_some());
+    let rect = Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + area.height.saturating_sub(height) / 4,
+        width,
+        height,
+    );
+    let panel = Panel::new("command")
+        .footer("tab complete · ↑↓ history · esc close")
+        .focused(true);
+    let inner = float(frame, rect, panel, c);
+
+    let label = format!("{} ", paint(palette::ROSE, ":"));
+    let at = input(frame, Rect::new(inner.x, inner.y, inner.width, 1), &label, &cmd.text, cmd.cursor, None);
+    let mut row = 1;
+    if let Some(err) = &error {
+        frame.print(inner, row, &paint(palette::RED, &format!("✕ {err}")));
+        row += 1;
+    }
+    if list_rows > 0 {
+        frame.print(inner, row, &paint(palette::LINE, &"─".repeat(inner.width)));
+        row += 1;
+        let typed = cmd.text.rsplit(' ').next().unwrap_or("");
+        let first = picked.map_or(0, |p| (p + 1).saturating_sub(list_rows));
+        let label_width = suggestions
+            .iter()
+            .map(|s| tinsel::text::width(&s.label))
+            .max()
+            .unwrap_or(0)
+            .min(24);
+        for (i, s) in suggestions.iter().enumerate().skip(first).take(list_rows) {
+            let y = inner.y + row + i - first;
+            let selected = picked == Some(i);
+            if selected {
+                frame.tint(Rect::new(inner.x, y, inner.width, 1), c.picked);
+            }
+            let marker = marker(selected);
+            let matched = if picked.is_none() && s.label.starts_with(typed) {
+                typed.len()
+            } else {
+                0
+            };
+            let (head, tail) = s.label.split_at(matched.min(s.label.len()));
+            let pad = " ".repeat(label_width.saturating_sub(tinsel::text::width(&s.label)));
+            let label = format!(
+                "{}{}{pad}",
+                bold(&paint(palette::ROSE, head)),
+                paint(palette::TEXT, tail)
+            );
+            let line = format!("{marker}{label}   {}", paint(palette::MUTED, &s.desc));
+            frame.print(Rect::new(inner.x, y, inner.width, 1), 0, &line);
+            if !s.value.is_empty() {
+                let color = match s.value.as_str() {
+                    "on" => palette::SAGE,
+                    "off" => palette::MUTED,
+                    _ => palette::AMBER,
+                };
+                let v = paint(color, &s.value);
+                let w = tinsel::text::width(&v);
+                frame.print(Rect::new(inner.x + inner.width - w, y, w, 1), 0, &v);
+            }
+        }
+    }
+    Some(at)
+}
+
+fn marker(selected: bool) -> String {
+    if selected {
+        paint(palette::ROSE, "› ")
+    } else {
+        "  ".into()
+    }
+}
 
 pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
     let Some((prefix, words, picked)) = e.completion() else {
@@ -31,6 +117,7 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
     if words.len() > rows {
         panel = panel.footer(format!("{}/{}", picked.map_or(0, |i| i + 1), words.len()));
     }
+    let inner = float(frame, Rect::new(x, y, width, height), panel, c);
     let first = picked.map_or(0, |p| (p + 1).saturating_sub(rows));
     for (i, w) in words.iter().enumerate().skip(first).take(rows) {
         let line = Rect::new(inner.x, inner.y + i - first, inner.width, 1);
@@ -38,10 +125,14 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
         if selected {
             frame.tint(line, c.picked);
         }
+        let marker = marker(selected);
         let (head, tail) = w.split_at(prefix.len().min(w.len()));
         let tail = if selected {
+            bold(&paint(palette::PETAL, tail))
         } else {
+            paint(palette::BLUSH, tail)
         };
+        frame.print(line, 0, &format!("{marker}{}{tail}", bold(&paint(palette::ROSE, head))));
     }
 }
 
@@ -111,6 +202,7 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         } else {
             "nothing matches"
         };
+        frame.print(list, 0, &paint(palette::MUTED, note));
         return Some(p.at);
     }
     let top = f.top(list.height);
@@ -128,7 +220,13 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         let file = &path[path.rfind('/').map_or(0, |b| b + 1)..];
         let (glyph, color) = icon(file, false);
         let shown = with_hits(path, |j| hits.contains(&j), |j, s| {
+            paint(if j < name_start { palette::MUTED } else { palette::TEXT }, s)
         });
+        frame.print(
+            Rect::new(list.x, y, list.width, 1),
+            0,
+            &format!("{}{} ", marker(selected), paint(color, glyph)),
+        );
         let room = list.width.saturating_sub(5);
         let skip = (tinsel::text::width(path) + 1).saturating_sub(room);
         frame.print_from(Rect::new(list.x + 4, y, room, 1), 0, &shown, skip);
@@ -151,6 +249,11 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
     let (glyph, color) = icon(file, false);
     let at = f.line(i).map_or(String::new(), |r| format!(":{}", r + 1));
     let name = with_hits(file, |j| hits.contains(&(name_start + j)), |_, s| {
+        if selected {
+            bold(&paint(palette::TEXT, s))
+        } else {
+            paint(palette::SOFT, s)
+        }
     });
     let dir = dir.trim_end_matches('/');
     let home = std::env::var("HOME").ok().filter(|h| !h.is_empty());
@@ -162,10 +265,17 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
     let room = row.width.saturating_sub(at.len() + 7 + tinsel::text::width(file));
     let dir = super::cut_left(&dir, room);
     let mark = if selected {
+        paint(palette::ROSE, "▎")
     } else {
         " ".into()
     };
+    frame.print(
+        row,
+        0,
+        &format!("{mark} {} {name} {}", paint(color, glyph), paint(palette::MUTED, &dir)),
+    );
     let at_x = row.x + row.width.saturating_sub(at.len() + 1);
+    frame.print(Rect::new(at_x, row.y, at.len(), 1), 0, &paint(palette::MUTED, &at));
 }
 
 
@@ -196,6 +306,7 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         } else {
             "nothing matches"
         };
+        frame.print(list, 0, &paint(palette::MUTED, note));
         return Some(p.at);
     }
     let query_len = g.query().trim().chars().count();
@@ -210,11 +321,26 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         let path = path.as_str();
         let file = &path[path.rfind('/').map_or(0, |b| b + 1)..];
         let (glyph, color) = icon(file, false);
+        let place = format!(
+            "{}{}",
+            paint(palette::SOFT, path),
+            paint(palette::AMBER, &format!(":{}", hit.row + 1))
+        );
         let place_width = tinsel::text::width(path) + 1 + (hit.row + 1).to_string().len();
         let line = g.line(hit);
         let line = line.as_str();
         let lead = line.len() - line.trim_start().len();
         let col = hit.col.saturating_sub(line[..lead].chars().count());
+        let shown = with_hits(
+            line.trim_start(),
+            |j| j >= col && j < col + query_len,
+            |_, s| paint(palette::TEXT, s),
+        );
+        frame.print(
+            Rect::new(list.x, y, list.width, 1),
+            0,
+            &format!("{}{} {place}  ", marker(selected), paint(color, glyph)),
+        );
         let x = list.x + 4 + place_width + 2;
         if x + 4 < list.x + list.width {
             // keep the match in view on a long line
