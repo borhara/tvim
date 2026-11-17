@@ -1261,6 +1261,24 @@ impl Editor {
         self.explorer.is_some() && self.explorer_focused && !self.zen()
     }
 
+    pub fn zen(&self) -> bool {
+        self.zen.is_some()
+    }
+
+    pub(crate) fn leave_zen(&mut self) {
+        self.zen = None;
+    }
+
+    pub fn toggle_zen(&mut self) {
+        match self.zen.take() {
+            Some(focused) => self.explorer_focused = focused,
+            None => {
+                self.zen = Some(self.explorer_focused);
+                self.explorer_focused = false;
+            }
+        }
+    }
+
     pub(crate) fn file_dir(&self) -> PathBuf {
         self.file.path.as_deref().map_or_else(|| PathBuf::from("."), |p| dir_of(p).to_path_buf())
     }
@@ -1292,6 +1310,7 @@ impl Editor {
     }
 
     pub fn toggle_explorer_focus(&mut self) {
+        self.leave_zen();
         if self.explorer.is_none() {
             let dir = self.sidebar_root();
             self.explore(&dir);
@@ -1301,6 +1320,7 @@ impl Editor {
     }
 
     pub fn toggle_explorer(&mut self) {
+        self.leave_zen();
         if self.explorer.take().is_none() {
             let dir = self.sidebar_root();
             self.explore(&dir);
@@ -1597,6 +1617,7 @@ impl Editor {
         match c {
             'f' => self.find_files(None),
             'b' => self.pick_buffer_list(),
+            'z' => self.toggle_zen(),
             'm' => self.toggle_preview(),
             'G' => self.open_git_menu(None),
             'r' => self.pick_recent(),
