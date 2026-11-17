@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use tinsel::app::Key;
+use tinsel::app::{Event, Key, Keymap, navigate};
 use tinsel::text::fuzzy;
 
 const SKIP: &[&str] = &["target", "node_modules", "__pycache__", "venv", "dist", "build"];
@@ -202,7 +202,6 @@ impl Finder {
     }
 
     pub fn key(&mut self, key: Key) -> Pick {
-        let last = self.matches.len().saturating_sub(1);
         let key = match key {
             Key::Char('j') if self.is_recent() && self.query.is_empty() => Key::Down,
             Key::Char('k') if self.is_recent() && self.query.is_empty() => Key::Up,
@@ -216,10 +215,7 @@ impl Finder {
                     None => Pick::Nothing,
                 };
             }
-            Key::Down | Key::Ctrl('n') | Key::Ctrl('j') | Key::Tab => self.selected = (self.selected + 1).min(last),
-            Key::Up | Key::Ctrl('p') | Key::Ctrl('k') | Key::BackTab => self.selected = self.selected.saturating_sub(1),
-            Key::PageDown => self.selected = (self.selected + 10).min(last),
-            Key::PageUp => self.selected = self.selected.saturating_sub(10),
+            k if navigate(&mut self.selected, self.matches.len(), &Event::Key(k), Keymap::Picker) => {}
             Key::Char(c) => {
                 self.query.push(c);
                 self.refresh();

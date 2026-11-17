@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use tinsel::app::{Key, Waker};
+use tinsel::app::{Event, Key, Keymap, Waker, navigate};
 
 use crate::finder::{follow, walk};
 use crate::sync::{lock, wait_until};
@@ -205,10 +205,8 @@ impl Grep {
                     None => Jump::Nothing,
                 };
             }
-            Key::Down | Key::Ctrl('n') | Key::Ctrl('j') | Key::Tab => self.selected = (self.selected + 1).min(last),
-            Key::Up | Key::Ctrl('p') | Key::Ctrl('k') | Key::BackTab => self.selected = self.selected.saturating_sub(1),
-            Key::PageDown | Key::Ctrl('d') => self.selected = (self.selected + 10).min(last),
-            Key::PageUp => self.selected = self.selected.saturating_sub(10),
+            Key::Ctrl('d') => self.selected = (self.selected + 10).min(last),
+            k if navigate(&mut self.selected, self.hits.len(), &Event::Key(k), Keymap::Picker) => {}
             Key::Char(c) => {
                 self.query.push(c);
                 self.search_again();
