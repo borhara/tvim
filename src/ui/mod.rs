@@ -383,6 +383,100 @@ fn icon(name: &str, dir: bool) -> (&'static str, Rgb) {
 
 const LOGO: [&str; 2] = ["▀█▀ █ █ █ █▀▄▀█ ✶", " █  ▀▄▀ █ █ ▀ █  "];
 
+// on opening, the logo spells tinselvim and loses insel from the outside in: i and l sparkle
+// away together and the rest closes up (tnsevim), then n and e (tsvim), then s, leaving LOGO.
+// each glyph is its two rows and the stage it goes in, or None if it stays
+const INTRO: [(&str, &str, Option<usize>); 10] = [
+    ("▀█▀", " █ ", None),
+    ("█", "█", Some(0)),
+    ("█▄ █", "█ ▀█", Some(1)),
+    ("█▀", "▄█", Some(2)),
+    ("█▀▀", "██▄", Some(1)),
+    ("█  ", "█▄▄", Some(0)),
+    ("█ █", "▀▄▀", None),
+    ("█", "█", None),
+    ("█▀▄▀█", "█ ▀ █", None),
+    ("✶", " ", None),
+];
+const INTRO_STAGES: usize = 3;
+const INTRO_HOLD: f32 = 0.4;
+// how spread out the moments are when one stage's cells start to go
+const INTRO_SPREAD: f32 = 0.15;
+// how long one cell sparkles before it's gone
+const INTRO_SPARK: f32 = 0.25;
+const INTRO_CLOSE: f32 = 0.35;
+const INTRO_STAGE: f32 = INTRO_SPREAD + INTRO_SPARK + INTRO_CLOSE;
+const INTRO_END: f32 = INTRO_HOLD + INTRO_STAGE * INTRO_STAGES as f32;
+
+// the logo's two rows mid-intro and the column they start at, or None once it has settled
+// (and at time 0, so tests and snapshots see the plain logo)
+fn intro(t: f32, area: Rect) -> Option<(usize, [String; 2])> {
+    if t <= 0.0 || t >= INTRO_END {
+        return None;
+    }
+    let width = |s: &str| s.chars().count();
+    // where each glyph sits once the first `gone` stages have left, centred like the logo
+    let layout = |gone: usize| {
+        let here = |g: &(&str, &str, Option<usize>)| g.2.is_none_or(|s| s >= gone);
+        let span = INTRO.iter().filter(|g| here(g)).map(|g| width(g.0) + 1).sum::<usize>() - 1;
+        let mut x = area.width.saturating_sub(span) / 2;
+        INTRO
+            .iter()
+            .map(|g| {
+                let at = x;
+                if here(g) {
+                    x += width(g.0) + 1;
+                }
+                at as f32
+            })
+            .collect::<Vec<_>>()
+    };
+    let stage = (((t - INTRO_HOLD) / INTRO_STAGE).max(0.0) as usize).min(INTRO_STAGES - 1);
+    let start = INTRO_HOLD + stage as f32 * INTRO_STAGE;
+    let p = ((t - start - INTRO_SPREAD - INTRO_SPARK) / INTRO_CLOSE).clamp(0.0, 1.0);
+    let p = if p < 0.5 { 4.0 * p * p * p } else { 1.0 - (2.0 - 2.0 * p).powi(3) / 2.0 };
+    let (from, to) = (layout(stage), layout(stage + 1));
+
+    let mut cells = Vec::new();
+    for (g, &(top, bottom, goes)) in INTRO.iter().enumerate() {
+        if goes.is_some_and(|s| s < stage || (s == stage && p > 0.0)) {
+            continue;
+        }
+        let x = (from[g] + (to[g] - from[g]) * p).round() as usize;
+        for (row, glyph) in [top, bottom].into_iter().enumerate() {
+            for (i, ch) in glyph.chars().enumerate() {
+                let ch = if goes == Some(stage) { sparkle_away(ch, t - start, row, i) } else { ch };
+                if ch != ' ' {
+                    cells.push((x + i, row, ch));
+                }
+            }
+        }
+    }
+    let lo = cells.iter().map(|c| c.0).min()?;
+    let hi = cells.iter().map(|c| c.0).max()?;
+    let mut rows = [vec![' '; hi - lo + 1], vec![' '; hi - lo + 1]];
+    for (x, row, ch) in cells {
+        rows[row][x - lo] = ch;
+    }
+    Some((area.x + lo, rows.map(|r| r.into_iter().collect())))
+}
+
+// one cell of a stage's letters, `t` seconds into the stage: solid, then a sparkle that dims as
+// it goes, then nothing. both letters of a pair go together, cell for cell
+fn sparkle_away(ch: char, t: f32, row: usize, col: usize) -> char {
+    if ch == ' ' {
+        return ch;
+    }
+    let seed = (row * 8 + col) as u32 + 1;
+    let noise = seed.wrapping_mul(2_654_435_761).wrapping_mul(2_246_822_519) as f32 / u32::MAX as f32;
+    let q = (t - INTRO_SPREAD * noise) / INTRO_SPARK;
+    match q {
+        q if q < 0.0 => ch,
+        q if q >= 1.0 => ' ',
+        q => ['✦', '✧', '⋆', '·'][(q * 4.0) as usize],
+    }
+}
+
 struct Drawn {
     body: Rect,
     text: Rect,
@@ -744,13 +838,21 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
         let x = area.x + area.width.saturating_sub(width) / 2;
         frame.print(Rect::new(x, y, width, 1), 0, text);
     };
+    let t = frame.time();
+    let intro = intro(t, area);
+    if intro.is_some() {
+        e.anim.pace(t, INTRO_END);
+    }
     for (i, l) in LOGO.iter().enumerate() {
-        line(
-            frame,
-            y,
-            tinsel::text::width(l),
-            &tinsel::gradient(l, &tinsel::RAMP, i as f32 * 0.15),
-        );
+        let shift = i as f32 * 0.15;
+        match &intro {
+            Some((x, rows)) => {
+                let row = &rows[i];
+                let r = Rect::new(*x, y, tinsel::text::width(row), 1).intersect(area);
+                frame.print(r, 0, &tinsel::gradient(row, &tinsel::RAMP, shift));
+            }
+            None => line(frame, y, tinsel::text::width(l), &tinsel::gradient(l, &tinsel::RAMP, shift)),
+        }
         y += 1;
     }
     y += 1;
@@ -1517,6 +1619,34 @@ fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_intro_loses_insel_from_the_outside_in() {
+        let area = Rect::new(0, 0, 80, 24);
+        let at = |t: f32| intro(t, area).map(|(x, rows)| (x, rows.map(|r| r.trim_end().to_string())));
+        assert_eq!(at(0.0), None, "a snapshot sees the plain logo");
+        assert_eq!(at(INTRO_END), None);
+
+        let word = |stage: usize| at(INTRO_HOLD + stage as f32 * INTRO_STAGE + 0.001).unwrap().1;
+        assert_eq!(at(0.1).unwrap().1, word(0));
+        assert_eq!(word(0)[0], "▀█▀ █ █▄ █ █▀ █▀▀ █   █ █ █ █▀▄▀█ ✶", "tinselvim");
+        assert_eq!(word(0)[1], " █  █ █ ▀█ ▄█ ██▄ █▄▄ ▀▄▀ █ █ ▀ █");
+        assert_eq!(word(1)[0], "▀█▀ █▄ █ █▀ █▀▀ █ █ █ █▀▄▀█ ✶", "tnsevim");
+        assert_eq!(word(1)[1], " █  █ ▀█ ▄█ ██▄ ▀▄▀ █ █ ▀ █");
+        assert_eq!(word(2)[0], "▀█▀ █▀ █ █ █ █▀▄▀█ ✶", "tsvim");
+        assert_eq!(word(2)[1], " █  ▄█ ▀▄▀ █ █ ▀ █");
+
+        // i and l sparkle at the same moment, the rest untouched
+        let (_, sparking) = at(INTRO_HOLD + INTRO_SPREAD + INTRO_SPARK * 0.3).unwrap();
+        let sparks: Vec<_> = sparking[0].split_whitespace().collect();
+        assert_eq!(sparks[0], "▀█▀");
+        assert!(sparks[1].chars().all(|c| "✦✧⋆·".contains(c)), "{sparking:?}");
+        assert!(sparking[0].contains("█▄ █ █▀ █▀▀") && !sparking[0].contains("█   █ █"), "{sparking:?}");
+
+        let (x, end) = at(INTRO_END - 0.0001).unwrap();
+        assert_eq!(x, (80 - 17) / 2, "it lands where the logo is drawn");
+        assert_eq!(end, LOGO.map(|l| l.trim_end().to_string()));
+    }
 
     #[test]
     fn written_messages_read_as_a_sentence() {
