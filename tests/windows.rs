@@ -272,6 +272,14 @@ fn resizing_and_evening_out() {
 }
 
 #[test]
+fn ctrl_w_shows_its_keys() {
+    let mut e = ed("alpha");
+    e.keys(&parse("<C-w>"));
+    let shown = screen(&e, 100, 20);
+    assert!(shown.contains("the window that way"), "{shown}");
+}
+
+#[test]
 fn a_window_on_another_file_draws_that_file() {
     let a = file("win-two-a.rs", "fn alpha() {}\n");
     let b = file("win-two-b.txt", "beta\n");
