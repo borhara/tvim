@@ -2,7 +2,10 @@ use tinsel::app::{Frame, Rect, hints};
 use tinsel::format::plural;
 use tinsel::{Rgb, bold, mix, paint, palette};
 
-use super::{Colors, Drawn, LILAC, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input, outline, tab_names, twinkle, vline, windows};
+use super::{
+    Colors, Drawn, LILAC, SIDE_DIM, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input,
+    outline, tab_names, twinkle, vline, windows,
+};
 use crate::diff::Mark;
 use crate::editor::{Editor, Message, Mode};
 use crate::keys::show;
@@ -55,7 +58,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         };
         draw_explorer(e, x, frame, list, c, lit);
         if editor_focused && e.options.dim {
-            frame.dim(list);
+            frame.dim_by(list, SIDE_DIM);
         }
     }
     if head {
