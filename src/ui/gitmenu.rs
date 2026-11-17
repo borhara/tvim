@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Modal, Panel, Rect};
 use tinsel::{Rgb, Spinner, bold, italic, mix, paint, palette};
 
-use super::{Colors, LILAC, icon, input, vline};
+use super::{Colors, LILAC, icon, input};
 use crate::gitmenu::{GitMenu, Group, Tab, Typing};
 
 fn group_color(g: Group) -> Rgb {
@@ -63,19 +63,12 @@ pub(super) fn draw(m: &GitMenu, frame: &mut Frame, c: &Colors) -> Option<(usize,
     header(m, frame, Rect::new(inner.x, inner.y, inner.width, 1), t);
     let list_width = (inner.width * 2 / 5).clamp(20, 48).min(inner.width);
     let split = inner.x + list_width;
-    let rule = |frame: &mut Frame, y: usize, joint: &str| {
-        frame.print(
-            Rect::new(inner.x, y, inner.width, 1),
-            0,
-            &paint(palette::LINE, &"─".repeat(inner.width)),
-        );
-        frame.print(Rect::new(split, y, 1, 1), 0, &paint(palette::LINE, joint));
-    };
-    rule(frame, inner.y + 1, "┬");
     let body_height = inner.height - 5;
     let body_y = inner.y + 2;
-    vline(frame, split, body_y, body_height, &paint(palette::LINE, "│"));
-    rule(frame, body_y + body_height, "┴");
+    // a rule above and below the body, and one between list and pane joining them
+    frame.hline(inner.x, inner.y + 1, inner.width, palette::LINE);
+    frame.hline(inner.x, body_y + body_height, inner.width, palette::LINE);
+    frame.vline(split, inner.y + 1, body_height + 2, palette::LINE);
     let list = Rect::new(inner.x, body_y, list_width, body_height);
     let pane = Rect::new(
         split + 2,

@@ -4,7 +4,7 @@ use tinsel::{Rgb, bold, mix, paint, palette};
 
 use super::{
     Colors, Drawn, LILAC, SIDE_DIM, accent, crumb_scope, diff_totals, display_path, draw_explorer, file_name, input,
-    outline, tab_names, twinkle, vline, windows,
+    outline, tab_names, twinkle, windows,
 };
 use crate::diff::Mark;
 use crate::editor::{Editor, Message, Mode};
@@ -48,7 +48,10 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         }
     }
     if ruled {
-        vline(frame, column.x - 1, panes.y, panes.height, &paint(c.faint, "┊"));
+        let rule = paint(c.faint, "┊");
+        for y in panes.y..panes.y + panes.height {
+            frame.print(Rect::new(column.x - 1, y, 1, 1), 0, &rule);
+        }
     }
     if let Some(x) = e.explorer().filter(|_| side_width > 0) {
         let list = if ruled {
@@ -188,7 +191,7 @@ fn draw_top(e: &Editor, frame: &mut Frame, row: Rect, start: usize, lit: Rgb, c:
     let end = (row.x + row.width).saturating_sub(2);
     let fits = right_width > 0 && start + right_width + 12 < end;
     if fits {
-        frame.print(Rect::new(end - right_width, row.y, right_width, 1), 0, &right);
+        frame.print_right(Rect::new(row.x, row.y, end - row.x, 1), 0, &right);
     }
     let room = end.saturating_sub(start + if fits { right_width + 3 } else { 0 });
 
@@ -433,7 +436,7 @@ fn draw_status(
     }
     let right_width = tinsel::text::width(&right);
     if right_width > 0 {
-        frame.print(Rect::new(end - right_width, row.y, right_width, 1), 0, &right);
+        frame.print_right(Rect::new(row.x, row.y, end - row.x, 1), 0, &right);
     }
     let mid_end = end.saturating_sub(right_width + if right_width > 0 { 3 } else { 0 });
     if mid_end <= mid_x {
@@ -642,7 +645,7 @@ fn star_chart(e: &Editor, frame: &mut Frame, row: Rect, map: Rect, c: &Colors, r
         for b in &mut all {
             b.width = b.width.min(limit.saturating_sub(b.x)).max(1);
         }
-        frame.print(Rect::new(end - w, row.y, w, 1), 0, right);
+        frame.print_right(Rect::new(row.x, row.y, end - row.x, 1), 0, right);
     }
     let tone = tone(e.mode());
     for b in &all {

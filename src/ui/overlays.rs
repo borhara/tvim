@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{bold, mix, paint, palette};
 
-use super::{Colors, file_name, icon, input, styled_line, vline, with_hits};
+use super::{Colors, file_name, icon, input, styled_line, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
 use crate::grep::Grep;
@@ -176,8 +176,8 @@ fn picker(
     let split = split(inner.width);
     let list = Rect::new(rows.x, rows.y, split.unwrap_or(inner.width), rows.height);
     let pane = split.map(|w| {
-        vline(frame, list.x + w, rows.y, rows.height, &paint(palette::LINE, "│"));
-        frame.print(Rect::new(list.x + w, inner.y + 1, 1, 1), 0, &paint(palette::LINE, "┬"));
+        // from the rule under the query, which it meets with ┬
+        frame.vline(list.x + w, inner.y + 1, rows.height + 1, palette::LINE);
         Rect::new(list.x + w + 2, rows.y, rows.width.saturating_sub(w + 2), rows.height)
     });
     Some(Picker {
