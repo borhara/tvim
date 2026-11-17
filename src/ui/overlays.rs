@@ -264,7 +264,7 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
         None => dir.to_string(),
     };
     let room = row.width.saturating_sub(at.len() + 7 + tinsel::text::width(file));
-    let dir = super::cut_left(&dir, room);
+    let dir = tinsel::text::truncate_start(&dir, room.max(1));
     let mark = if selected {
         paint(palette::ROSE, "▎")
     } else {

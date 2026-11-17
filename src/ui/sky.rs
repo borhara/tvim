@@ -361,7 +361,7 @@ fn tail(path: &str, room: usize) -> String {
     if room < 2 {
         return path.to_string();
     }
-    super::cut_left(path, room)
+    tinsel::text::truncate_start(path, room)
 }
 
 fn path_parts(path: &str, c: &Colors) -> String {
