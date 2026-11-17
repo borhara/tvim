@@ -314,7 +314,7 @@ mod tests {
             .iter()
             .filter_map(|f| fuzzy(f, query).map(|m| (m.score, *f)))
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|x| std::cmp::Reverse(x.0));
         scored.first().map(|x| x.1.to_string()).unwrap_or_default()
     }
 

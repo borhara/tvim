@@ -355,14 +355,7 @@ pub fn highlight(line: &str, syntax: Syntax, state: State) -> (Vec<Kind>, State)
 const TODO: [&str; 6] = ["TODO", "FIXME", "XXX", "HACK", "NOTE", "SAFETY"];
 
 fn starts(chars: &[char], i: usize, s: &str) -> bool {
-    let mut j = i;
-    for c in s.chars() {
-        if chars.get(j) != Some(&c) {
-            return false;
-        }
-        j += 1;
-    }
-    true
+    s.chars().enumerate().all(|(k, c)| chars.get(i + k) == Some(&c))
 }
 
 fn fill(kinds: &mut [Kind], from: usize, to: usize, kind: Kind) {
