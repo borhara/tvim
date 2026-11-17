@@ -7,6 +7,7 @@ use tinsel::app::Key;
 use crate::command::{Act, Motion, Parse, parse};
 use crate::editor::{Editor, Text};
 use crate::syntax::Syntax;
+use crate::ui::anim::Glider;
 use crate::window::{MIN_COLS, MIN_ROWS, Win};
 
 // narrower than this and the preview goes underneath
@@ -21,6 +22,7 @@ pub(crate) struct Preview {
     seen: Cell<Option<(u64, usize)>>,
     size: Cell<Option<(usize, usize)>>,
     render: RefCell<Render>,
+    pub glide: Glider,
 }
 
 impl Preview {
@@ -33,6 +35,7 @@ impl Preview {
             seen: Cell::new(None),
             size: Cell::new(None),
             render: RefCell::default(),
+            glide: Glider::default(),
         }
     }
 }
@@ -62,6 +65,7 @@ impl Render {
             let text = src[a..b].join("\n");
             let out = match old.remove(&text).or_else(|| self.done.get(&text).cloned()) {
                 Some(out) => out,
+                None => tinsel::markdown_in(&text, width).into_lines(),
             };
             if self.lines.last().is_some_and(|l| !l.is_empty()) {
                 self.lines.push(String::new());
