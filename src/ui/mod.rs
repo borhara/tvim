@@ -437,7 +437,7 @@ fn paint_intro(row: &[(char, f32)], shift: f32, bg: Rgb) -> String {
         .enumerate()
         .map(|(i, &(ch, a))| {
             let g = (i as f32 / n + shift).rem_euclid(2.0);
-            let color = tinsel::style::sample(&tinsel::style::RAMP, if g > 1.0 { 2.0 - g } else { g });
+            let color = tinsel::style::sample(tinsel::style::RAMP, if g > 1.0 { 2.0 - g } else { g });
             match color_mode() {
                 ColorMode::None if a < 0.5 => " ".to_string(),
                 _ => paint(mix(bg, color, a), ch.encode_utf8(&mut [0; 4])),
@@ -777,7 +777,7 @@ fn draw_welcome(frame: &mut Frame, area: Rect, c: &Colors) {
                 let r = Rect::new(*x, y, rows[i].len(), 1).intersect(area);
                 frame.print(r, 0, &paint_intro(&rows[i], shift, c.app));
             }
-            None => line(frame, y, tinsel::text::width(l), &tinsel::style::gradient(l, &tinsel::style::RAMP, shift)),
+            None => line(frame, y, tinsel::text::width(l), &tinsel::style::gradient(l, tinsel::style::RAMP, shift)),
         }
         y += 1;
     }
