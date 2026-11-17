@@ -43,7 +43,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         let welcome = e.is_blank_slate() && e.mode() == Mode::Normal;
         if !editor_focused && !welcome && e.options.dim {
             let faded = Rect::new(column.x, text.y, column.width, text.height);
-            frame.dim(faded);
+            frame.fade(faded);
             frame.tint(faded, c.app);
         }
     }
@@ -58,7 +58,7 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         };
         draw_explorer(e, x, frame, list, c, lit);
         if editor_focused && e.options.dim {
-            frame.dim_by(list, SIDE_DIM);
+            frame.fade_by(list, SIDE_DIM);
         }
     }
     if head {

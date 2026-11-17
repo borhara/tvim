@@ -30,7 +30,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
     }
     let t = frame.time();
     let open = e.anim.opening(m.opened(), t);
-    frame.dim_by(area, open);
+    frame.fade_by(area, open);
     let width = area.width.saturating_sub(6).clamp(24, 132);
     let height = area.height.saturating_sub(4).clamp(8, 34);
     let rise = ((1.0 - open) * 2.0).round() as usize;
@@ -44,7 +44,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         Rect::new(rect.x + 2, rect.y + rect.height, rect.width, 1),
         Rect::new(rect.x + rect.width, rect.y + 1, 2, rect.height),
     ] {
-        frame.dim_by(under.intersect(area), open);
+        frame.fade_by(under.intersect(area), open);
     }
     let changes = m.changes();
     let status = match m.tab() {
@@ -96,7 +96,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
     );
     hints(m, frame, Rect::new(inner.x, inner.y + inner.height - 1, inner.width, 1));
     if open < 1.0 {
-        frame.dim_by(rect, 1.0 - open);
+        frame.fade_by(rect, 1.0 - open);
     }
     at
 }
