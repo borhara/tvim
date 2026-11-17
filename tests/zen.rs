@@ -32,3 +32,21 @@ fn only_the_text_in_a_centred_column() {
         "no status, tabs or numbers: {shown}"
     );
 }
+
+#[test]
+fn leaving_puts_everything_back() {
+    let mut e = common::ed("hello\nworld");
+    let before = screen(&e, 100, 12);
+    e.ex("zen");
+    assert_ne!(screen(&e, 100, 12), before);
+    e.ex("zen");
+    assert!(!e.zen());
+    assert_eq!(screen(&e, 100, 12), before);
+}
+
+#[test]
+fn a_narrow_screen_uses_all_of_it() {
+    let mut e = common::ed("hello");
+    e.ex("zen");
+    assert_eq!(rows(&screen(&e, 40, 8))[0], "hello");
+}
