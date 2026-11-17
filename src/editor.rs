@@ -434,6 +434,7 @@ pub struct Editor {
     pub(crate) top: Cell<usize>,
     pub(crate) left: Cell<usize>,
     pub(crate) screen: Cell<(usize, usize)>,
+    pub(crate) anim: crate::ui::anim::Anim,
     zen: Option<bool>,
     effects: Vec<Effect>,
     quit: bool,
@@ -956,6 +957,7 @@ impl Editor {
         self.git.probe(self.file.path.as_deref());
         self.top.set(d.top);
         self.left.set(d.left);
+        self.anim.reset();
         self.changing = false;
         self.states = d.states;
         self.marks_cache = d.diffs;
