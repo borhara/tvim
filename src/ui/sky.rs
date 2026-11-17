@@ -76,7 +76,8 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         draw_top(e, frame, row, start, lit, c, !ruled);
         if roomy && !e.is_blank_slate() {
             let sky = Rect::new(start, area.y + 1, (column.x + column.width).saturating_sub(start + 2), 1);
-            super::sparkles(frame, sky, e.anim.clock() * 0.4, 0.15);
+            let clock = frame.ambient_time() * 0.4;
+            super::sparkles(frame, sky, clock, 0.15);
         }
     }
     let mut map = None;
@@ -189,6 +190,10 @@ fn draw_top(e: &Editor, frame: &mut Frame, row: Rect, start: usize, lit: Rgb, c:
     // frames from the running app always have a time; a still frame shows no clock
     let timed = frame.time() > 0.0;
     let right = corner(e, branch, (row.x + row.width).saturating_sub(start + own + 5), timed, c);
+    if timed {
+        // the clock turns over on the minute
+        frame.redraw_in(crate::time::to_next_minute());
+    }
     let right_width = tinsel::text::width(&right);
     if names.is_empty() {
         frame.print(Rect::new(start, row.y, 4, 1), 0, &bold(&paint(palette::MUTED, "tvim")));
@@ -318,7 +323,8 @@ fn constellation(e: &Editor, frame: &mut Frame, area: Rect, accent: Rgb, c: &Col
     } else {
         [palette::BERRY, palette::ROSE, palette::SHINE]
     };
-    let t = e.anim.clock();
+    frame.animate_at(super::TWINKLE_FPS);
+    let t = frame.ambient_time();
     for i in 0..n {
         let tw = twinkle(i, n, t);
         let star = |rest: Rgb, ramp: [Rgb; 3]| {

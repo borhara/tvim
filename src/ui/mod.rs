@@ -66,6 +66,9 @@ impl App for Tvim {
             app::redraw();
         }
         let hints = self.pending_since.is_some_and(|t| frame.time() - t >= HINT_DELAY);
+        if let Some(t) = self.pending_since.filter(|_| !hints) {
+            frame.redraw_at(t + HINT_DELAY);
+        }
         draw_with(&self.editor, frame, hints);
         let area = frame.area();
         if area.height > 4 {
@@ -84,10 +87,6 @@ impl App for Tvim {
                 self.editor.key(k);
             }
             Event::Paste(text) => self.editor.paste(text),
-            Event::Focus(on) => {
-                self.editor.anim.focus(*on);
-                return Flow::Continue;
-            }
             Event::Wake | Event::Tick => {
                 self.editor.tick();
                 return Flow::Continue;
@@ -102,16 +101,6 @@ impl App for Tvim {
             Flow::Quit
         } else {
             Flow::Continue
-        }
-    }
-
-    fn fps(&self) -> u32 {
-        let now = app::time();
-        // a toast slides and counts down, so it needs the fast rate too
-        if self.editor.anim.moving(now) || self.toasts.showing(now) {
-            60
-        } else {
-            15
         }
     }
 
@@ -554,6 +543,10 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         frame.set_cursor(x, y, shape);
         frame.set_cursor_color(mode_color(e.mode()));
     }
+    // anything gliding, fading or pulsing asked for time up to now
+    if e.anim.moving(frame.time()) {
+        frame.animate();
+    }
 }
 
 // the terminal draws a bar at a cell's left edge and guides sit mid-cell, so on a guide the
@@ -814,7 +807,7 @@ fn draw_thumb(frame: &mut Frame, bar: Rect, top: usize, lines: usize, color: Rgb
 
 fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
     if color_mode() != ColorMode::None {
-        sparkles(frame, area, e.anim.clock(), 0.012);
+        sparkles(frame, area, frame.ambient_time(), 0.012);
     }
     let menu = [
         ("i", "start writing"),
@@ -948,7 +941,6 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         e.anim.lens_gone();
     }
 
-    let clock = e.anim.clock();
     let mut sky_from = None;
     for i in 0..body.height {
         let row = top + i;
@@ -1079,6 +1071,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     }
     if let Some(y) = sky_from {
         let width = body.x + body.width - gutter.x;
+        let clock = frame.ambient_time();
         sparkles(frame, Rect::new(gutter.x, y, width, body.y + body.height - y), clock, 0.012);
     }
 }
@@ -1607,11 +1600,14 @@ fn symbol(line: &str) -> Option<(String, Rgb)> {
     None
 }
 
-// on tvim's clock so it rests while unfocused
+// the stars twinkle a few times a second, on the ambient clock, so they rest while unfocused
+const TWINKLE_FPS: u32 = 15;
+
 fn sparkles(frame: &mut Frame, area: Rect, clock: f64, density: f32) {
     if area.width == 0 || area.height == 0 {
         return;
     }
+    frame.animate_at(TWINKLE_FPS);
     let mut sky = Frame::new(area.width, area.height).at(clock);
     sky.render(sky.area(), Sparkles::new().density(density).wandering());
     for (i, line) in sky.snapshot().lines().iter().enumerate() {

@@ -24,8 +24,6 @@ pub(crate) struct Anim {
     text_x: Cell<usize>,
     busy_until: Cell<f64>,
     pub(crate) star: Glider,
-    // the moment the terminal lost focus, while it's away
-    paused: Cell<Option<f64>>,
     lens: RefCell<Option<(String, f64)>>,
 }
 
@@ -185,16 +183,6 @@ impl Anim {
 
     pub(crate) fn text_at(&self, x: usize) {
         self.text_x.set(x);
-    }
-
-    pub(crate) fn focus(&self, on: bool) {
-        self.paused.set((!on).then(tinsel::app::time));
-    }
-
-    // the clock ambient animations run on: it stands still while the terminal is in the background,
-    // so an unwatched tab sends nothing
-    pub(crate) fn clock(&self) -> f64 {
-        self.paused.get().unwrap_or_else(tinsel::app::time)
     }
 
     pub(crate) fn pace(&self, t: f64, until: f64) {

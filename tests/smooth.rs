@@ -19,7 +19,8 @@ fn still() -> Editor {
 
 fn frame_at(e: &Editor, t: f64, mode: ColorMode) -> Frame {
     tinsel::with_color_mode(mode, || {
-        let mut frame = Frame::new(80, 24).at(t);
+        // the stars held still: only what moves is under test here
+        let mut frame = Frame::new(80, 24).at(t).ambient_at(0.0);
         draw(e, &mut frame);
         frame
     })
@@ -145,4 +146,22 @@ fn far_jumps_light_up_too_but_not_near_ones() {
     assert!(glows("*"), "a search, even nearby");
     assert!(!glows("5G"));
     assert!(!glows("<C-d>"));
+}
+
+#[test]
+fn frames_are_asked_for_only_while_something_moves() {
+    let wants = |e: &Editor, t: f64| frame_at(e, t, ColorMode::TrueColor).wants_redraw();
+    let mut e = long();
+    e.keys(&parse("<space>z"));
+    assert!(e.zen(), "no stars to twinkle in zen");
+    wants(&e, 1.0);
+    assert!(!wants(&e, 5.0), "nothing moves, so nothing is drawn");
+    e.keys(&parse("G"));
+    assert!(wants(&e, 5.01), "gliding");
+    assert!(!wants(&e, 9.0), "landed");
+
+    // the sky's stars twinkle on
+    let e = long();
+    wants(&e, 1.0);
+    assert!(wants(&e, 5.0));
 }
