@@ -515,7 +515,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
             Rect::new(area.x, t.y, t.x - area.x, t.height),
             Rect::new(t.x + t.width, t.y, end.saturating_sub(t.x + t.width), t.height),
         ] {
-            frame.dim(r);
+            frame.fade(r);
         }
     }
     let mut typing_at = d.typing_at;
