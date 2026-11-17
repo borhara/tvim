@@ -3,6 +3,8 @@ use std::cell::{Cell, RefCell};
 use crate::editor::Editor;
 
 const FRAME: f32 = 1.0 / 60.0;
+const SLIDE: f32 = 0.18;
+pub(crate) const FADE: f32 = 0.15;
 // scrolls this small just snap, so holding j or k never lags
 const SNAP: f32 = 2.0;
 const LENS_WAIT: f32 = 0.35;
@@ -112,6 +114,32 @@ impl Anim {
         self.shown.get()
     }
 
+    pub(crate) fn zen(&self, zen: bool, t: f32) -> f32 {
+        let since = match self.zen.get() {
+            Some((was, at)) if was == zen => at,
+            Some(_) if t > 0.0 => {
+                self.slide.set(zen.then(|| Glide {
+                    from: self.text_x.get() as f32,
+                    to: 0.0,
+                    start: t - FRAME,
+                    length: SLIDE,
+                }));
+                self.pace(t, t + SLIDE.max(FADE));
+                t
+            }
+            _ => f32::NEG_INFINITY,
+        };
+        self.zen.set(Some((zen, since)));
+        if t > 0.0 { t - since } else { f32::INFINITY }
+    }
+
+    pub(crate) fn column_x(&self, x: usize, t: f32) -> usize {
+        match self.slide.get().filter(|g| t > 0.0 && t < g.end()) {
+            Some(g) => Glide { to: x as f32, ..g }.at(t).round().max(0.0) as usize,
+            None => x,
+        }
+    }
+
     pub(crate) fn lens(&self, key: &str, t: f32) -> f32 {
         if t <= 0.0 {
             return 1.0;
@@ -139,6 +167,10 @@ impl Anim {
         self.pace(t, at + OPEN);
         let p = ((t - at) / OPEN).clamp(0.0, 1.0);
         1.0 - (1.0 - p).powi(3)
+    }
+
+    pub(crate) fn text_at(&self, x: usize) {
+        self.text_x.set(x);
     }
 
     pub(crate) fn pace(&self, t: f32, until: f32) {

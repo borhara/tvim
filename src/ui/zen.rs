@@ -14,6 +14,12 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
     let head = usize::from(area.height >= 12);
     let width = (WIDTH + 1).min(area.width);
     let x = area.x + (area.width - width) / 2;
+    let text = Rect::new(
+        e.anim.column_x(x, frame.time()),
+        area.y + head,
+        width,
+        area.height.saturating_sub(head + foot),
+    );
     let body = if e.preview_focused() {
         preview_window(e, e.focus, frame, text, c, true)
     } else {

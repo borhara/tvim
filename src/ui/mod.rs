@@ -344,6 +344,18 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     } else {
         sky::draw(e, frame, &c)
     };
+    if !e.zen() && since_zen < anim::FADE {
+        let (t, end) = (d.text, area.x + area.width);
+        let below = t.y + t.height;
+        for r in [
+            Rect::new(area.x, area.y, area.width, t.y - area.y),
+            Rect::new(area.x, below, area.width, (area.y + area.height).saturating_sub(below)),
+            Rect::new(area.x, t.y, t.x - area.x, t.height),
+            Rect::new(t.x + t.width, t.y, end.saturating_sub(t.x + t.width), t.height),
+        ] {
+            frame.dim(r);
+        }
+    }
     let mut typing_at = d.typing_at;
     if e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30 {
     }
@@ -419,6 +431,7 @@ fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: boo
     e.scroll();
     e.anim.follow(e, frame.time());
     let (gutter, body) = split_gutter(area, e.gutter());
+    e.anim.text_at(body.x);
     if e.is_blank_slate() && e.mode() == Mode::Normal {
         draw_welcome(e, frame, area, c);
     } else {
