@@ -236,6 +236,39 @@ fn the_view_follows_the_cursor_down() {
 }
 
 #[test]
+fn the_terminal_cursor_sits_on_the_character() {
+    let mut e = ed("ab\tc");
+    assert_eq!(cursor(&e, 30, 6), Some((8, 1, CursorShape::Block)));
+    e.keys(&parse("ll"));
+    assert_eq!(
+        cursor(&e, 30, 6),
+        Some((11, 1, CursorShape::Block)),
+        "at the end of a tab"
+    );
+    e.keys(&parse("i"));
+    assert_eq!(
+        cursor(&e, 30, 6),
+        Some((10, 1, CursorShape::Bar)),
+        "typing goes before it"
+    );
+    e.keys(&parse("<Esc>R"));
+    assert_eq!(cursor(&e, 30, 6).unwrap().2, CursorShape::Underline);
+    e.keys(&parse("<Esc>/ab"));
+    assert_eq!(cursor(&e, 30, 6), Some((6, 5, CursorShape::Bar)), "on the search line");
+    e.ex("set nonu");
+    e.keys(&parse("<Esc><Esc>0"));
+    assert_eq!(cursor(&e, 30, 6), Some((1, 1, CursorShape::Block)));
+}
+
+#[test]
+fn wide_characters_take_two_columns() {
+    let mut e = ed("界界x");
+    e.ex("set nonu");
+    e.keys(&parse("ll"));
+    assert_eq!(cursor(&e, 30, 6).map(|c| c.0), Some(5), "one column in, then two each");
+}
+
+#[test]
 fn tiny_screens_dont_break() {
     for (w, h) in [(1, 1), (2, 2), (5, 3), (80, 1), (0, 0), (12, 4), (3, 5)] {
         for keys in ["jl", ":abc", "/x", "d", "Vj", "<Tab>", "<Tab>/x"] {
