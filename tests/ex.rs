@@ -64,6 +64,40 @@ fn deleting_yanking_and_shifting_ranges() {
 }
 
 #[test]
+fn options() {
+    let mut e = ed("a");
+    e.ex("set nonu rnu ts=8 sw=2 noet");
+    assert!(!e.options.number && e.options.relative_number && !e.options.expand_tab);
+    assert_eq!((e.options.tab_stop, e.options.shift_width), (8, 2));
+    e.ex("set nu!");
+    assert!(e.options.number);
+    e.ex("set invnu");
+    assert!(!e.options.number);
+    e.ex("set ts?");
+    assert_eq!(e.message().unwrap().text, "tabstop=8");
+    e.ex("set rnu?");
+    assert_eq!(e.message().unwrap().text, "relativenumber");
+    e.ex("set bogus");
+    assert_eq!(e.message().unwrap().text, "E518: Unknown option: bogus");
+    e.ex("set ts=x");
+    assert!(e.message().unwrap().text.starts_with("E521"));
+    e.ex("set ts=0");
+    assert!(e.message().unwrap().text.starts_with("E487"));
+    e.ex("set");
+    assert!(e.message().unwrap().text.contains("tabstop=8"));
+    assert!(e.message().unwrap().text.contains("roomy"), "roomy is on by default");
+    e.ex("set noro");
+    assert!(!e.options.roomy);
+    e.ex("set roomy?");
+    assert_eq!(e.message().unwrap().text, "noroomy");
+    let found = tvim::suggest::suggestions("set roo", &e.options, &[]);
+    assert!(
+        found.iter().any(|s| s.label == "roomy" && s.value == "off"),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn unknown_commands() {
     let mut e = ed("a");
     e.ex("frobnicate");
