@@ -231,3 +231,19 @@ fn read_at_line_zero_goes_above_the_first() {
     e.ex(&format!("0r {}", p.display()));
     assert_eq!(e.text(), "x\na\nb");
 }
+
+#[test]
+fn the_command_line_edits_like_vims() {
+    let mut e = common::ed("hello");
+    e.keys(&parse(":echo foo.bar<C-w>"));
+    assert_eq!(e.cmdline().text, "echo foo.");
+    e.keys(&parse("<C-w><Left><C-h>"));
+    assert_eq!((e.cmdline().text.as_str(), e.cmdline().cursor), ("echo fo", 6));
+    e.keys(&parse("<C-b><Del><End>!<C-u>x"));
+    assert_eq!(e.cmdline().text, "x");
+    // tinsel's line keys that mean something else to vim do nothing here
+    e.keys(&parse("<C-a><C-k>"));
+    assert_eq!((e.cmdline().text.as_str(), e.cmdline().cursor), ("x", 1));
+    e.keys(&parse("<BS><BS>"));
+    assert_eq!(e.mode(), tvim::Mode::Normal, "backspace on nothing leaves");
+}

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use tinsel::app::Key;
+use tinsel::app::{Key, TextInput};
 
 use crate::blame::Blamer;
 use crate::buffer::{Buffer, Pos};
@@ -3436,60 +3436,43 @@ impl Editor {
         if !matches!(key, Key::Tab | Key::BackTab) {
             self.cmd.completing = None;
         }
-        let at = crate::text::byte_at(&self.cmd.text, self.cmd.cursor);
-        match key {
+        let edit = match key {
             Key::Esc | Key::Ctrl('c') => {
                 self.cancel_cmdline();
                 return;
             }
             Key::Enter | Key::Ctrl('j') => return self.finish_cmdline(),
-            Key::Char(c) => {
-                self.cmd.text.insert(at, c);
-                self.cmd.cursor += 1;
-            }
             Key::Tab if self.mode == Mode::Command => return self.complete(false),
             Key::BackTab if self.mode == Mode::Command => return self.complete(true),
-            Key::Backspace | Key::Ctrl('h') => {
-                if self.cmd.text.is_empty() {
-                    self.cancel_cmdline();
-                    return;
-                }
-                if self.cmd.cursor > 0 {
-                    let from = crate::text::byte_at(&self.cmd.text, self.cmd.cursor - 1);
-                    self.cmd.text.replace_range(from..at, "");
-                    self.cmd.cursor -= 1;
-                }
+            Key::Backspace | Key::Ctrl('h') if self.cmd.text.is_empty() => {
+                self.cancel_cmdline();
+                return;
             }
-            Key::Delete => {
-                if self.cmd.cursor < char_count(&self.cmd.text) {
-                    let to = crate::text::byte_at(&self.cmd.text, self.cmd.cursor + 1);
-                    self.cmd.text.replace_range(at..to, "");
-                }
+            Key::Up | Key::Down => {
+                self.browse_history(key == Key::Up);
+                None
             }
-            Key::Ctrl('w') => {
-                let chars: Vec<char> = self.cmd.text.chars().collect();
-                let mut i = self.cmd.cursor;
-                while i > 0 && chars[i - 1] == ' ' {
-                    i -= 1;
-                }
-                let word = i > 0 && is_word(chars[i - 1]);
-                while i > 0 && chars[i - 1] != ' ' && is_word(chars[i - 1]) == word {
-                    i -= 1;
-                }
-                let from = crate::text::byte_at(&self.cmd.text, i);
-                self.cmd.text.replace_range(from..at, "");
-                self.cmd.cursor = i;
-            }
-            Key::Ctrl('u') => {
-                self.cmd.text.replace_range(..at, "");
-                self.cmd.cursor = 0;
-            }
-            Key::Left => self.cmd.cursor = self.cmd.cursor.saturating_sub(1),
-            Key::Right => self.cmd.cursor = (self.cmd.cursor + 1).min(char_count(&self.cmd.text)),
-            Key::Home | Key::Ctrl('b') => self.cmd.cursor = 0,
-            Key::End | Key::Ctrl('e') => self.cmd.cursor = char_count(&self.cmd.text),
-            Key::Up | Key::Down => self.browse_history(key == Key::Up),
-            _ => {}
+            Key::Ctrl('h') => Some(Key::Backspace),
+            Key::Ctrl('b') => Some(Key::Home),
+            // vim's keys for the line; tinsel's others (Ctrl-A, Ctrl-K) mean something else here
+            Key::Char(_)
+            | Key::Backspace
+            | Key::Delete
+            | Key::Ctrl('w' | 'u' | 'e')
+            | Key::Left
+            | Key::Right
+            | Key::Home
+            | Key::End => Some(key),
+            _ => None,
+        };
+        if let Some(key) = edit {
+            let mut line = TextInput::new().word(is_word);
+            line.focus(true);
+            line.set_value(&self.cmd.text);
+            line.set_cursor(self.cmd.cursor);
+            line.edit(&tinsel::app::Event::Key(key));
+            self.cmd.text = line.value();
+            self.cmd.cursor = line.cursor();
         }
         self.preview_search();
     }
