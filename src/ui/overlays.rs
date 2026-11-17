@@ -7,13 +7,6 @@ use crate::finder::Finder;
 use crate::grep::Grep;
 use crate::syntax::{self, State, Syntax};
 
-pub(super) fn float(frame: &mut Frame, rect: Rect, panel: Panel, c: &Colors) -> Rect {
-    let inner = panel.inner(rect);
-    frame.render(rect, panel);
-    frame.tint(rect, c.bar);
-    inner
-}
-
 pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
     let cmd = e.cmdline();
     let (suggestions, picked) = e.cmd_suggestions();
@@ -29,8 +22,10 @@ pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> 
     );
     let panel = Panel::new("command")
         .footer("tab complete · ↑↓ history · esc close")
-        .focused(true);
-    let inner = float(frame, rect, panel, c);
+        .focused(true)
+        .background(c.bar);
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
 
     let label = format!("{} ", paint(palette::ROSE, ":"));
     let at = input(frame, Rect::new(inner.x, inner.y, inner.width, 1), &label, &cmd.text, cmd.cursor, None);
@@ -114,11 +109,13 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
         .saturating_sub(tinsel::text::width(shown) + 4)
         .clamp(area.x, area.x + area.width - width);
     let y = if room == below { cy + 1 } else { cy - height };
-    let mut panel = Panel::new("").focused(true);
+    let mut panel = Panel::new("").focused(true).background(c.bar);
     if words.len() > rows {
         panel = panel.footer(format!("{}/{}", picked.map_or(0, |i| i + 1), words.len()));
     }
-    let inner = float(frame, Rect::new(x, y, width, height), panel, c);
+    let rect = Rect::new(x, y, width, height);
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
     let first = picked.map_or(0, |p| (p + 1).saturating_sub(rows));
     for (i, w) in words.iter().enumerate().skip(first).take(rows) {
         let line = Rect::new(inner.x, inner.y + i - first, inner.width, 1);
@@ -164,8 +161,12 @@ fn picker(
         width,
         height,
     );
-    let panel = panel.footer("↑↓ choose · enter open · esc close").focused(true);
-    let inner = float(frame, rect, panel, c);
+    let panel = panel
+        .footer("↑↓ choose · enter open · esc close")
+        .focused(true)
+        .background(c.bar);
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
 
     frame.print(inner, 0, &format!("{} {}", paint(palette::ROSE, "›"), query));
     let at = (inner.x + 2 + tinsel::text::width(query)).min(inner.x + inner.width.saturating_sub(1));
