@@ -761,6 +761,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let lit = mix(accent, palette::BLUSH, 0.3);
     let lens = if active && focused { e.lens() } else { None };
     if active && focused && lens.is_none() {
+        e.anim.lens_gone();
     }
 
     let clock = e.anim.clock();

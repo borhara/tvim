@@ -5,6 +5,8 @@ use crate::editor::Editor;
 const FRAME: f32 = 1.0 / 60.0;
 // scrolls this small just snap, so holding j or k never lags
 const SNAP: f32 = 2.0;
+const LENS_WAIT: f32 = 0.35;
+const LENS_FADE: f32 = 0.25;
 
 pub(crate) struct Anim {
     scroll: Glider,
@@ -107,6 +109,26 @@ impl Anim {
 
     pub(crate) fn shown(&self) -> usize {
         self.shown.get()
+    }
+
+    pub(crate) fn lens(&self, key: &str, t: f32) -> f32 {
+        if t <= 0.0 {
+            return 1.0;
+        }
+        let mut seen = self.lens.borrow_mut();
+        let since = match seen.as_ref() {
+            Some((k, at)) if k == key => *at,
+            _ => {
+                *seen = Some((key.to_string(), t));
+                t
+            }
+        };
+        self.pace(t, since + LENS_WAIT + LENS_FADE);
+        ((t - since - LENS_WAIT) / LENS_FADE).clamp(0.0, 1.0)
+    }
+
+    pub(crate) fn lens_gone(&self) {
+        self.lens.replace(None);
     }
 
     pub(crate) fn pace(&self, t: f32, until: f32) {
