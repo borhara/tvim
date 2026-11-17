@@ -475,3 +475,119 @@ const WINDOW: &[(&str, &str)] = &[
     ("+ -", "taller, shorter"),
     ("< >", "narrower, wider"),
 ];
+
+pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
+    let owned = |list: &[(&str, &str)]| {
+        list.iter()
+            .map(|(k, d)| (k.to_string(), d.to_string()))
+            .collect::<Vec<_>>()
+    };
+    let keys = e.pending();
+    let mut rest = keys;
+    if rest.first() == Some(&tinsel::app::Key::Char('"')) {
+        if rest.len() == 1 {
+            let mut regs = Vec::new();
+            for name in "\"0123456789-abcdefghijklmnopqrstuvwxyz".chars() {
+                if let Some(r) = e.register(name) {
+                    let text: String = r.text.replace('\n', "⏎").chars().take(28).collect();
+                    regs.push((format!("\"{name}"), text));
+                }
+            }
+            regs.push(("\"+".into(), "the system clipboard".into()));
+            regs.push(("\"_".into(), "nowhere: throw it away".into()));
+            return Some(("registers".into(), regs));
+        }
+        rest = &rest[2.min(rest.len())..];
+    }
+    if rest.contains(&tinsel::app::Key::Ctrl('w')) {
+        return Some(("window".into(), owned(WINDOW)));
+    }
+    let rest: Vec<char> = rest
+        .iter()
+        .filter_map(|k| match k {
+            tinsel::app::Key::Char(c) => Some(*c),
+            _ => None,
+        })
+        .skip_while(|c| c.is_ascii_digit() && *c != '0')
+        .filter(|c| !c.is_ascii_digit())
+        .collect();
+    let op_name = |op: &str| match op {
+        "d" => "delete",
+        "c" => "change",
+        "y" => "copy",
+        ">" => "indent",
+        "<" => "outdent",
+        "gu" => "lowercase",
+        "gU" => "uppercase",
+        "g~" => "swap case",
+        "gc" => "comment",
+        _ => "",
+    };
+    let s: String = rest.iter().collect();
+    let visual = e.mode().is_visual();
+    Some(match s.as_str() {
+        "" => return None,
+        " " => (
+            "space".into(),
+            owned(&[
+                ("f", "find a file"),
+                ("r", "recent files"),
+                ("g /", "search in files"),
+                ("b", "open files"),
+                ("h r", "undo this change hunk"),
+                ("G", "git"),
+                ("z", "zen"),
+                ("m", "markdown preview"),
+            ]),
+        ),
+        " h" => ("hunk".into(), owned(&[("r", "back to HEAD, or the last save")])),
+        "]" => ("]".into(), owned(&[("c", "the next change")])),
+        "[" => ("[".into(), owned(&[("c", "the previous change")])),
+        "g" => ("g".into(), owned(G)),
+        "z" => ("z".into(), owned(Z)),
+        "Z" => (
+            "Z".into(),
+            owned(&[("ZZ", "save and quit"), ("ZQ", "quit, dropping changes")]),
+        ),
+        "f" | "F" | "t" | "T" => (s.clone(), owned(&[("any key", "the character to go to")])),
+        "r" => ("r".into(), owned(&[("any key", "the character to put there")])),
+        "m" => ("m".into(), owned(&[("a-z", "a name for this place")])),
+        "q" => ("q".into(), owned(&[("a-z", "the register to record into")])),
+        "@" => ("@".into(), {
+            let mut v: Vec<(String, String)> = ('a'..='z')
+                .filter_map(|c| {
+                    e.register(c)
+                        .map(|r| (format!("@{c}"), r.text.chars().take(28).collect()))
+                })
+                .collect();
+            v.push(("@@".into(), "the last one again".into()));
+            v.push(("@:".into(), "the last command again".into()));
+            v
+        }),
+        "'" | "`" => (
+            s.clone(),
+            owned(&[
+                ("a-z", "a place you marked"),
+                ("' `", "where you jumped from"),
+                ("< >", "the last selection"),
+            ]),
+        ),
+        "i" | "a" if visual => (s.clone(), owned(OBJECTS)),
+        op if !op_name(op).is_empty() && !visual => {
+            let doubled = format!("{}{}", op, op.chars().last().unwrap_or(' '));
+            let mut v = vec![(doubled, "the whole line".to_string())];
+            v.extend(owned(MOTIONS));
+            v.push(("i a".into(), "inside, around".into()));
+            (format!("{} …", op_name(op)), v)
+        }
+        _ => {
+            let (op, obj) = s.split_at(s.char_indices().last().map_or(0, |(i, _)| i));
+            if (obj == "i" || obj == "a") && !op_name(op).is_empty() {
+                let which = if obj == "i" { "inside" } else { "around" };
+                (format!("{} {which} …", op_name(op)), owned(OBJECTS))
+            } else {
+                return None;
+            }
+        }
+    })
+}
