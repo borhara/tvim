@@ -2,7 +2,7 @@ mod common;
 use tinsel::app::Frame;
 use tvim::Editor;
 use tvim::keys::parse;
-use tvim::ui::draw;
+use tvim::ui::{Tvim, draw};
 
 fn screen(e: &Editor, width: usize, height: usize) -> String {
     tinsel::with_color_mode(tinsel::ColorMode::None, || {
@@ -84,4 +84,17 @@ fn messages_stay_quiet() {
     e.keys(&parse("/hel"));
     let shown = screen(&e, 100, 12);
     assert_eq!(rows(&shown)[11].trim(), "/ hel", "the search is typed at the bottom");
+}
+
+#[test]
+fn it_is_in_the_palette_and_the_space_hints() {
+    let mut e = common::ed("hello");
+    e.keys(&parse(":ze"));
+    let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&Tvim::new(e), 80, 20).plain()
+    });
+    assert!(shown.contains("zen"), "{shown}");
+    let mut e = common::ed("hello");
+    e.keys(&parse("<space>"));
+    assert!(screen(&e, 80, 20).contains("zen"));
 }
