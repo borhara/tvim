@@ -3573,6 +3573,7 @@ impl Editor {
             return (list.clone(), Some(*at));
         }
         let names: Vec<String> = self.buffers().into_iter().map(|b| b.name).collect();
+        (crate::suggest::suggestions(&self.cmd.text, &self.options, &names), None)
     }
 
     fn complete(&mut self, back: bool) {

@@ -81,3 +81,57 @@ fn option_value(name: &str, o: &Options) -> String {
         _ => o.flag(name).map_or_else(String::new, |on| if on { "on" } else { "off" }.to_string()),
     }
 }
+
+pub fn suggestions(text: &str, options: &Options, buffers: &[String]) -> Vec<Suggestion> {
+    let Some((cmd, arg)) = text.split_once(' ') else {
+        if text
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit() || "%.$'".contains(c))
+        {
+            return Vec::new();
+        }
+        return COMMANDS
+            .iter()
+            .filter(|(name, short, _)| name.starts_with(text) || !short.is_empty() && short.starts_with(text))
+            .map(|(name, _, desc)| Suggestion {
+                label: name.to_string(),
+                replace: name.to_string(),
+                desc: desc.to_string(),
+                value: String::new(),
+            })
+            .collect();
+    };
+    let word = arg.rsplit(' ').next().unwrap_or("");
+    let head = &text[..text.len() - word.len()];
+    match cmd {
+        "set" | "se" => {
+            let (no, stem) = match word.strip_prefix("no") {
+                Some(rest) if !OPTIONS.iter().any(|(n, _, _)| n.starts_with(word)) => ("no", rest),
+                _ => ("", word),
+            };
+            OPTIONS
+                .iter()
+                .filter(|(name, eq, _)| name.starts_with(stem) && (no.is_empty() || eq.is_empty()))
+                .map(|(name, eq, desc)| Suggestion {
+                    label: format!("{no}{name}"),
+                    replace: format!("{head}{no}{name}{eq}"),
+                    desc: desc.to_string(),
+                    value: option_value(name, options),
+                })
+                .collect()
+        }
+        "b" | "buffer" => buffers
+            .iter()
+            .filter(|b| b.contains(word))
+            .map(|b| Suggestion {
+                label: b.clone(),
+                replace: format!("{head}{b}"),
+                desc: "open".into(),
+                value: String::new(),
+            })
+            .collect(),
+        "e" | "edit" | "r" | "read" | "w" | "write" | "Ex" | "Explore" | "Lex" => files(head, word),
+        _ => Vec::new(),
+    }
+}
