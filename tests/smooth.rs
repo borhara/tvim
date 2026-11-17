@@ -10,6 +10,13 @@ fn long() -> Editor {
     common::ed(&text.join("\n"))
 }
 
+// the twinkling row under the top line would differ between any two moments
+fn still() -> Editor {
+    let mut e = long();
+    e.ex("set noroomy");
+    e
+}
+
 fn frame_at(e: &Editor, t: f32, mode: ColorMode) -> Frame {
     tinsel::with_color_mode(mode, || {
         let mut frame = Frame::new(80, 24).at(t);
@@ -70,4 +77,25 @@ fn snapshots_show_where_it_ends_up() {
     first_line(&e, 0.0);
     e.keys(&parse("G"));
     assert_eq!(first_line(&e, 0.0), e.top() + 1);
+}
+
+#[test]
+fn a_search_lights_up_the_line_it_lands_on() {
+    let mut e = still();
+    frame_at(&e, 1.0, ColorMode::TrueColor);
+    e.keys(&parse("/line 150<CR>"));
+    let html = |t| frame_at(&e, t, ColorMode::TrueColor).html();
+    assert_ne!(html(1.45), glowing, "it fades");
+
+    let mut e = still();
+    frame_at(&e, 1.0, ColorMode::TrueColor);
+    e.keys(&parse("jj"));
+    // the text only: the star line's star glides even for a small move
+    let html = |t| {
+        let h = frame_at(&e, t, ColorMode::TrueColor).html();
+        let pre = &h[..h.find("</pre>").unwrap()];
+        let pre = &pre[..pre.rfind('\n').unwrap()];
+        pre[..pre.rfind('\n').unwrap()].to_string()
+    };
+    assert_eq!(html(1.01), html(3.0), "nothing for a small move");
 }
