@@ -858,6 +858,10 @@ impl Editor {
         self.input(Input::Key(key));
     }
 
+    pub fn paste(&mut self, text: &str) {
+        self.input(Input::Paste(text.to_string()));
+    }
+
     fn input(&mut self, input: Input) {
         if self.git_menu.is_some() {
             return self.git_menu_input(input);
@@ -1537,6 +1541,7 @@ impl Editor {
             Input::Paste(text) => {
                 self.pending.clear();
                 if !self.mode.is_visual() {
+                    self.paste_normal(&text);
                 }
                 return;
             }
@@ -2505,6 +2510,15 @@ impl Editor {
         let end = self.buf.insert(at, &text);
         self.cursor = at;
         end
+    }
+
+    fn paste_normal(&mut self, text: &str) {
+        self.touch();
+        let len = self.buf.line_len(self.cursor.row);
+        let at = Pos::new(self.cursor.row, (self.cursor.col + 1).min(len));
+        let end = self.buf.insert(at, text);
+        self.cursor = Pos::new(end.row, end.col.saturating_sub(1));
+        self.end_change();
     }
 
     fn join(&mut self, row: usize, lines: usize, spaces: bool) {
