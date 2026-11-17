@@ -76,7 +76,13 @@ impl App for Tvim {
 
     fn event(&mut self, event: &Event) -> Flow {
         match event {
-            Event::Key(k) => self.editor.key(*k),
+            Event::Key(k) => {
+                let (esc, k) = crate::keys::as_vim(*k);
+                if let Some(esc) = esc {
+                    self.editor.key(esc);
+                }
+                self.editor.key(k);
+            }
             Event::Paste(text) => self.editor.paste(text),
             Event::Focus(on) => {
                 self.editor.anim.focus(*on);

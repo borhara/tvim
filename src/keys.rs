@@ -1,4 +1,4 @@
-use tinsel::app::Key;
+use tinsel::app::{Key, Mods, NamedKey};
 
 pub fn parse(spec: &str) -> Vec<Key> {
     let mut keys = Vec::new();
@@ -71,6 +71,17 @@ pub(crate) fn notation(k: Key) -> String {
     }
 }
 
+/// A key as vim takes it: alt and a key is esc then the key, as terminals have always sent
+/// it (so alt-j leaves insert mode and moves down), and any other modifier is let go.
+pub fn as_vim(key: Key) -> (Option<Key>, Key) {
+    match key {
+        Key::Alt(c) => (Some(Key::Esc), Key::Char(c)),
+        Key::Mod(Mods::ALT, k @ (NamedKey::Backspace | NamedKey::Enter | NamedKey::Tab)) => (Some(Key::Esc), k.into()),
+        Key::Mod(_, k) => (None, k.into()),
+        other => (None, other),
+    }
+}
+
 pub fn show(key: Key) -> String {
     match key {
         Key::Char(' ') => "␣".into(),
@@ -105,6 +116,15 @@ mod tests {
         );
         assert_eq!(parse("<C-ab>").len(), 6);
         assert_eq!(parse("é"), [Key::Char('é')]);
+    }
+
+    #[test]
+    fn alt_keys_reach_vim_as_esc_then_the_key() {
+        assert_eq!(as_vim(Key::Alt('j')), (Some(Key::Esc), Key::Char('j')));
+        assert_eq!(as_vim(Key::Mod(Mods::ALT, NamedKey::Backspace)), (Some(Key::Esc), Key::Backspace));
+        assert_eq!(as_vim(Key::Mod(Mods::CTRL, NamedKey::Left)), (None, Key::Left));
+        assert_eq!(as_vim(Key::Ctrl('r')), (None, Key::Ctrl('r')));
+        assert_eq!(as_vim(Key::BackTab), (None, Key::BackTab));
     }
 
     #[test]
