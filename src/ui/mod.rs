@@ -140,24 +140,6 @@ fn file_name(path: Option<&Path>, or: &str) -> String {
         .map_or_else(|| or.to_string(), |n| n.to_string_lossy().into_owned())
 }
 
-// keeps the end of a path, which is where the file's name is
-fn cut_left(s: &str, room: usize) -> String {
-    if tinsel::text::width(s) <= room {
-        return s.to_string();
-    }
-    let mut used = 1;
-    let start = s
-        .char_indices()
-        .rev()
-        .take_while(|(_, ch)| {
-            used += tinsel::text::char_width(*ch);
-            used <= room
-        })
-        .last()
-        .map_or(s.len(), |(i, _)| i);
-    format!("…{}", &s[start..])
-}
-
 fn plural(n: &str, what: &str) -> String {
     if n == "1" {
         format!("1 {what}")
@@ -1807,16 +1789,6 @@ mod tests {
         assert_eq!(saved("\"src/a.rs\" 3L, 20B written"), "saved a.rs · 3 lines · 20 bytes");
         assert_eq!(saved("\"x\" [New] 1L, 2B written"), "saved x · new · 1 line · 2 bytes");
         assert_eq!(saved("\"x\" 0L, 0B written"), "saved x · 0 lines · 0 bytes");
-    }
-
-    #[test]
-    fn long_paths_keep_their_end_in_columns() {
-        assert_eq!(cut_left("src/main.rs", 20), "src/main.rs");
-        assert_eq!(cut_left("src/main.rs", 8), "…main.rs");
-        assert_eq!(cut_left("文書/メモ.md", 8), "…メモ.md");
-        assert_eq!(cut_left("文書/メモ.md", 6), "…モ.md");
-        assert_eq!(cut_left("文書/メモ.md", 5), "….md");
-        assert_eq!(cut_left("abc", 0), "…");
     }
 
     #[test]

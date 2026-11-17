@@ -1,4 +1,4 @@
-use tinsel::text::char_width;
+use tinsel::text::char_width_at;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Class {
@@ -39,9 +39,9 @@ pub fn first_non_blank(s: &str) -> usize {
 
 pub fn cell_width(c: char, vcol: usize, tabstop: usize) -> usize {
     match c {
-        '\t' => tabstop - vcol % tabstop,
-        c if c.is_control() => 2,
-        c => char_width(c),
+        // shown as ^X
+        c if c.is_control() && c != '\t' => 2,
+        c => char_width_at(c, vcol, tabstop),
     }
 }
 
