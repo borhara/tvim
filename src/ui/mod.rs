@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::Path;
 
 use tinsel::anim::{Glide, Glider};
-use tinsel::app::{self, App, CursorShape, Event, Flow, Frame, Rect, Sparkles, Toasts};
+use tinsel::app::{self, App, CursorShape, Event, Flow, Frame, Rect, Scrollbar, Sparkles, Toasts};
 use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_on, palette, underline};
 
 use crate::buffer::Buffer;
@@ -472,16 +472,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         sky::draw(e, frame, &c)
     };
     if !e.zen() && since_zen < FADE {
-        let (t, end) = (d.text, area.x + area.width);
-        let below = t.y + t.height;
-        for r in [
-            Rect::new(area.x, area.y, area.width, t.y - area.y),
-            Rect::new(area.x, below, area.width, (area.y + area.height).saturating_sub(below)),
-            Rect::new(area.x, t.y, t.x - area.x, t.height),
-            Rect::new(t.x + t.width, t.y, end.saturating_sub(t.x + t.width), t.height),
-        ] {
-            frame.fade(r);
-        }
+        frame.fade_outside(d.text);
     }
     let mut typing_at = d.typing_at;
     if e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30 {
@@ -616,7 +607,7 @@ fn windows(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool,
         let scope = if lit && !preview { crumb_scope(e) } else { Vec::new() };
         window_title(&v, lit, frame, Rect::new(r.x, r.y, r.width, 1), accent, preview, &scope);
         if r.x + r.width < area.x + area.width {
-            vline(frame, r.x + r.width, r.y, r.height, &paint(palette::LINE, "│"));
+            frame.vline(r.x + r.width, r.y, r.height, palette::LINE);
         }
     }
     body
@@ -632,21 +623,10 @@ fn input(frame: &mut Frame, row: Rect, label: &str, text: &str, cursor: usize, i
     (row.x + at - skip, row.y)
 }
 
-fn vline(frame: &mut Frame, x: usize, y: usize, height: usize, glyph: &str) {
-    for y in y..y + height {
-        frame.print(Rect::new(x, y, 1, 1), 0, glyph);
-    }
-}
-
+// the gutter, then the text, short of the scrollbar's column
 fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
-    let gutter = Rect::new(area.x, area.y, gutter.min(area.width), area.height);
-    let body = Rect::new(
-        gutter.x + gutter.width,
-        area.y,
-        area.width.saturating_sub(gutter.width + 1),
-        area.height,
-    );
-    (gutter, body)
+    let (gutter, rest) = area.split_left(gutter);
+    (gutter, rest.split_right(1).1)
 }
 
 fn other_window(e: &Editor, v: &View, frame: &mut Frame, area: Rect, c: &Colors) {
@@ -677,13 +657,8 @@ fn preview_window(e: &Editor, id: usize, frame: &mut Frame, area: Rect, c: &Colo
     for (i, line) in lines.iter().skip(shown).take(body.height).enumerate() {
         frame.print(body, i, line);
     }
-    draw_thumb(
-        frame,
-        Rect::new(body.x + body.width, body.y, 1, body.height),
-        shown,
-        lines.len(),
-        thumb_color(e, focused, c),
-    );
+    let thumb = Scrollbar::new(shown, lines.len()).track(false).color(thumb_color(e, focused, c));
+    frame.render(Rect::new(body.x + body.width, body.y, 1, body.height), thumb);
     body
 }
 
@@ -739,7 +714,8 @@ fn draw_scrollbar(e: &Editor, v: &View, frame: &mut Frame, bar: Rect, c: &Colors
     if rows == 0 || lines <= rows {
         return;
     }
-    draw_thumb(frame, bar, v.top, lines, thumb_color(e, focused, c));
+    let thumb = Scrollbar::new(v.top, lines).track(false).color(thumb_color(e, focused, c));
+    frame.render(bar, thumb);
     if lines > 20_000 {
         return;
     }
@@ -756,18 +732,6 @@ fn draw_scrollbar(e: &Editor, v: &View, frame: &mut Frame, bar: Rect, c: &Colors
                 mark(row);
             }
         }
-    }
-}
-
-fn draw_thumb(frame: &mut Frame, bar: Rect, top: usize, lines: usize, color: Rgb) {
-    let rows = bar.height;
-    if rows == 0 || lines <= rows {
-        return;
-    }
-    let size = (rows * rows / lines).clamp(1, rows);
-    let start = (top * rows / lines).min(rows - size);
-    for i in start..start + size {
-        frame.print(Rect::new(bar.x, bar.y + i, 1, 1), 0, &paint(color, "▐"));
     }
 }
 
@@ -1124,8 +1088,7 @@ fn explorer_header(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect) {
     );
     frame.print(Rect::new(area.x + 2, area.y, span, 1), 0, &head);
     if let Some(info) = sky::branch_info(e).filter(|i| tinsel::text::width(i) <= span) {
-        let w = tinsel::text::width(&info);
-        frame.print(Rect::new(area.x + 2 + (span - w) / 2, area.y + 1, w, 1), 0, &info);
+        frame.print_center(Rect::new(area.x + 2, area.y + 1, span, 1), 0, &info);
     }
 }
 
