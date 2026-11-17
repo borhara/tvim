@@ -34,3 +34,27 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 
 There is no line wrapping and no block visual mode (`Ctrl-v`) yet.
 
+## Extras
+
+`Space` is the leader key. Pause after pressing it, or after `d`, `c`, `y`, `g`, `z`, `"`, `@` or `'`, and a strip along the bottom shows what can come next.
+
+| Keys | What it does |
+| --- | --- |
+| `Space f` or `Ctrl-p` | Find a file by name |
+| `Space r` | Files you opened recently |
+| `Space g` or `Space /` | Search every file in the project |
+| `Space b` | Open files |
+| `Space G` | Git menu |
+| `Space m` | Markdown preview |
+| `Space z` | Zen mode: just the text, centred |
+
+**Sidebar.** `tvim .`, `Tab` or `:Lex` opens a folder tree beside the text. Use `j`/`k` to move, `Enter` to open, and `l`/`h` to open and close folders. `-` goes up a folder, `.` shows hidden files, `/` filters, and `q` hides the sidebar.
+
+**Git.** The git menu lists staged, changed and untracked files with a diff beside them. `s` stages, `c` commits, `d` discards, `l` shows the log, `b` lists branches, and `p`/`P` pull and push. Lines you've changed since the last commit are marked in the gutter. The line under the cursor shows who last changed it and when, which `:set nogl` turns off.
+
+**Several files.** Open files are listed along the top. Switch with `gt`/`gT`, `:b name` or `:bn`/`:bp`, and close one with `:bd`. `:wa` saves them all.
+
+**Splits.** `Ctrl-w s` and `Ctrl-w v` (or `:sp` and `:vs`) split the window. `Ctrl-w` with `h`/`j`/`k`/`l` moves between windows and `Ctrl-w q` closes one.
+
+**Colours.** Syntax colouring covers Rust, Python, JavaScript and TypeScript, Go, C and C++, Java, shell, Lua, TOML, YAML, JSON and Markdown. tvim uses its own colour scheme rather than your terminal's, and switches to a light one on a light background.
+
