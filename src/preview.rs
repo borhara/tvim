@@ -65,7 +65,7 @@ impl Render {
             let text = src[a..b].join("\n");
             let out = match old.remove(&text).or_else(|| self.done.get(&text).cloned()) {
                 Some(out) => out,
-                None => tinsel::markdown_in(&text, width).into_lines(),
+                None => tinsel::markdown::wrapped(&text, width).into_lines(),
             };
             if self.lines.last().is_some_and(|l| !l.is_empty()) {
                 self.lines.push(String::new());
@@ -363,7 +363,7 @@ mod tests {
         tinsel::with_color_mode(ColorMode::None, || {
             let mut r = Render::default();
             r.build(&lines(src), 40);
-            assert_eq!(r.lines, tinsel::markdown_in(src, 40).into_lines());
+            assert_eq!(r.lines, tinsel::markdown::wrapped(src, 40).into_lines());
         });
     }
 
