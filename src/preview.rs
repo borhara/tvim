@@ -7,8 +7,8 @@ use tinsel::app::Key;
 use crate::command::{Act, Motion, Parse, parse};
 use crate::editor::{Editor, Text};
 use crate::syntax::Syntax;
-use tinsel::anim::Glider;
 use crate::window::{MIN_COLS, MIN_ROWS, Win};
+use tinsel::anim::Glider;
 
 // narrower than this and the preview goes underneath
 const SIDE_BY_SIDE: usize = 80;

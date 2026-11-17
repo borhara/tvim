@@ -140,7 +140,11 @@ impl Editor {
         } else if is("edit", 1) {
             self.edit(non_empty(arg), force);
         } else if is("read", 1) {
-            let at = if zero { 0 } else { range.map_or(self.cursor.row, |r| r.1) + 1 };
+            let at = if zero {
+                0
+            } else {
+                range.map_or(self.cursor.row, |r| r.1) + 1
+            };
             self.read_file(arg, at);
         } else if name == "s" || is("substitute", 2) {
             self.substitute(
@@ -570,18 +574,7 @@ impl Editor {
 
 fn is_known(word: &str) -> bool {
     [
-        "set",
-        "se",
-        "shell",
-        "sh",
-        "stop",
-        "st",
-        "suspend",
-        "sus",
-        "sp",
-        "spl",
-        "spli",
-        "split",
+        "set", "se", "shell", "sh", "stop", "st", "suspend", "sus", "sp", "spl", "spli", "split",
     ]
     .contains(&word)
 }

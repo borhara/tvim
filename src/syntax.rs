@@ -45,7 +45,8 @@ pub enum Syntax {
 }
 
 pub(crate) fn extension(name: &str) -> String {
-    name.rsplit_once('.').map_or(String::new(), |(_, e)| e.to_ascii_lowercase())
+    name.rsplit_once('.')
+        .map_or(String::new(), |(_, e)| e.to_ascii_lowercase())
 }
 
 impl Syntax {

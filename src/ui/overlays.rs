@@ -28,7 +28,14 @@ pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> 
     frame.render(rect, panel);
 
     let label = format!("{} ", paint(palette::ROSE, ":"));
-    let at = input(frame, Rect::new(inner.x, inner.y, inner.width, 1), &label, &cmd.text, cmd.cursor, None);
+    let at = input(
+        frame,
+        Rect::new(inner.x, inner.y, inner.width, 1),
+        &label,
+        &cmd.text,
+        cmd.cursor,
+        None,
+    );
     let mut row = 1;
     if let Some(err) = &error {
         frame.print(inner, row, &paint(palette::RED, &format!("✕ {err}")));
@@ -194,7 +201,15 @@ pub(super) fn finder(f: &Finder, frame: &mut Frame, area: Rect, c: &Colors) -> O
         format!("{} of {}", f.match_count(), f.total())
     };
     let panel = Panel::new(f.title()).status(count);
-    let p = picker(frame, area, (120, 26), panel, f.query(), |w| (w >= 80).then(|| w * 2 / 5), c)?;
+    let p = picker(
+        frame,
+        area,
+        (120, 26),
+        panel,
+        f.query(),
+        |w| (w >= 80).then(|| w * 2 / 5),
+        c,
+    )?;
     let list = p.list;
     if f.match_count() == 0 {
         let note = if f.total() == 0 && f.is_recent() {
@@ -260,7 +275,10 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
     });
     let dir = dir.trim_end_matches('/');
     let home = std::env::var("HOME").ok().filter(|h| !h.is_empty());
-    let dir = match home.as_deref().and_then(|h| std::path::Path::new(dir).strip_prefix(h).ok()) {
+    let dir = match home
+        .as_deref()
+        .and_then(|h| std::path::Path::new(dir).strip_prefix(h).ok())
+    {
         Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
         Some(rel) => format!("~/{}", rel.display()),
         None => dir.to_string(),
@@ -280,7 +298,6 @@ fn recent_row(f: &Finder, i: usize, path: &str, hits: &[usize], frame: &mut Fram
     let at_x = row.x + row.width.saturating_sub(at.len() + 1);
     frame.print(Rect::new(at_x, row.y, at.len(), 1), 0, &paint(palette::MUTED, &at));
 }
-
 
 pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
     let hits = g.hits();

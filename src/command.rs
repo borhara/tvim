@@ -169,7 +169,9 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 
     if visual {
-        if let Some(p) = text_object(&keys[i..], |kind, inner| done(Act::Select { kind, inner }, i + 2, count1)) {
+        if let Some(p) = text_object(&keys[i..], |kind, inner| {
+            done(Act::Select { kind, inner }, i + 2, count1)
+        }) {
             return p;
         }
     }
@@ -252,7 +254,9 @@ pub fn is_register(c: char) -> bool {
 }
 
 fn text_object(keys: &[Key], make: impl FnOnce(char, bool) -> Parse) -> Option<Parse> {
-    let Some(Key::Char(c @ ('i' | 'a'))) = keys.first() else { return None };
+    let Some(Key::Char(c @ ('i' | 'a'))) = keys.first() else {
+        return None;
+    };
     Some(match keys.get(1) {
         None => Parse::More,
         Some(Key::Char(k)) if is_object(*k) => make(*k, *c == 'i'),

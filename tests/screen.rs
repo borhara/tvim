@@ -221,7 +221,10 @@ fn the_view_follows_the_cursor_down() {
     e.keys(&parse("30G"));
     let shown = screen(e, 40, 13);
     let r = rows(&shown);
-    assert!(!r[1].contains("line"), "roomy leaves a row of sky under the top line: {shown}");
+    assert!(
+        !r[1].contains("line"),
+        "roomy leaves a row of sky under the top line: {shown}"
+    );
     assert_eq!(
         r[9], "   33   line 33",
         "three lines below the cursor stay in view: {shown}"
@@ -368,14 +371,29 @@ fn colouring_follows_edits_and_undo() {
     let text = "fn a() {}\nlet s = \"x\";\n// c\nfn b() {}\nlet t = 1;\nfn c() {}\n";
     std::fs::write(&path, text).unwrap();
     let mut e = Editor::open(&path).unwrap();
-    let all = |e: &Editor| (0..e.text().lines().count()).map(|r| e.highlight(r).unwrap()).collect::<Vec<_>>();
+    let all = |e: &Editor| {
+        (0..e.text().lines().count())
+            .map(|r| e.highlight(r).unwrap())
+            .collect::<Vec<_>>()
+    };
     let fresh = |e: &Editor| {
         let p = common::temp("edits_fresh.rs");
         std::fs::write(&p, e.text()).unwrap();
         all(&Editor::open(&p).unwrap())
     };
     let before = all(&e);
-    for keys in ["3GO/*<Esc>", "5Gox */<Esc>", "u", "2Gf\"a\\<Esc>", "ggdd", "Gp", "u", "u", "u", "u"] {
+    for keys in [
+        "3GO/*<Esc>",
+        "5Gox */<Esc>",
+        "u",
+        "2Gf\"a\\<Esc>",
+        "ggdd",
+        "Gp",
+        "u",
+        "u",
+        "u",
+        "u",
+    ] {
         e.keys(&parse(keys));
         assert_eq!(all(&e), fresh(&e), "after {keys}");
     }

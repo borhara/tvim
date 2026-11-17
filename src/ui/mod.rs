@@ -388,7 +388,13 @@ fn intro(t: f64, area: Rect) -> Option<(usize, IntroRows)> {
     let fade = (p / 0.8).min(1.0);
     let solid = 1.0 - fade * fade * (3.0 - 2.0 * fade);
 
-    let room = |keep: bool| INTRO.iter().filter(|g| g.2 == keep).map(|g| width(g.0) + 1).sum::<usize>();
+    let room = |keep: bool| {
+        INTRO
+            .iter()
+            .filter(|g| g.2 == keep)
+            .map(|g| width(g.0) + 1)
+            .sum::<usize>()
+    };
     let fin = room(true) - 1;
     let squeezed = room(false) as f32 * (1.0 - p);
     // centred on where the logo will sit, so t only moves right and vim only left
@@ -657,7 +663,9 @@ fn preview_window(e: &Editor, id: usize, frame: &mut Frame, area: Rect, c: &Colo
     for (i, line) in lines.iter().skip(shown).take(body.height).enumerate() {
         frame.print(body, i, line);
     }
-    let thumb = Scrollbar::new(shown, lines.len()).track(false).color(thumb_color(e, focused, c));
+    let thumb = Scrollbar::new(shown, lines.len())
+        .track(false)
+        .color(thumb_color(e, focused, c));
     frame.render(Rect::new(body.x + body.width, body.y, 1, body.height), thumb);
     body
 }
@@ -714,13 +722,19 @@ fn draw_scrollbar(e: &Editor, v: &View, frame: &mut Frame, bar: Rect, c: &Colors
     if rows == 0 || lines <= rows {
         return;
     }
-    let thumb = Scrollbar::new(v.top, lines).track(false).color(thumb_color(e, focused, c));
+    let thumb = Scrollbar::new(v.top, lines)
+        .track(false)
+        .color(thumb_color(e, focused, c));
     frame.render(bar, thumb);
     if lines > 20_000 {
         return;
     }
     let mut mark = |row: usize| {
-        frame.print(Rect::new(bar.x, bar.y + row * rows / lines, 1, 1), 0, &paint(palette::AMBER, "▐"));
+        frame.print(
+            Rect::new(bar.x, bar.y + row * rows / lines, 1, 1),
+            0,
+            &paint(palette::AMBER, "▐"),
+        );
     };
     if std::ptr::eq(v.text.buf, e.buffer()) {
         for p in e.search_hits().iter().flat_map(|h| h.iter()) {
@@ -777,7 +791,12 @@ fn draw_welcome(frame: &mut Frame, area: Rect, c: &Colors) {
                 let r = Rect::new(*x, y, rows[i].len(), 1).intersect(area);
                 frame.print(r, 0, &paint_intro(&rows[i], shift, c.app));
             }
-            None => line(frame, y, tinsel::text::width(l), &tinsel::style::gradient(l, tinsel::style::RAMP, shift)),
+            None => line(
+                frame,
+                y,
+                tinsel::text::width(l),
+                &tinsel::style::gradient(l, tinsel::style::RAMP, shift),
+            ),
         }
         y += 1;
     }
@@ -1002,7 +1021,12 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     if let Some(y) = sky_from {
         let width = body.x + body.width - gutter.x;
         let clock = frame.ambient_time();
-        sparkles(frame, Rect::new(gutter.x, y, width, body.y + body.height - y), clock, 0.012);
+        sparkles(
+            frame,
+            Rect::new(gutter.x, y, width, body.y + body.height - y),
+            clock,
+            0.012,
+        );
     }
 }
 
@@ -1720,7 +1744,10 @@ mod tests {
             t += 0.01;
         }
         let (_, rows) = intro(INTRO_HOLD + INTRO_CLOSE * 0.5, area).unwrap();
-        assert!(rows[0].iter().any(|c| c.1 > 0.0 && c.1 < 1.0), "halfway, insel is half faded");
+        assert!(
+            rows[0].iter().any(|c| c.1 > 0.0 && c.1 < 1.0),
+            "halfway, insel is half faded"
+        );
 
         let (x, end) = at(INTRO_END - 0.0001).unwrap();
         assert_eq!(x, (80 - 17) / 2, "it lands where the logo is drawn");

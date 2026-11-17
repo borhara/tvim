@@ -69,7 +69,11 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("tabpreview", "", "tab moves into the markdown preview"),
     ("dim", "", "fade whichever of text and sidebar is not in use"),
     ("gitlens", "", "who last changed the cursor's line, and when"),
-    ("roomy", "", "a twinkling row under the top line and a blank one above the stars"),
+    (
+        "roomy",
+        "",
+        "a twinkling row under the top line and a blank one above the stars",
+    ),
     ("zeropad", "", "line numbers start with zeros, as in 01"),
 ];
 
@@ -78,7 +82,9 @@ fn option_value(name: &str, o: &Options) -> String {
         "tabstop" => o.tab_stop.to_string(),
         "shiftwidth" => o.shift_width.to_string(),
         "scrolloff" => o.scroll_off.to_string(),
-        _ => o.flag(name).map_or_else(String::new, |on| if on { "on" } else { "off" }.to_string()),
+        _ => o
+            .flag(name)
+            .map_or_else(String::new, |on| if on { "on" } else { "off" }.to_string()),
     }
 }
 
