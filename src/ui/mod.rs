@@ -1414,7 +1414,7 @@ fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
         return;
     }
     let mut sky = Frame::new(area.width, area.height).at(clock);
-    sky.render(sky.area(), Sparkles::new().density(density));
+    sky.render(sky.area(), Sparkles::new().density(density).wandering());
     for (i, line) in sky.snapshot().lines().iter().enumerate() {
         frame.print(Rect::new(area.x, area.y + i, area.width, 1), 0, line);
     }
