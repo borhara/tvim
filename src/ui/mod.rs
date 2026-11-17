@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::Path;
 
 use tinsel::app::{self, App, CursorShape, Event, Flow, Frame, Rect, Sparkles, Toasts};
-use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_bg, palette, underline};
+use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_on, palette, underline};
 
 use crate::buffer::Buffer;
 use crate::buffer::Pos;
@@ -275,7 +275,7 @@ fn paint_kind(kind: Kind, s: &str, c: &Colors) -> String {
         Escape => paint(palette::PETAL, s),
         Number | Constant => paint(palette::AMBER, s),
         Comment => italic(&paint(palette::MUTED, s)),
-        Todo => bold(&paint_bg(c.ink, palette::AMBER, s)),
+        Todo => bold(&paint_on(c.ink, palette::AMBER, s)),
         Macro => paint(palette::BLUSH, s),
         Attribute => paint(mix(LILAC, palette::MUTED, 0.45), s),
         Punct => paint(quiet, s),
@@ -862,7 +862,7 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
     line(frame, y, tagline.len(), &paint(palette::SOFT, tagline));
     y += 3;
     for (key, what) in menu {
-        let keys = paint_bg(
+        let keys = paint_on(
             palette::ROSE,
             mix(c.app, palette::ROSE, 0.16),
             &format!(" {key:<w$}", w = key_width - 1),
