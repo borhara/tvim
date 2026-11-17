@@ -379,6 +379,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
     let mut typing_at = d.typing_at;
     if e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30 {
+        typing_at = overlays::palette(e, frame, d.panes, &c);
     }
     if hints && !e.explorer_focused() {
     }
