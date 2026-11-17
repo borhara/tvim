@@ -3433,6 +3433,8 @@ impl Editor {
                 self.cmd.text.insert(at, c);
                 self.cmd.cursor += 1;
             }
+            Key::Tab if self.mode == Mode::Command => return self.complete(false),
+            Key::BackTab if self.mode == Mode::Command => return self.complete(true),
             Key::Backspace | Key::Ctrl('h') => {
                 if self.cmd.text.is_empty() {
                     self.cancel_cmdline();
@@ -3564,6 +3566,37 @@ impl Editor {
             }
         }
         self.clamp();
+    }
+
+    pub fn cmd_suggestions(&self) -> (Vec<crate::suggest::Suggestion>, Option<usize>) {
+        if let Some((list, at)) = &self.cmd.completing {
+            return (list.clone(), Some(*at));
+        }
+        let names: Vec<String> = self.buffers().into_iter().map(|b| b.name).collect();
+    }
+
+    fn complete(&mut self, back: bool) {
+        let (list, at) = match self.cmd.completing.take() {
+            Some((list, at)) => {
+                let n = list.len();
+                let at = if back { (at + n - 1) % n } else { (at + 1) % n };
+                (list, at)
+            }
+            None => {
+                let list = self.cmd_suggestions().0;
+                if list.is_empty() {
+                    return;
+                }
+                let at = if back { list.len() - 1 } else { 0 };
+                (list, at)
+            }
+        };
+        self.cmd.text = list[at].replace.clone();
+        self.cmd.cursor = char_count(&self.cmd.text);
+        // a folder: next Tab lists inside it
+        if list.len() > 1 && !list[at].replace.ends_with('/') {
+            self.cmd.completing = Some((list, at));
+        }
     }
 
     pub(crate) fn regex(&self, pat: &str) -> Result<Rc<Regex>, String> {
