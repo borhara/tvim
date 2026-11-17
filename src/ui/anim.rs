@@ -1,8 +1,25 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+
+use crate::editor::Editor;
 
 const FRAME: f32 = 1.0 / 60.0;
 // scrolls this small just snap, so holding j or k never lags
 const SNAP: f32 = 2.0;
+
+pub(crate) struct Anim {
+    scroll: Glider,
+    shown: Cell<usize>,
+    landed: Cell<bool>,
+    pulse: Cell<Option<(usize, f32)>>,
+    zen: Cell<Option<(bool, f32)>>,
+    slide: Cell<Option<Glide>>,
+    text_x: Cell<usize>,
+    busy_until: Cell<f32>,
+    pub(crate) star: Glider,
+    // the moment the terminal lost focus, while it's away
+    paused: Cell<Option<f32>>,
+    lens: RefCell<Option<(String, f32)>>,
+}
 
 #[derive(Default)]
 pub(crate) struct Glider {
@@ -58,5 +75,47 @@ impl Glide {
         let p = ((t - self.start) / self.length).clamp(0.0, 1.0);
         let eased = 1.0 - (1.0 - p).powi(3);
         self.from + (self.to - self.from) * eased
+    }
+}
+
+impl Anim {
+    pub(crate) fn reset(&self) {
+        self.scroll.reset();
+        self.pulse.set(None);
+    }
+
+    pub(crate) fn land(&self) {
+        self.landed.set(true);
+    }
+
+    pub(crate) fn follow(&self, e: &Editor, t: f32) -> usize {
+        let (top, rows) = (e.top(), e.text_rows());
+        let on = e.options.smooth && t > 0.0;
+        let shown = self.scroll.step(top, rows, on, t);
+        let end = self.scroll.end();
+        if self.landed.take() && on && !e.mode().is_visual() {
+            let start = end.unwrap_or(t);
+            self.pulse.set(Some((e.cursor().row, start)));
+        }
+        if !on {
+            self.pulse.set(None);
+        }
+        self.shown.set(shown);
+        self.pace(t, until);
+        shown
+    }
+
+    pub(crate) fn shown(&self) -> usize {
+        self.shown.get()
+    }
+
+    pub(crate) fn pace(&self, t: f32, until: f32) {
+        if until > t {
+            self.busy_until.set(self.busy_until.get().max(until + FRAME));
+        }
+    }
+
+    pub(crate) fn moving(&self, now: f32) -> bool {
+        now < self.busy_until.get()
     }
 }

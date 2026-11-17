@@ -334,6 +334,7 @@ impl Editor {
         self.want = w.want;
         self.top.set(w.top);
         self.left.set(w.left);
+        self.anim.reset();
         self.clamp();
         self.fit_screen();
     }
