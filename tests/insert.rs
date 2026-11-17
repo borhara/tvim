@@ -1,6 +1,6 @@
 mod common;
 use common::{after, ed, text_after as t};
-use tvim::keys::parse;
+use tvim::{Mode, keys::parse};
 
 #[test]
 fn ways_in() {
@@ -99,6 +99,19 @@ fn indenting_while_typing() {
     assert_eq!(t("a", "A<C-t><Esc>"), "    a");
     assert_eq!(t("        a", "A<C-d><Esc>"), "    a");
     assert_eq!(t("", "i<C-t>x<Esc>"), "    x");
+}
+
+#[test]
+fn pasting() {
+    let mut e = ed("ab");
+    e.keys(&parse("a"));
+    e.paste("x\n  y");
+    e.key(tinsel::app::Key::Esc);
+    assert_eq!(e.text(), "ax\n  yb", "pasted text keeps its own indent");
+    let mut e = ed("ab");
+    e.paste("z");
+    assert_eq!(e.text(), "azb", "a paste in normal mode goes after the cursor");
+    assert_eq!(e.mode(), Mode::Normal);
 }
 
 #[test]
