@@ -18,6 +18,14 @@ fn screen(e: Editor, width: usize, height: usize) -> String {
     })
 }
 
+fn screen_with_hints(e: &Editor, width: usize, height: usize) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        let mut frame = Frame::new(width, height);
+        draw(e, &mut frame);
+        frame.snapshot().plain()
+    })
+}
+
 fn rows(shown: &str) -> Vec<&str> {
     shown.lines().collect()
 }
@@ -146,6 +154,33 @@ fn searching_shows_how_many_matches() {
     let mut e = ed("abc");
     e.keys(&parse("/z"));
     assert!(screen(e, 40, 5).contains("no match"));
+}
+
+#[test]
+fn hints_for_what_comes_next() {
+    let mut e = ed("abc");
+    e.keys(&parse("d"));
+    let shown = screen_with_hints(&e, 60, 20);
+    assert!(shown.contains("delete …"), "{shown}");
+    assert!(shown.contains("dd     the whole line"), "{shown}");
+    e.keys(&parse("i"));
+    assert!(screen_with_hints(&e, 60, 20).contains("delete inside …"));
+    let mut e = ed("abc");
+    e.keys(&parse("yy\""));
+    let shown = screen_with_hints(&e, 60, 20);
+    assert!(shown.contains("registers") && shown.contains("\"\"  abc"), "{shown}");
+    let mut e = ed("abc");
+    e.keys(&parse("3"));
+    assert!(
+        !screen_with_hints(&e, 60, 20).contains('…'),
+        "a count alone has no hints"
+    );
+    let mut e = ed("abc");
+    e.keys(&parse("g"));
+    assert!(screen_with_hints(&e, 60, 20).contains("gv"));
+    let mut e = ed("abc");
+    e.keys(&parse("d"));
+    assert!(!screen(e, 60, 20).contains("delete …"), "not until there's a pause");
 }
 
 #[test]
