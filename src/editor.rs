@@ -1991,6 +1991,14 @@ impl Editor {
         }
     }
 
+    // searches always glow; other jumps only when they leave the screen
+    pub(crate) fn land(&self, search: bool) {
+        let top = self.top.get();
+        if search || !(top..top + self.text_rows()).contains(&self.cursor.row) {
+            self.anim.land();
+        }
+    }
+
     pub(crate) fn target(&mut self, m: Motion, count: Option<usize>, for_op: bool) -> Option<(Pos, Kind)> {
         use Kind::*;
         let n = count.unwrap_or(1);
