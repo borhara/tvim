@@ -12,6 +12,8 @@ const LENS_WAIT: f32 = 0.35;
 const LENS_FADE: f32 = 0.25;
 const OPEN: f32 = 0.2;
 
+// a frame at time 0 (tests, snapshots) always draws settled
+#[derive(Default)]
 pub(crate) struct Anim {
     scroll: Glider,
     shown: Cell<usize>,
