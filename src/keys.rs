@@ -1,74 +1,8 @@
 use tinsel::app::{Key, Mods, NamedKey};
 
+// keys in vim's notation, as tinsel reads them: dw<Esc> is d, w and esc
 pub fn parse(spec: &str) -> Vec<Key> {
-    let mut keys = Vec::new();
-    let mut rest = spec;
-    while let Some(c) = rest.chars().next() {
-        if c == '<' {
-            if let Some((key, used)) = rest.find('>').and_then(|end| Some((named(&rest[1..end])?, end + 1))) {
-                keys.push(key);
-                rest = &rest[used..];
-                continue;
-            }
-        }
-        keys.push(Key::Char(c));
-        rest = &rest[c.len_utf8()..];
-    }
-    keys
-}
-
-fn named(name: &str) -> Option<Key> {
-    let lower = name.to_ascii_lowercase();
-    Some(match lower.as_str() {
-        "esc" => Key::Esc,
-        "cr" | "enter" | "return" => Key::Enter,
-        "bs" | "backspace" => Key::Backspace,
-        "del" | "delete" => Key::Delete,
-        "tab" => Key::Tab,
-        "s-tab" => Key::BackTab,
-        "up" => Key::Up,
-        "down" => Key::Down,
-        "left" => Key::Left,
-        "right" => Key::Right,
-        "home" => Key::Home,
-        "end" => Key::End,
-        "pageup" => Key::PageUp,
-        "pagedown" => Key::PageDown,
-        "lt" => Key::Char('<'),
-        "space" => Key::Char(' '),
-        _ => {
-            let letter = lower.strip_prefix("c-")?;
-            let mut chars = letter.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) if c.is_ascii_lowercase() => Key::Ctrl(c),
-                _ => return None,
-            }
-        }
-    })
-}
-
-pub(crate) fn notation(k: Key) -> String {
-    match k {
-        Key::Char('<') => "<lt>".into(),
-        Key::Char(c) => c.to_string(),
-        Key::Ctrl(c) => format!("<C-{c}>"),
-        Key::Enter => "<CR>".into(),
-        Key::Esc => "<Esc>".into(),
-        Key::Tab => "<Tab>".into(),
-        Key::BackTab => "<S-Tab>".into(),
-        Key::Backspace => "<BS>".into(),
-        Key::Delete => "<Del>".into(),
-        Key::Up => "<Up>".into(),
-        Key::Down => "<Down>".into(),
-        Key::Left => "<Left>".into(),
-        Key::Right => "<Right>".into(),
-        Key::Home => "<Home>".into(),
-        Key::End => "<End>".into(),
-        Key::PageUp => "<PageUp>".into(),
-        Key::PageDown => "<PageDown>".into(),
-        Key::F(n) => format!("<F{n}>"),
-        other => format!("<{other:?}>"),
-    }
+    Key::parse_sequence(spec)
 }
 
 /// A key as vim takes it: alt and a key is esc then the key, as terminals have always sent

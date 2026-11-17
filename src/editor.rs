@@ -2692,7 +2692,7 @@ impl Editor {
             let text: String = keys
                 .iter()
                 .map(|i| match i {
-                    Input::Key(k) => crate::keys::notation(*k),
+                    Input::Key(k) => k.to_string(),
                     Input::Paste(t) => t.clone(),
                 })
                 .collect();
