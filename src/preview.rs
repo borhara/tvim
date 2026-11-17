@@ -342,3 +342,40 @@ impl Editor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lines(s: &str) -> Vec<String> {
+        s.lines().map(String::from).collect()
+    }
+
+    #[test]
+    fn blocks_split_at_blanks_and_headings_but_not_in_fences() {
+        let src = lines("# A\npara\nmore\n\n```\ncode\n\n# not\n```\n## B\n- x\n- y");
+        assert_eq!(blocks(&src), vec![(0, 1), (1, 3), (4, 9), (9, 10), (10, 12)]);
+    }
+
+    #[test]
+    fn rendering_by_block_matches_the_whole() {
+        let src = "# Title\nSome *text* here.\n\n- one\n- two\n\n1. a\n\n2. b\n\n```rust\nfn x() {}\n\n```\n> quote\n## Sub\nend";
+        tinsel::with_color_mode(ColorMode::None, || {
+            let mut r = Render::default();
+            r.build(&lines(src), 40);
+            assert_eq!(r.lines, tinsel::markdown_in(src, 40).into_lines());
+        });
+    }
+
+    #[test]
+    fn source_rows_map_into_their_block() {
+        let src = lines("# One\n\nalpha\n\n# Two\n\nbeta");
+        let mut r = Render::default();
+        r.build(&src, 40);
+        let at = |row| r.lines[r.line_for(row)].trim().to_string();
+        assert!(at(0).contains("One"));
+        assert!(at(2).contains("alpha"));
+        assert!(at(4).contains("Two"));
+        assert!(at(6).contains("beta"));
+    }
+}
