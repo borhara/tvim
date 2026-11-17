@@ -1488,6 +1488,15 @@ fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn written_messages_read_as_a_sentence() {
+        assert_eq!(saved("\"src/a.rs\" 3L, 20B written"), "saved a.rs · 3 lines · 20 bytes");
+        assert_eq!(saved("\"x\" [New] 1L, 2B written"), "saved x · new · 1 line · 2 bytes");
+        assert_eq!(saved("\"x\" 0L, 0B written"), "saved x · 0 lines · 0 bytes");
+    }
+
     #[test]
     fn long_paths_keep_their_end_in_columns() {
         assert_eq!(cut_left("src/main.rs", 20), "src/main.rs");
