@@ -87,6 +87,25 @@ fn messages_stay_quiet() {
 }
 
 #[test]
+fn the_column_slides_in() {
+    let mut e = common::ed("hello");
+    let column = |e: &Editor, t: f32| {
+        let mut frame = Frame::new(121, 16).at(t);
+        tinsel::with_color_mode(tinsel::ColorMode::None, || draw(e, &mut frame));
+        let shown = frame.snapshot().plain();
+        shown
+            .lines()
+            .find_map(|l| l.find("hello").map(|b| l[..b].chars().count()))
+            .unwrap()
+    };
+    let start = column(&e, 1.0);
+    e.ex("zen");
+    let mid = column(&e, 1.05);
+    assert!(mid > start && mid < 15, "{start} {mid}");
+    assert_eq!(column(&e, 2.0), 15);
+}
+
+#[test]
 fn it_is_in_the_palette_and_the_space_hints() {
     let mut e = common::ed("hello");
     e.keys(&parse(":ze"));
