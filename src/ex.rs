@@ -129,7 +129,9 @@ impl Editor {
         } else if is("recent", 3) {
             self.pick_recent();
         } else if is("zen", 3) {
+            self.toggle_zen();
         } else if is("Explore", 2) || is("explore", 3) {
+            self.leave_zen();
             let dir = match non_empty(arg) {
                 Some(d) => std::path::PathBuf::from(expand_home(d)),
                 None => self.file_dir(),
