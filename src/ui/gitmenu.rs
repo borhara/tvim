@@ -1,8 +1,7 @@
-use tinsel::app::{Frame, Panel, Rect};
+use tinsel::app::{Frame, Modal, Panel, Rect};
 use tinsel::{Rgb, Spinner, bold, italic, mix, paint, palette};
 
-use super::{Colors, LILAC, icon, input, overlays::float, vline};
-use crate::editor::Editor;
+use super::{Colors, LILAC, icon, input, vline};
 use crate::gitmenu::{GitMenu, Group, Tab, Typing};
 
 fn group_color(g: Group) -> Rgb {
@@ -25,7 +24,7 @@ fn letter_color(l: char) -> Rgb {
 
 const SPIN_FPS: u32 = 30;
 
-pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Option<(usize, usize)> {
+pub(super) fn draw(m: &GitMenu, frame: &mut Frame, c: &Colors) -> Option<(usize, usize)> {
     let area = frame.area();
     if !m.ready() || area.width < 24 || area.height < 8 {
         return None;
@@ -35,23 +34,14 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
     if m.working() {
         frame.animate_at(SPIN_FPS);
     }
-    let open = e.anim.opening(m.opened(), frame);
-    frame.fade_by(area, open);
     let width = area.width.saturating_sub(6).clamp(24, 132);
     let height = area.height.saturating_sub(4).clamp(8, 34);
-    let rise = ((1.0 - open) * 2.0).round() as usize;
     let rect = Rect::new(
         area.x + (area.width - width) / 2,
-        (area.y + (area.height - height) / 3 + rise).min(area.y + area.height - height),
+        area.y + (area.height - height) / 3,
         width,
         height,
     );
-    for under in [
-        Rect::new(rect.x + 2, rect.y + rect.height, rect.width, 1),
-        Rect::new(rect.x + rect.width, rect.y + 1, 2, rect.height),
-    ] {
-        frame.fade_by(under.intersect(area), open);
-    }
     let changes = m.changes();
     let status = match m.tab() {
         Tab::Files if changes.is_empty() => "clean".to_string(),
@@ -60,7 +50,12 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         Tab::Branches => "branches".to_string(),
     };
     let panel = Panel::new(m.repo_name()).status(status).focused(true);
-    let inner = float(frame, rect, panel, c);
+    let mut modal = Modal::new(panel).at(rect).background(c.bar);
+    // a snapshot, at time 0, shows it settled
+    if let Some(at) = m.opened().filter(|_| t > 0.0) {
+        modal = modal.opened(at);
+    }
+    let inner = frame.modal(&modal);
     if inner.height < 6 || inner.width < 20 {
         return None;
     }
@@ -101,9 +96,6 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         c,
     );
     hints(m, frame, Rect::new(inner.x, inner.y + inner.height - 1, inner.width, 1));
-    if open < 1.0 {
-        frame.fade_by(rect, 1.0 - open);
-    }
     at
 }
 

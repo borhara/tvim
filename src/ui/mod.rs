@@ -500,7 +500,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         typing_at = overlays::grep(g, frame, d.panes, &c);
     }
     if let Some(m) = e.git_menu() {
-        typing_at = gitmenu::draw(m, e, frame, &c);
+        typing_at = gitmenu::draw(m, frame, &c);
     }
 
     let typing = e.git_menu().is_some()
@@ -1576,7 +1576,6 @@ const FADE: f64 = 0.15;
 const SNAP: f64 = 2.0;
 const LENS_WAIT: f64 = 0.35;
 const LENS_FADE: f64 = 0.25;
-const OPEN: f64 = 0.2;
 
 // what moves on screen, on tinsel's glides; each asks the frame for more while it moves, and a
 // frame at time 0 (tests, snapshots) always draws settled
@@ -1711,16 +1710,6 @@ impl Anim {
 
     fn lens_gone(&self) {
         self.lens.replace(None);
-    }
-
-    fn opening(&self, opened: Option<f64>, frame: &mut Frame) -> f32 {
-        let t = frame.time();
-        let Some(at) = opened.filter(|_| t > 0.0) else {
-            return 1.0;
-        };
-        moving(frame, at + OPEN);
-        let p = ((t - at) / OPEN).clamp(0.0, 1.0) as f32;
-        1.0 - (1.0 - p).powi(3)
     }
 
     fn text_at(&self, x: usize) {
