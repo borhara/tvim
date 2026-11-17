@@ -87,6 +87,16 @@ impl App for Tvim {
         }
     }
 
+    fn fps(&self) -> u32 {
+        let now = app::time();
+        // a toast slides and counts down, so it needs the fast rate too
+        if self.editor.anim.moving(now) || self.toasts.showing(now) {
+            60
+        } else {
+            15
+        }
+    }
+
     fn title(&self) -> Option<String> {
         if let Some(x) = self.editor.explorer().filter(|_| self.editor.explorer_focused()) {
             return Some(format!("{} · tvim", display_path(x.root())));
