@@ -168,7 +168,10 @@ impl Editor {
             .unwrap_or(0);
         std::fs::create_dir_all(dir)?;
         write_whole(&dir.join("recent"), &format_places(&recent))?;
-        write_whole(&dir.join("session"), &format!("current {current_at}\n{}", format_places(&open)))?;
+        write_whole(
+            &dir.join("session"),
+            &format!("current {current_at}\n{}", format_places(&open)),
+        )?;
         self.recent = recent;
         Ok(())
     }

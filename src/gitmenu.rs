@@ -206,7 +206,9 @@ impl GitMenu {
     }
 
     pub fn typing(&self) -> Option<(Typing, String, usize)> {
-        self.typing.as_ref().map(|(t, input)| (*t, input.value(), input.cursor()))
+        self.typing
+            .as_ref()
+            .map(|(t, input)| (*t, input.value(), input.cursor()))
     }
 
     pub fn confirming(&self) -> Option<&Change> {
@@ -520,7 +522,10 @@ impl GitMenu {
         self.start("discarding", move |root| {
             // a rename goes back to its old name
             if let Some(from) = &c.from {
-                let _ = git(root, &["restore", "--source=HEAD", "--staged", "--worktree", "--", from]);
+                let _ = git(
+                    root,
+                    &["restore", "--source=HEAD", "--staged", "--worktree", "--", from],
+                );
             }
             let out = match c.group {
                 Group::Untracked => git(root, &["clean", "-f", "-q", "--", &c.path]),
@@ -905,7 +910,11 @@ fn read_start(path: &Path) -> Option<(String, bool)> {
     use std::io::Read;
     const CAP: usize = 1 << 20;
     let mut bytes = Vec::new();
-    std::fs::File::open(path).ok()?.take(CAP as u64 + 1).read_to_end(&mut bytes).ok()?;
+    std::fs::File::open(path)
+        .ok()?
+        .take(CAP as u64 + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
     let cut = bytes.len() > CAP;
     bytes.truncate(CAP);
     match String::from_utf8(bytes) {

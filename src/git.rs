@@ -258,7 +258,9 @@ fn trimmed(out: Vec<u8>) -> Option<String> {
 }
 
 fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
-    git(dir, args).filter(|(code, _)| *code == 0).and_then(|(_, out)| trimmed(out))
+    git(dir, args)
+        .filter(|(code, _)| *code == 0)
+        .and_then(|(_, out)| trimmed(out))
 }
 
 fn upstream(path: &Path) -> Option<(usize, usize)> {

@@ -167,7 +167,9 @@ impl Finder {
             }
             let text = match std::str::from_utf8(&bytes) {
                 Ok(text) => Some(text),
-                Err(e) => std::str::from_utf8(&bytes[..e.valid_up_to()]).ok().filter(|t| !t.is_empty()),
+                Err(e) => std::str::from_utf8(&bytes[..e.valid_up_to()])
+                    .ok()
+                    .filter(|t| !t.is_empty()),
             };
             let lines = match text {
                 Some(text) => text.lines().take(lines_cap).map(|l| l.replace('\r', "")).collect(),

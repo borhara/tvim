@@ -324,7 +324,8 @@ impl Explorer {
     }
 
     pub fn top(&self, rows: usize) -> usize {
-        self.top.set(self.top.get().min(self.rows.len().saturating_sub(rows.max(1))));
+        self.top
+            .set(self.top.get().min(self.rows.len().saturating_sub(rows.max(1))));
         follow(&self.top, self.selected, rows)
     }
 

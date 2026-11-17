@@ -351,9 +351,21 @@ fn the_open_files_are_a_constellation() {
         e.ex(&format!("e {}", dir.join(f).display()));
     }
     let top = rows(&screen(e, 100, 10))[0].clone();
-    assert!(top.starts_with("    ⋆ notes.md ─── ⋆ Cargo.toml ─── ✶ main.rs  "), "{top}");
-    assert!(top.ends_with("rust · 1 line"), "the current file's facts in the corner: {top}");
-    assert_eq!(rows(&screen(common::ed("x"), 60, 10))[0].trim_start().split("  ").next(), Some("✶ untitled"));
+    assert!(
+        top.starts_with("    ⋆ notes.md ─── ⋆ Cargo.toml ─── ✶ main.rs  "),
+        "{top}"
+    );
+    assert!(
+        top.ends_with("rust · 1 line"),
+        "the current file's facts in the corner: {top}"
+    );
+    assert_eq!(
+        rows(&screen(common::ed("x"), 60, 10))[0]
+            .trim_start()
+            .split("  ")
+            .next(),
+        Some("✶ untitled")
+    );
     assert_eq!(
         rows(&screen(Editor::new(), 60, 10))[0],
         "  tvim",

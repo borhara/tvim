@@ -78,7 +78,12 @@ pub(super) fn draw(e: &Editor, frame: &mut Frame, c: &Colors) -> Drawn {
         };
         draw_top(e, frame, row, start, lit, c, !ruled);
         if roomy && !e.is_blank_slate() {
-            let sky = Rect::new(start, area.y + 1, (column.x + column.width).saturating_sub(start + 2), 1);
+            let sky = Rect::new(
+                start,
+                area.y + 1,
+                (column.x + column.width).saturating_sub(start + 2),
+                1,
+            );
             let clock = frame.ambient_time() * 0.4;
             super::sparkles(frame, sky, clock, 0.15);
         }
@@ -132,7 +137,11 @@ fn corner(e: &Editor, branch: bool, room: usize, timed: bool, c: &Colors) -> Str
         let lines = e.buffer().len();
         facts.push(paint(
             palette::MUTED,
-            &format!("{} {}", tinsel::format::grouped(lines as u64), if lines == 1 { "line" } else { "lines" }),
+            &format!(
+                "{} {}",
+                tinsel::format::grouped(lines as u64),
+                if lines == 1 { "line" } else { "lines" }
+            ),
         ));
         // only the unusual line ending is worth a mention
         if e.file().crlf {
@@ -316,7 +325,10 @@ fn constellation(e: &Editor, frame: &mut Frame, area: Rect, accent: Rgb, c: &Col
         let tw = twinkle(i, n, t);
         let star = |rest: Rgb, ramp: [Rgb; 3]| {
             if tw >= 0.08 {
-                (["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)], tinsel::style::sample(&ramp, tw))
+                (
+                    ["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)],
+                    tinsel::style::sample(&ramp, tw),
+                )
             } else {
                 ("·", mix(rest, bar, 0.3))
             }
@@ -512,7 +524,14 @@ fn typing_line(e: &Editor, frame: &mut Frame, mid: Rect) -> (usize, usize) {
         }
     }
     let label = format!("{} ", paint(palette::ROSE, &cmd.prompt.to_string()));
-    input(frame, Rect::new(mid.x, mid.y, room, 1), &label, &cmd.text, cmd.cursor, None)
+    input(
+        frame,
+        Rect::new(mid.x, mid.y, room, 1),
+        &label,
+        &cmd.text,
+        cmd.cursor,
+        None,
+    )
 }
 
 fn path_line(e: &Editor, frame: &mut Frame, mid: Rect, c: &Colors) {

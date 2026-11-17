@@ -138,7 +138,11 @@ fn header(m: &GitMenu, frame: &mut Frame, row: Rect, t: f64) {
 }
 
 fn working(what: &str, t: f64) -> String {
-    format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::BLUSH, &format!("{what}…")))
+    format!(
+        "{} {}",
+        Spinner::Sparkle.frame(t),
+        paint(palette::BLUSH, &format!("{what}…"))
+    )
 }
 
 fn mark_row(frame: &mut Frame, row: Rect, c: &Colors) {

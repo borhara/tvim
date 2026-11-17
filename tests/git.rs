@@ -107,7 +107,11 @@ fn saving_picks_up_a_new_commit() {
     e.keys(&parse("Gox<Esc>"));
     e.ex("w");
     e.wait_for_git();
-    assert_eq!(e.change_marks().to_vec(), [None, None, Some(Added)], "still differs from HEAD");
+    assert_eq!(
+        e.change_marks().to_vec(),
+        [None, None, Some(Added)],
+        "still differs from HEAD"
+    );
     assert!(git(&dir, &["commit", "-q", "-am", "second"]));
     e.ex("w");
     e.wait_for_git();

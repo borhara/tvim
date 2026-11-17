@@ -55,7 +55,10 @@ mod tests {
     #[test]
     fn alt_keys_reach_vim_as_esc_then_the_key() {
         assert_eq!(as_vim(Key::Alt('j')), (Some(Key::Esc), Key::Char('j')));
-        assert_eq!(as_vim(Key::Mod(Mods::ALT, NamedKey::Backspace)), (Some(Key::Esc), Key::Backspace));
+        assert_eq!(
+            as_vim(Key::Mod(Mods::ALT, NamedKey::Backspace)),
+            (Some(Key::Esc), Key::Backspace)
+        );
         assert_eq!(as_vim(Key::Mod(Mods::CTRL, NamedKey::Left)), (None, Key::Left));
         assert_eq!(as_vim(Key::Ctrl('r')), (None, Key::Ctrl('r')));
         assert_eq!(as_vim(Key::BackTab), (None, Key::BackTab));

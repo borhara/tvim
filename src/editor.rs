@@ -322,11 +322,19 @@ impl Text<'_> {
         let mut cache = self.states.borrow_mut();
         let cache = &mut *cache;
         if cache.syntax != Some(syntax) {
-            *cache = States { syntax: Some(syntax), ..States::default() };
+            *cache = States {
+                syntax: Some(syntax),
+                ..States::default()
+            };
         }
         if cache.version != self.version {
             // a line's state only depends on the lines above it, so keep everything above the first change
-            let same = cache.hashes.iter().zip(self.buf.lines()).take_while(|(h, l)| **h == line_hash(l)).count();
+            let same = cache
+                .hashes
+                .iter()
+                .zip(self.buf.lines())
+                .take_while(|(h, l)| **h == line_hash(l))
+                .count();
             cache.hashes.truncate(same);
             cache.states.truncate(same + 1);
             cache.version = self.version;
@@ -349,14 +357,14 @@ impl Text<'_> {
             let lines = self.buf.lines();
             let (hunks, untracked) = self.git.with(|f| {
                 let hunks = match &f.base {
-                Base::Head(old) => diff::hunks(old, lines),
-                Base::Untracked if self.buf.is_empty() => Vec::new(),
-                Base::Untracked => vec![Hunk {
-                    old: 0..0,
-                    new: 0..lines.len(),
-                }],
-                Base::Outside if self.modified || self.saved_lines != lines => diff::hunks(self.saved_lines, lines),
-                Base::Outside => Vec::new(),
+                    Base::Head(old) => diff::hunks(old, lines),
+                    Base::Untracked if self.buf.is_empty() => Vec::new(),
+                    Base::Untracked => vec![Hunk {
+                        old: 0..0,
+                        new: 0..lines.len(),
+                    }],
+                    Base::Outside if self.modified || self.saved_lines != lines => diff::hunks(self.saved_lines, lines),
+                    Base::Outside => Vec::new(),
                 };
                 (hunks, matches!(f.base, Base::Untracked))
             });
@@ -1287,7 +1295,10 @@ impl Editor {
     }
 
     pub(crate) fn file_dir(&self) -> PathBuf {
-        self.file.path.as_deref().map_or_else(|| PathBuf::from("."), |p| dir_of(p).to_path_buf())
+        self.file
+            .path
+            .as_deref()
+            .map_or_else(|| PathBuf::from("."), |p| dir_of(p).to_path_buf())
     }
 
     // the working folder when the file is inside it, so its tree shows where the file sits
@@ -1774,7 +1785,12 @@ impl Editor {
     }
 
     fn git_menu_input(&mut self, input: Input) {
-        let unsaved = self.is_modified() || self.docs.iter().enumerate().any(|(i, d)| i != self.current && d.modified());
+        let unsaved = self.is_modified()
+            || self
+                .docs
+                .iter()
+                .enumerate()
+                .any(|(i, d)| i != self.current && d.modified());
         let Some(m) = self.git_menu.as_mut() else { return };
         let key = match input {
             Input::Paste(text) => return m.paste(&text),
@@ -2455,7 +2471,10 @@ impl Editor {
 
     fn char_span(&self, r: Range) -> (Pos, Pos) {
         if r.linewise {
-            (Pos::new(r.start.row, 0), Pos::new(r.end.row, self.buf.line_len(r.end.row)))
+            (
+                Pos::new(r.start.row, 0),
+                Pos::new(r.end.row, self.buf.line_len(r.end.row)),
+            )
         } else {
             (r.start, r.end)
         }
@@ -2701,9 +2720,11 @@ impl Editor {
             if name.is_ascii_uppercase() {
                 let lower = name.to_ascii_lowercase();
                 let old = self.registers.get(&lower).map_or(String::new(), |r| r.text.clone());
-                let mut old_keys = self.macros.get(&lower).cloned().unwrap_or_else(|| {
-                    crate::keys::parse(&old).into_iter().map(Input::Key).collect()
-                });
+                let mut old_keys = self
+                    .macros
+                    .get(&lower)
+                    .cloned()
+                    .unwrap_or_else(|| crate::keys::parse(&old).into_iter().map(Input::Key).collect());
                 old_keys.append(&mut keys);
                 keys = old_keys;
                 text = old + &text;
@@ -4106,7 +4127,9 @@ fn display_name(path: Option<&Path>) -> String {
 }
 
 pub(crate) fn dir_of(path: &Path) -> &Path {
-    path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."))
+    path.parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
 }
 
 pub(crate) fn cwd() -> PathBuf {
