@@ -3,6 +3,7 @@ use std::cell::{Cell, RefCell};
 use crate::editor::Editor;
 
 const FRAME: f32 = 1.0 / 60.0;
+const PULSE: f32 = 0.4;
 const SLIDE: f32 = 0.18;
 pub(crate) const FADE: f32 = 0.15;
 // scrolls this small just snap, so holding j or k never lags
@@ -106,12 +107,23 @@ impl Anim {
             self.pulse.set(None);
         }
         self.shown.set(shown);
+        let until = end.unwrap_or(0.0).max(self.pulse.get().map_or(0.0, |(_, s)| s + PULSE));
         self.pace(t, until);
         shown
     }
 
     pub(crate) fn shown(&self) -> usize {
         self.shown.get()
+    }
+
+    pub(crate) fn glow(&self, row: usize, t: f32) -> f32 {
+        match self.pulse.get() {
+            Some((r, start)) if r == row => {
+                let left = 1.0 - ((t - start) / PULSE).clamp(0.0, 1.0);
+                left * left
+            }
+            _ => 0.0,
+        }
     }
 
     pub(crate) fn zen(&self, zen: bool, t: f32) -> f32 {
