@@ -114,6 +114,26 @@ fn messages_on_the_bottom_line() {
 }
 
 #[test]
+fn the_command_line_floats() {
+    let mut e = ed("abc");
+    e.keys(&parse(":set nu"));
+    let shown = screen(e, 70, 14);
+    assert!(shown.contains("╭─ ✦ command"), "{shown}");
+    assert!(shown.contains("│ : set nu"), "{shown}");
+    assert!(
+        shown.contains("number   line numbers"),
+        "suggestions as it's typed: {shown}"
+    );
+    assert!(shown.contains("esc close"), "{shown}");
+    let mut e = ed("abc");
+    e.keys(&parse(":s"));
+    assert!(
+        screen(e, 20, 3).lines().last().unwrap().starts_with("  : s"),
+        "too small to float: on the bottom line"
+    );
+}
+
+#[test]
 fn searching_shows_how_many_matches() {
     let mut e = ed("a b a b a");
     e.keys(&parse("/a"));
