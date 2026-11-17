@@ -67,6 +67,7 @@ pub(crate) fn notation(k: Key) -> String {
         Key::PageUp => "<PageUp>".into(),
         Key::PageDown => "<PageDown>".into(),
         Key::F(n) => format!("<F{n}>"),
+        other => format!("<{other:?}>"),
     }
 }
 

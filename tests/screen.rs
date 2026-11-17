@@ -322,7 +322,7 @@ fn the_mouse_is_caught_and_ignored() {
     let mut app = Tvim::new(ed("a\nb\nc"));
     assert!(app.mouse(), "caught, so the wheel doesn't arrive as arrow keys");
     for kind in [MouseKind::ScrollDown, MouseKind::ScrollUp, MouseKind::Click] {
-        let flow = app.event(&Event::Mouse(Mouse { kind, x: 3, y: 1 }));
+        let flow = app.event(&Event::Mouse(Mouse::new(kind, 3, 1)));
         assert_eq!(flow, Flow::Continue);
     }
     assert_eq!(app.editor.cursor(), tvim::Pos::new(0, 0));
