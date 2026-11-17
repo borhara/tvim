@@ -19,14 +19,14 @@ use crate::git::FileState;
 use crate::syntax::{Kind, Syntax};
 use crate::text::{caret, cell_width, char_count, is_word, vcol};
 
-const HINT_DELAY: f32 = 0.4;
+const HINT_DELAY: f64 = 0.4;
 // how much the sidebar fades while the text has focus
 const SIDE_DIM: f32 = 0.35;
 
 pub struct Tvim {
     pub editor: Editor,
     toasts: Toasts,
-    pending_since: Option<f32>,
+    pending_since: Option<f64>,
     settled: std::cell::Cell<bool>,
 }
 
@@ -52,7 +52,7 @@ impl Tvim {
             .filter(|m| !m.error && m.text.ends_with(" written"));
         if let Some(m) = written {
             let text = saved(&m.text);
-            self.toasts.push(Tone::Success, text);
+            self.toasts.push(app::time(), Tone::Success, text);
             self.editor.clear_message();
         }
     }
@@ -343,7 +343,7 @@ fn accent(e: &Editor) -> Rgb {
 }
 
 // a few dots at a time fade in and out, each lasting 3-6s
-fn twinkle(i: usize, n: usize, t: f32) -> f32 {
+fn twinkle(i: usize, n: usize, t: f64) -> f32 {
     if t <= 0.0 || n == 0 {
         return 0.0;
     }
@@ -353,9 +353,9 @@ fn twinkle(i: usize, n: usize, t: f32) -> f32 {
     let stars = (n / 14).max(1) as u32;
     let mut lit: f32 = 0.0;
     for s in 0..stars {
-        let life = 3.0 + 3.0 * noise(s, 1);
-        let age = t / life + noise(s, 2);
-        let (round, p) = (age.floor() as u32, age.fract());
+        let life = 3.0 + 3.0 * noise(s, 1) as f64;
+        let age = t / life + noise(s, 2) as f64;
+        let (round, p) = (age.floor() as u64 as u32, age.fract() as f32);
         let place = (noise(s.wrapping_mul(7919) ^ round.wrapping_mul(104_729), 3) * n as f32) as usize;
         if place.min(n - 1) == i {
             lit = lit.max((p * std::f32::consts::PI).sin().powi(3));
@@ -403,21 +403,21 @@ const INTRO: [(&str, &str, bool); 10] = [
     ("█▀▄▀█", "█ ▀ █", true),
     ("✶", " ", true),
 ];
-const INTRO_HOLD: f32 = 1.0;
-const INTRO_CLOSE: f32 = 1.0;
-const INTRO_END: f32 = INTRO_HOLD + INTRO_CLOSE;
+const INTRO_HOLD: f64 = 1.0;
+const INTRO_CLOSE: f64 = 1.0;
+const INTRO_END: f64 = INTRO_HOLD + INTRO_CLOSE;
 
 // the logo's two rows mid-intro, each cell with how solid it is
 type IntroRows = [Vec<(char, f32)>; 2];
 
 // the intro's rows and the column they start at; None once it has settled (and at time 0, so
 // tests and snapshots see the plain logo)
-fn intro(t: f32, area: Rect) -> Option<(usize, IntroRows)> {
+fn intro(t: f64, area: Rect) -> Option<(usize, IntroRows)> {
     if t <= 0.0 || t >= INTRO_END {
         return None;
     }
     let width = |s: &str| s.chars().count();
-    let p = ((t - INTRO_HOLD) / INTRO_CLOSE).clamp(0.0, 1.0);
+    let p = ((t - INTRO_HOLD) / INTRO_CLOSE).clamp(0.0, 1.0) as f32;
     let p = p * p * (3.0 - 2.0 * p);
     // insel is gone from sight a little before its room is
     let fade = (p / 0.8).min(1.0);
@@ -1608,7 +1608,7 @@ fn symbol(line: &str) -> Option<(String, Rgb)> {
 }
 
 // on tvim's clock so it rests while unfocused
-fn sparkles(frame: &mut Frame, area: Rect, clock: f32, density: f32) {
+fn sparkles(frame: &mut Frame, area: Rect, clock: f64, density: f32) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -1627,7 +1627,7 @@ mod tests {
     fn the_intro_squeezes_insel_away_into_the_logo() {
         let area = Rect::new(0, 0, 80, 24);
         let text = |row: &[(char, f32)]| row.iter().map(|c| c.0).collect::<String>().trim_end().to_string();
-        let at = |t: f32| intro(t, area).map(|(x, rows)| (x, rows.map(|r| text(&r))));
+        let at = |t: f64| intro(t, area).map(|(x, rows)| (x, rows.map(|r| text(&r))));
         assert_eq!(at(0.0), None, "a snapshot sees the plain logo");
         assert_eq!(at(INTRO_END), None);
 

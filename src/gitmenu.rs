@@ -166,7 +166,7 @@ pub struct GitMenu {
     queued: Option<String>,
     // typed before the first status came back, played once it has
     pub(crate) early: Vec<Key>,
-    opened: Option<f32>,
+    opened: Option<f64>,
 }
 
 impl GitMenu {
@@ -269,7 +269,7 @@ impl GitMenu {
         self.job.waiting || self.peek.waiting
     }
 
-    pub fn opened(&self) -> Option<f32> {
+    pub fn opened(&self) -> Option<f64> {
         self.opened
     }
 

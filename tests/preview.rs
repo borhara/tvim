@@ -246,7 +246,7 @@ fn space_shows_the_preview_key() {
 fn it_glides_when_the_cursor_jumps() {
     let mut e = open("pv-glide.md", &sections(40));
     e.ex("preview");
-    let side_at = |e: &Editor, t: f32| {
+    let side_at = |e: &Editor, t: f64| {
         tinsel::with_color_mode(tinsel::ColorMode::None, || {
             let mut frame = Frame::new(100, 24).at(t);
             draw(e, &mut frame);
