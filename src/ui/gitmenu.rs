@@ -375,7 +375,7 @@ fn prompt(m: &GitMenu, frame: &mut Frame, row: Rect, t: f64, c: &Colors) -> Opti
             Typing::Command => format!("{} ", bold(&paint(palette::ROSE, "git ›"))),
         };
         frame.tint(row, mix(c.bar, palette::ROSE, 0.1));
-        return Some(input(frame, row, &label, text, at, Some(palette::TEXT)));
+        return Some(input(frame, row, &label, &text, at, Some(palette::TEXT)));
     }
     let text = match (m.note(), m.busy()) {
         (_, Some(what)) => working(what, t),
