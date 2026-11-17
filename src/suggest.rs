@@ -135,3 +135,44 @@ pub fn suggestions(text: &str, options: &Options, buffers: &[String]) -> Vec<Sug
         _ => Vec::new(),
     }
 }
+
+fn files(head: &str, word: &str) -> Vec<Suggestion> {
+    let (dir, stem) = match word.rfind('/') {
+        Some(i) => (&word[..=i], &word[i + 1..]),
+        None => ("", word),
+    };
+    let look_in = if dir.is_empty() {
+        ".".to_string()
+    } else {
+        crate::editor::expand_home(dir)
+    };
+    let read = std::fs::read_dir(look_in);
+    let Ok(entries) = read else { return Vec::new() };
+    let mut hits: Vec<(bool, String, u64)> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            if !name.starts_with(stem) || name.starts_with('.') && !stem.starts_with('.') {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            Some((meta.is_dir(), name, meta.len()))
+        })
+        .collect();
+    hits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    hits.into_iter()
+        .map(|(is_dir, name, size)| {
+            let mark = if is_dir { "/" } else { "" };
+            Suggestion {
+                label: format!("{name}{mark}"),
+                replace: format!("{head}{dir}{name}{mark}"),
+                desc: if is_dir {
+                    "folder".into()
+                } else {
+                    crate::explorer::human_size(size)
+                },
+                value: String::new(),
+            }
+        })
+        .collect()
+}
