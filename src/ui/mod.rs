@@ -1,12 +1,13 @@
-pub(crate) mod anim;
 mod gitmenu;
 mod overlays;
 mod sky;
 mod zen;
 
+use std::cell::{Cell, RefCell};
 use std::io::Write;
 use std::path::Path;
 
+use tinsel::anim::{Glide, Glider};
 use tinsel::app::{self, App, CursorShape, Event, Flow, Frame, Rect, Sparkles, Toasts};
 use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_on, palette, underline};
 
@@ -482,13 +483,13 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     let c = colors();
     // the window's margin too, which tinsel sends again once the intro settles
     frame.set_background(c.app);
-    let since_zen = e.anim.zen(e.zen(), frame.time());
+    let since_zen = e.anim.zen(e.zen(), frame);
     let d = if e.zen() {
         zen::draw(e, frame, &c)
     } else {
         sky::draw(e, frame, &c)
     };
-    if !e.zen() && since_zen < anim::FADE {
+    if !e.zen() && since_zen < FADE {
         let (t, end) = (d.text, area.x + area.width);
         let below = t.y + t.height;
         for r in [
@@ -536,10 +537,6 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         frame.set_cursor(x, y, shape);
         frame.set_cursor_color(mode_color(e.mode()));
     }
-    // anything gliding, fading or pulsing asked for time up to now
-    if e.anim.moving(frame.time()) {
-        frame.animate();
-    }
 }
 
 // the terminal draws a bar at a cell's left edge and guides sit mid-cell, so on a guide the
@@ -579,11 +576,11 @@ fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: boo
     // set_screen reserves a scrollbar column and two status rows
     e.set_screen(area.width, area.height + 2);
     e.scroll();
-    e.anim.follow(e, frame.time());
+    e.anim.follow(e, frame);
     let (gutter, body) = split_gutter(area, e.gutter());
     e.anim.text_at(body.x);
     if e.is_blank_slate() && e.mode() == Mode::Normal {
-        draw_welcome(e, frame, area, c);
+        draw_welcome(frame, area, c);
     } else {
         let v = View {
             id: e.focus,
@@ -689,13 +686,7 @@ fn preview_window(e: &Editor, id: usize, frame: &mut Frame, area: Rect, c: &Colo
     };
     let t = frame.time();
     let shown = match e.previews.get(&id) {
-        Some(p) => {
-            let shown = p.glide.step(top, body.height, e.options.smooth && t > 0.0, t);
-            if let Some(end) = p.glide.end() {
-                e.anim.pace(t, end);
-            }
-            shown
-        }
+        Some(p) => glide(&p.glide, top, body.height, e.options.smooth && t > 0.0, frame),
         None => top,
     };
     if lines.is_empty() {
@@ -798,7 +789,7 @@ fn draw_thumb(frame: &mut Frame, bar: Rect, top: usize, lines: usize, color: Rgb
     }
 }
 
-fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
+fn draw_welcome(frame: &mut Frame, area: Rect, c: &Colors) {
     if color_mode() != ColorMode::None {
         sparkles(frame, area, frame.ambient_time(), 0.012);
     }
@@ -831,7 +822,7 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
     let t = frame.time();
     let intro = intro(t, area);
     if intro.is_some() {
-        e.anim.pace(t, INTRO_END);
+        frame.animate();
     }
     for (i, l) in LOGO.iter().enumerate() {
         let shift = i as f32 * 0.15;
@@ -1116,7 +1107,7 @@ fn draw_lens(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, 
         return;
     };
     let key = format!("{}:{}", e.buffer_id, e.cursor().row);
-    let fade = e.anim.lens(&key, frame.time());
+    let fade = e.anim.lens(&key, frame);
     if fade <= 0.0 {
         return;
     }
@@ -1591,6 +1582,168 @@ fn symbol(line: &str) -> Option<(String, Rgb)> {
         }
     }
     None
+}
+
+// MARK: - Motion
+
+const FRAME: f64 = 1.0 / 60.0;
+const PULSE: f64 = 0.4;
+const SLIDE: f64 = 0.18;
+const FADE: f64 = 0.15;
+// scrolls this small just snap, so holding j or k never lags
+const SNAP: f64 = 2.0;
+const LENS_WAIT: f64 = 0.35;
+const LENS_FADE: f64 = 0.25;
+const OPEN: f64 = 0.2;
+
+// what moves on screen, on tinsel's glides; each asks the frame for more while it moves, and a
+// frame at time 0 (tests, snapshots) always draws settled
+pub(crate) struct Anim {
+    scroll: Glider,
+    shown: Cell<usize>,
+    landed: Cell<bool>,
+    pulse: Cell<Option<(usize, f64)>>,
+    zen: Cell<Option<(bool, f64)>>,
+    slide: Cell<Option<Glide>>,
+    text_x: Cell<usize>,
+    pub(crate) star: Glider,
+    lens: RefCell<Option<(String, f64)>>,
+}
+
+impl Default for Anim {
+    fn default() -> Self {
+        Anim {
+            scroll: Glider::new().snap(SNAP),
+            shown: Cell::default(),
+            landed: Cell::default(),
+            pulse: Cell::default(),
+            zen: Cell::default(),
+            slide: Cell::default(),
+            text_x: Cell::default(),
+            star: Glider::new().snap(SNAP),
+            lens: RefCell::default(),
+        }
+    }
+}
+
+// a glider's place for a frame: gliding when smooth scrolling is on, there at once when not
+pub(crate) fn glide(g: &Glider, to: usize, span: usize, smooth: bool, frame: &mut Frame) -> usize {
+    let shown = if smooth {
+        g.follow(to as f64, span as f64, frame)
+    } else {
+        g.jump(to as f64, span as f64)
+    };
+    shown.round().max(0.0) as usize
+}
+
+// asks for frames until `until`
+fn moving(frame: &mut Frame, until: f64) {
+    if frame.time() > 0.0 && frame.time() < until {
+        frame.animate();
+    }
+}
+
+impl Anim {
+    pub(crate) fn reset(&self) {
+        self.scroll.reset();
+        self.pulse.set(None);
+    }
+
+    pub(crate) fn land(&self) {
+        self.landed.set(true);
+    }
+
+    fn follow(&self, e: &Editor, frame: &mut Frame) -> usize {
+        let t = frame.time();
+        let (top, rows) = (e.top(), e.text_rows());
+        let on = e.options.smooth && t > 0.0;
+        let shown = glide(&self.scroll, top, rows, on, frame);
+        let end = self.scroll.glide().map(|g| g.end());
+        if self.landed.take() && on && !e.mode().is_visual() {
+            let start = end.unwrap_or(t);
+            self.pulse.set(Some((e.cursor().row, start)));
+        }
+        if !on {
+            self.pulse.set(None);
+        }
+        self.shown.set(shown);
+        if let Some((_, start)) = self.pulse.get() {
+            moving(frame, start + PULSE);
+        }
+        shown
+    }
+
+    pub(crate) fn shown(&self) -> usize {
+        self.shown.get()
+    }
+
+    fn glow(&self, row: usize, t: f64) -> f32 {
+        match self.pulse.get() {
+            Some((r, start)) if r == row => {
+                let left = 1.0 - ((t - start) / PULSE).clamp(0.0, 1.0) as f32;
+                left * left
+            }
+            _ => 0.0,
+        }
+    }
+
+    fn zen(&self, zen: bool, frame: &mut Frame) -> f64 {
+        let t = frame.time();
+        let since = match self.zen.get() {
+            Some((was, at)) if was == zen => at,
+            Some(_) if t > 0.0 => {
+                self.slide
+                    .set(zen.then(|| Glide::new(self.text_x.get() as f64, 0.0, t - FRAME, SLIDE)));
+                t
+            }
+            _ => f64::NEG_INFINITY,
+        };
+        self.zen.set(Some((zen, since)));
+        moving(frame, since + SLIDE.max(FADE));
+        if t > 0.0 { t - since } else { f64::INFINITY }
+    }
+
+    fn column_x(&self, x: usize, t: f64) -> usize {
+        match self.slide.get().filter(|g| t > 0.0 && g.moving(t)) {
+            Some(g) => g.towards(x as f64).at(t).round().max(0.0) as usize,
+            None => x,
+        }
+    }
+
+    fn lens(&self, key: &str, frame: &mut Frame) -> f32 {
+        let t = frame.time();
+        if t <= 0.0 {
+            return 1.0;
+        }
+        let mut seen = self.lens.borrow_mut();
+        let since = match seen.as_ref() {
+            Some((k, at)) if k == key => *at,
+            _ => {
+                *seen = Some((key.to_string(), t));
+                t
+            }
+        };
+        moving(frame, since + LENS_WAIT + LENS_FADE);
+        ((t - since - LENS_WAIT) / LENS_FADE).clamp(0.0, 1.0) as f32
+    }
+
+    fn lens_gone(&self) {
+        self.lens.replace(None);
+    }
+
+    fn opening(&self, opened: Option<f64>, frame: &mut Frame) -> f32 {
+        let t = frame.time();
+        let Some(at) = opened.filter(|_| t > 0.0) else {
+            return 1.0;
+        };
+        moving(frame, at + OPEN);
+        let p = ((t - at) / OPEN).clamp(0.0, 1.0) as f32;
+        1.0 - (1.0 - p).powi(3)
+    }
+
+    fn text_at(&self, x: usize) {
+        self.text_x.set(x);
+    }
 }
 
 // the stars twinkle a few times a second, on the ambient clock, so they rest while unfocused
