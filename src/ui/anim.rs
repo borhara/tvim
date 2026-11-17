@@ -187,6 +187,16 @@ impl Anim {
         self.text_x.set(x);
     }
 
+    pub(crate) fn focus(&self, on: bool) {
+        self.paused.set((!on).then(tinsel::app::time));
+    }
+
+    // the clock ambient animations run on: it stands still while the terminal is in the background,
+    // so an unwatched tab sends nothing
+    pub(crate) fn clock(&self) -> f32 {
+        self.paused.get().unwrap_or_else(tinsel::app::time)
+    }
+
     pub(crate) fn pace(&self, t: f32, until: f32) {
         if until > t {
             self.busy_until.set(self.busy_until.get().max(until + FRAME));
