@@ -384,7 +384,8 @@ fn icon(name: &str, dir: bool) -> (&'static str, Rgb) {
 const LOGO: [&str; 2] = ["▀█▀ █ █ █ █▀▄▀█ ✶", " █  ▀▄▀ █ █ ▀ █  "];
 
 // on opening, the logo spells tinselvim and loses insel from the outside in: i and l sparkle
-// away together and the rest closes up (tnsevim), then n and e (tsvim), then s, leaving LOGO.
+// away together, then n and e, then s, each pair starting while the last gap is still closing,
+// so the letters keep drifting inwards until they're LOGO.
 // each glyph is its two rows and the stage it goes in, or None if it stays
 const INTRO: [(&str, &str, Option<usize>); 10] = [
     ("▀█▀", " █ ", None),
@@ -399,14 +400,16 @@ const INTRO: [(&str, &str, Option<usize>); 10] = [
     ("✶", " ", None),
 ];
 const INTRO_STAGES: usize = 3;
-const INTRO_HOLD: f32 = 0.4;
-// how spread out the moments are when one stage's cells start to go
-const INTRO_SPREAD: f32 = 0.15;
+const INTRO_HOLD: f32 = 0.3;
+// the next pair starts to go this long after the last, while its gap is still closing
+const INTRO_STEP: f32 = 0.32;
+// how spread out the moments are when one pair's cells start to go
+const INTRO_SPREAD: f32 = 0.06;
 // how long one cell sparkles before it's gone
-const INTRO_SPARK: f32 = 0.25;
-const INTRO_CLOSE: f32 = 0.35;
-const INTRO_STAGE: f32 = INTRO_SPREAD + INTRO_SPARK + INTRO_CLOSE;
-const INTRO_END: f32 = INTRO_HOLD + INTRO_STAGE * INTRO_STAGES as f32;
+const INTRO_SPARK: f32 = 0.18;
+const INTRO_CLOSE: f32 = 0.34;
+const INTRO_END: f32 =
+    INTRO_HOLD + INTRO_STEP * (INTRO_STAGES - 1) as f32 + INTRO_SPREAD + INTRO_SPARK * 0.4 + INTRO_CLOSE;
 
 // the logo's two rows mid-intro and the column they start at, or None once it has settled
 // (and at time 0, so tests and snapshots see the plain logo)
@@ -415,39 +418,35 @@ fn intro(t: f32, area: Rect) -> Option<(usize, [String; 2])> {
         return None;
     }
     let width = |s: &str| s.chars().count();
-    // where each glyph sits once the first `gone` stages have left, centred like the logo
-    let layout = |gone: usize| {
-        let here = |g: &(&str, &str, Option<usize>)| g.2.is_none_or(|s| s >= gone);
-        let span = INTRO.iter().filter(|g| here(g)).map(|g| width(g.0) + 1).sum::<usize>() - 1;
-        let mut x = area.width.saturating_sub(span) / 2;
-        INTRO
-            .iter()
-            .map(|g| {
-                let at = x;
-                if here(g) {
-                    x += width(g.0) + 1;
-                }
-                at as f32
-            })
-            .collect::<Vec<_>>()
+    let start = |stage: usize| INTRO_HOLD + stage as f32 * INTRO_STEP;
+    // how far a stage's letters have closed up: it starts while they're still sparkling, so the
+    // letters never stand still
+    let closed = |stage: usize| {
+        let p = ((t - start(stage) - INTRO_SPREAD - INTRO_SPARK * 0.4) / INTRO_CLOSE).clamp(0.0, 1.0);
+        p * p * (3.0 - 2.0 * p)
     };
-    let stage = (((t - INTRO_HOLD) / INTRO_STAGE).max(0.0) as usize).min(INTRO_STAGES - 1);
-    let start = INTRO_HOLD + stage as f32 * INTRO_STAGE;
-    let p = ((t - start - INTRO_SPREAD - INTRO_SPARK) / INTRO_CLOSE).clamp(0.0, 1.0);
-    let p = if p < 0.5 { 4.0 * p * p * p } else { 1.0 - (2.0 - 2.0 * p).powi(3) / 2.0 };
-    let (from, to) = (layout(stage), layout(stage + 1));
+    // each glyph's room, shrinking as it closes up; centred on where the logo will sit, so the
+    // left side only ever moves right and the right side only left
+    let room: Vec<f32> = INTRO
+        .iter()
+        .map(|g| (width(g.0) + 1) as f32 * g.2.map_or(1.0, |s| 1.0 - closed(s)))
+        .collect();
+    let fin = INTRO.iter().filter(|g| g.2.is_none()).map(|g| width(g.0) + 1).sum::<usize>() - 1;
+    let centre = (area.width.saturating_sub(fin) / 2) as f32 + fin as f32 / 2.0;
+    let mut x = centre - (room.iter().sum::<f32>() - 1.0) / 2.0;
 
     let mut cells = Vec::new();
     for (g, &(top, bottom, goes)) in INTRO.iter().enumerate() {
-        if goes.is_some_and(|s| s < stage || (s == stage && p > 0.0)) {
-            continue;
-        }
-        let x = (from[g] + (to[g] - from[g]) * p).round() as usize;
+        let at = x.round().max(0.0) as usize;
+        x += room[g];
         for (row, glyph) in [top, bottom].into_iter().enumerate() {
             for (i, ch) in glyph.chars().enumerate() {
-                let ch = if goes == Some(stage) { sparkle_away(ch, t - start, row, i) } else { ch };
+                let ch = match goes {
+                    Some(s) => sparkle_away(ch, t - start(s), row, i),
+                    None => ch,
+                };
                 if ch != ' ' {
-                    cells.push((x + i, row, ch));
+                    cells.push((at + i, row, ch));
                 }
             }
         }
@@ -1627,21 +1626,32 @@ mod tests {
         assert_eq!(at(0.0), None, "a snapshot sees the plain logo");
         assert_eq!(at(INTRO_END), None);
 
-        let word = |stage: usize| at(INTRO_HOLD + stage as f32 * INTRO_STAGE + 0.001).unwrap().1;
-        assert_eq!(at(0.1).unwrap().1, word(0));
-        assert_eq!(word(0)[0], "▀█▀ █ █▄ █ █▀ █▀▀ █   █ █ █ █▀▄▀█ ✶", "tinselvim");
-        assert_eq!(word(0)[1], " █  █ █ ▀█ ▄█ ██▄ █▄▄ ▀▄▀ █ █ ▀ █");
-        assert_eq!(word(1)[0], "▀█▀ █▄ █ █▀ █▀▀ █ █ █ █▀▄▀█ ✶", "tnsevim");
-        assert_eq!(word(1)[1], " █  █ ▀█ ▄█ ██▄ ▀▄▀ █ █ ▀ █");
-        assert_eq!(word(2)[0], "▀█▀ █▀ █ █ █ █▀▄▀█ ✶", "tsvim");
-        assert_eq!(word(2)[1], " █  ▄█ ▀▄▀ █ █ ▀ █");
+        let (_, start) = at(0.1).unwrap();
+        assert_eq!(start[0], "▀█▀ █ █▄ █ █▀ █▀▀ █   █ █ █ █▀▄▀█ ✶", "tinselvim");
+        assert_eq!(start[1], " █  █ █ ▀█ ▄█ ██▄ █▄▄ ▀▄▀ █ █ ▀ █");
 
         // i and l sparkle at the same moment, the rest untouched
         let (_, sparking) = at(INTRO_HOLD + INTRO_SPREAD + INTRO_SPARK * 0.3).unwrap();
-        let sparks: Vec<_> = sparking[0].split_whitespace().collect();
-        assert_eq!(sparks[0], "▀█▀");
-        assert!(sparks[1].chars().all(|c| "✦✧⋆·".contains(c)), "{sparking:?}");
+        let parts: Vec<_> = sparking[0].split_whitespace().collect();
+        assert!(parts[1].chars().all(|c| "✦✧⋆·".contains(c)), "{sparking:?}");
         assert!(sparking[0].contains("█▄ █ █▀ █▀▀") && !sparking[0].contains("█   █ █"), "{sparking:?}");
+
+        // n and e start to go while the first gap is still closing
+        let overlap = INTRO_HOLD + INTRO_STEP + INTRO_SPREAD + INTRO_SPARK * 0.3;
+        let first_closing = (overlap - INTRO_HOLD - INTRO_SPREAD - INTRO_SPARK * 0.4) / INTRO_CLOSE;
+        assert!(first_closing > 0.0 && first_closing < 1.0);
+        assert!(at(overlap).unwrap().1[0].contains(['✦', '✧', '⋆', '·']));
+
+        // always moving inwards: t only ever right, the star only ever left
+        let (mut t_was, mut star_was) = (0, usize::MAX);
+        let mut t = 0.01;
+        while t < INTRO_END {
+            let (x, rows) = intro(t, area).unwrap();
+            let star = x + rows[0].chars().position(|c| c == '✶').unwrap();
+            assert!(x >= t_was && star <= star_was, "at {t}: {rows:?}");
+            (t_was, star_was) = (x, star);
+            t += 0.01;
+        }
 
         let (x, end) = at(INTRO_END - 0.0001).unwrap();
         assert_eq!(x, (80 - 17) / 2, "it lands where the logo is drawn");
