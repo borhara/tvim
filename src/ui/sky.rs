@@ -313,11 +313,8 @@ fn constellation(e: &Editor, frame: &mut Frame, area: Rect, accent: Rgb, c: &Col
     // thousandths of the way through the file: steady when the width changes, and fine enough
     // that a one-line move in a short file still glides
     let at = e.cursor().row * 1000 / (total - 1).max(1);
-    let shown = e.anim.star.step(at, 1000, e.options.smooth && now > 0.0, now);
+    let shown = super::glide(&e.anim.star, at, 1000, e.options.smooth && now > 0.0, frame);
     let here = ((shown * (n - 1) + 500) / 1000).min(n - 1);
-    if let Some(end) = e.anim.star.end() {
-        e.anim.pace(now, end);
-    }
     let sparkle = if e.mode().is_visual() {
         [mix(palette::AMBER, bar, 0.45), palette::AMBER, palette::SHINE]
     } else {

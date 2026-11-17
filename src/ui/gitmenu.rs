@@ -29,7 +29,7 @@ pub(super) fn draw(m: &GitMenu, e: &Editor, frame: &mut Frame, c: &Colors) -> Op
         return None;
     }
     let t = frame.time();
-    let open = e.anim.opening(m.opened(), t);
+    let open = e.anim.opening(m.opened(), frame);
     frame.fade_by(area, open);
     let width = area.width.saturating_sub(6).clamp(24, 132);
     let height = area.height.saturating_sub(4).clamp(8, 34);

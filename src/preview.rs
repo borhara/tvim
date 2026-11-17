@@ -7,7 +7,7 @@ use tinsel::app::Key;
 use crate::command::{Act, Motion, Parse, parse};
 use crate::editor::{Editor, Text};
 use crate::syntax::Syntax;
-use crate::ui::anim::Glider;
+use tinsel::anim::Glider;
 use crate::window::{MIN_COLS, MIN_ROWS, Win};
 
 // narrower than this and the preview goes underneath
@@ -35,7 +35,8 @@ impl Preview {
             seen: Cell::new(None),
             size: Cell::new(None),
             render: RefCell::default(),
-            glide: Glider::default(),
+            // a scroll this small snaps, as the text's does
+            glide: Glider::new().snap(2.0),
         }
     }
 }

@@ -435,7 +435,7 @@ pub struct Editor {
     pub(crate) top: Cell<usize>,
     pub(crate) left: Cell<usize>,
     pub(crate) screen: Cell<(usize, usize)>,
-    pub(crate) anim: crate::ui::anim::Anim,
+    pub(crate) anim: crate::ui::Anim,
     zen: Option<bool>,
     effects: Vec<Effect>,
     quit: bool,
