@@ -383,97 +383,96 @@ fn icon(name: &str, dir: bool) -> (&'static str, Rgb) {
 
 const LOGO: [&str; 2] = ["▀█▀ █ █ █ █▀▄▀█ ✶", " █  ▀▄▀ █ █ ▀ █  "];
 
-// on opening, the logo spells tinselvim and loses insel from the outside in: i and l sparkle
-// away together, then n and e, then s, each pair starting while the last gap is still closing,
-// so the letters keep drifting inwards until they're LOGO.
-// each glyph is its two rows and the stage it goes in, or None if it stays
-const INTRO: [(&str, &str, Option<usize>); 10] = [
-    ("▀█▀", " █ ", None),
-    ("█", "█", Some(0)),
-    ("█▄ █", "█ ▀█", Some(1)),
-    ("█▀", "▄█", Some(2)),
-    ("█▀▀", "██▄", Some(1)),
-    ("█  ", "█▄▄", Some(0)),
-    ("█ █", "▀▄▀", None),
-    ("█", "█", None),
-    ("█▀▄▀█", "█ ▀ █", None),
-    ("✶", " ", None),
+// on opening, the logo spells tinselvim; then insel squeezes into the gap and fades while t and
+// vim glide together into LOGO, in one smooth move. each glyph is its two rows and whether it stays
+const INTRO: [(&str, &str, bool); 10] = [
+    ("▀█▀", " █ ", true),
+    ("█", "█", false),
+    ("█▄ █", "█ ▀█", false),
+    ("█▀", "▄█", false),
+    ("█▀▀", "██▄", false),
+    ("█  ", "█▄▄", false),
+    ("█ █", "▀▄▀", true),
+    ("█", "█", true),
+    ("█▀▄▀█", "█ ▀ █", true),
+    ("✶", " ", true),
 ];
-const INTRO_STAGES: usize = 3;
-const INTRO_HOLD: f32 = 0.3;
-// the next pair starts to go this long after the last, while its gap is still closing
-const INTRO_STEP: f32 = 0.32;
-// how spread out the moments are when one pair's cells start to go
-const INTRO_SPREAD: f32 = 0.06;
-// how long one cell sparkles before it's gone
-const INTRO_SPARK: f32 = 0.18;
-const INTRO_CLOSE: f32 = 0.34;
-const INTRO_END: f32 =
-    INTRO_HOLD + INTRO_STEP * (INTRO_STAGES - 1) as f32 + INTRO_SPREAD + INTRO_SPARK * 0.4 + INTRO_CLOSE;
+const INTRO_HOLD: f32 = 0.35;
+const INTRO_CLOSE: f32 = 1.0;
+const INTRO_END: f32 = INTRO_HOLD + INTRO_CLOSE;
 
-// the logo's two rows mid-intro and the column they start at, or None once it has settled
-// (and at time 0, so tests and snapshots see the plain logo)
-fn intro(t: f32, area: Rect) -> Option<(usize, [String; 2])> {
+// the logo's two rows mid-intro, each cell with how solid it is
+type IntroRows = [Vec<(char, f32)>; 2];
+
+// the intro's rows and the column they start at; None once it has settled (and at time 0, so
+// tests and snapshots see the plain logo)
+fn intro(t: f32, area: Rect) -> Option<(usize, IntroRows)> {
     if t <= 0.0 || t >= INTRO_END {
         return None;
     }
     let width = |s: &str| s.chars().count();
-    let start = |stage: usize| INTRO_HOLD + stage as f32 * INTRO_STEP;
-    // how far a stage's letters have closed up: it starts while they're still sparkling, so the
-    // letters never stand still
-    let closed = |stage: usize| {
-        let p = ((t - start(stage) - INTRO_SPREAD - INTRO_SPARK * 0.4) / INTRO_CLOSE).clamp(0.0, 1.0);
-        p * p * (3.0 - 2.0 * p)
-    };
-    // each glyph's room, shrinking as it closes up; centred on where the logo will sit, so the
-    // left side only ever moves right and the right side only left
-    let room: Vec<f32> = INTRO
-        .iter()
-        .map(|g| (width(g.0) + 1) as f32 * g.2.map_or(1.0, |s| 1.0 - closed(s)))
-        .collect();
-    let fin = INTRO.iter().filter(|g| g.2.is_none()).map(|g| width(g.0) + 1).sum::<usize>() - 1;
+    let p = ((t - INTRO_HOLD) / INTRO_CLOSE).clamp(0.0, 1.0);
+    let p = p * p * (3.0 - 2.0 * p);
+    // insel is gone from sight a little before its room is
+    let fade = (p / 0.8).min(1.0);
+    let solid = 1.0 - fade * fade * (3.0 - 2.0 * fade);
+
+    let room = |keep: bool| INTRO.iter().filter(|g| g.2 == keep).map(|g| width(g.0) + 1).sum::<usize>();
+    let fin = room(true) - 1;
+    let squeezed = room(false) as f32 * (1.0 - p);
+    // centred on where the logo will sit, so t only moves right and vim only left
     let centre = (area.width.saturating_sub(fin) / 2) as f32 + fin as f32 / 2.0;
-    let mut x = centre - (room.iter().sum::<f32>() - 1.0) / 2.0;
+    let x0 = centre - (fin as f32 + squeezed) / 2.0;
 
     let mut cells = Vec::new();
-    for (g, &(top, bottom, goes)) in INTRO.iter().enumerate() {
-        let at = x.round().max(0.0) as usize;
-        x += room[g];
+    let (mut kept, mut dropped) = (0.0, 0.0);
+    for &(top, bottom, keep) in &INTRO {
         for (row, glyph) in [top, bottom].into_iter().enumerate() {
             for (i, ch) in glyph.chars().enumerate() {
-                let ch = match goes {
-                    Some(s) => sparkle_away(ch, t - start(s), row, i),
-                    None => ch,
+                let (x, a) = if keep {
+                    (x0 + kept + dropped * (1.0 - p) + i as f32, 1.0)
+                } else {
+                    (x0 + kept + (dropped + i as f32) * (1.0 - p), solid)
                 };
-                if ch != ' ' {
-                    cells.push((at + i, row, ch));
+                if ch != ' ' && a > 0.0 {
+                    cells.push((x.round().max(0.0) as usize, row, ch, a, keep));
                 }
             }
+        }
+        let w = (width(top) + 1) as f32;
+        if keep {
+            kept += w;
+        } else {
+            dropped += w;
         }
     }
     let lo = cells.iter().map(|c| c.0).min()?;
     let hi = cells.iter().map(|c| c.0).max()?;
-    let mut rows = [vec![' '; hi - lo + 1], vec![' '; hi - lo + 1]];
-    for (x, row, ch) in cells {
-        rows[row][x - lo] = ch;
+    let mut rows = [vec![(' ', 1.0); hi - lo + 1], vec![(' ', 1.0); hi - lo + 1]];
+    // squeezed cells share columns; the letters that stay always win
+    for (x, row, ch, a, keep) in cells {
+        let cell = &mut rows[row][x - lo];
+        if keep || cell.0 == ' ' {
+            *cell = (ch, a);
+        }
     }
-    Some((area.x + lo, rows.map(|r| r.into_iter().collect())))
+    Some((area.x + lo, rows))
 }
 
-// one cell of a stage's letters, `t` seconds into the stage: solid, then a sparkle that dims as
-// it goes, then nothing. both letters of a pair go together, cell for cell
-fn sparkle_away(ch: char, t: f32, row: usize, col: usize) -> char {
-    if ch == ' ' {
-        return ch;
-    }
-    let seed = (row * 8 + col) as u32 + 1;
-    let noise = seed.wrapping_mul(2_654_435_761).wrapping_mul(2_246_822_519) as f32 / u32::MAX as f32;
-    let q = (t - INTRO_SPREAD * noise) / INTRO_SPARK;
-    match q {
-        q if q < 0.0 => ch,
-        q if q >= 1.0 => ' ',
-        q => ['✦', '✧', '⋆', '·'][(q * 4.0) as usize],
-    }
+// a row of the intro painted with the logo's gradient, cells fading into the background
+fn paint_intro(row: &[(char, f32)], shift: f32, bg: Rgb) -> String {
+    let n = row.len().saturating_sub(1).max(1) as f32;
+    row.iter()
+        .enumerate()
+        .map(|(i, &(ch, a))| {
+            let g = (i as f32 / n + shift).rem_euclid(2.0);
+            let color = tinsel::sample(&tinsel::RAMP, if g > 1.0 { 2.0 - g } else { g });
+            match color_mode() {
+                ColorMode::None if a < 0.5 => " ".to_string(),
+                _ => paint(mix(bg, color, a), ch.encode_utf8(&mut [0; 4])),
+            }
+        })
+        .collect()
 }
 
 struct Drawn {
@@ -846,9 +845,8 @@ fn draw_welcome(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) {
         let shift = i as f32 * 0.15;
         match &intro {
             Some((x, rows)) => {
-                let row = &rows[i];
-                let r = Rect::new(*x, y, tinsel::text::width(row), 1).intersect(area);
-                frame.print(r, 0, &tinsel::gradient(row, &tinsel::RAMP, shift));
+                let r = Rect::new(*x, y, rows[i].len(), 1).intersect(area);
+                frame.print(r, 0, &paint_intro(&rows[i], shift, c.app));
             }
             None => line(frame, y, tinsel::text::width(l), &tinsel::gradient(l, &tinsel::RAMP, shift)),
         }
@@ -1620,9 +1618,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_intro_loses_insel_from_the_outside_in() {
+    fn the_intro_squeezes_insel_away_into_the_logo() {
         let area = Rect::new(0, 0, 80, 24);
-        let at = |t: f32| intro(t, area).map(|(x, rows)| (x, rows.map(|r| r.trim_end().to_string())));
+        let text = |row: &[(char, f32)]| row.iter().map(|c| c.0).collect::<String>().trim_end().to_string();
+        let at = |t: f32| intro(t, area).map(|(x, rows)| (x, rows.map(|r| text(&r))));
         assert_eq!(at(0.0), None, "a snapshot sees the plain logo");
         assert_eq!(at(INTRO_END), None);
 
@@ -1630,28 +1629,25 @@ mod tests {
         assert_eq!(start[0], "▀█▀ █ █▄ █ █▀ █▀▀ █   █ █ █ █▀▄▀█ ✶", "tinselvim");
         assert_eq!(start[1], " █  █ █ ▀█ ▄█ ██▄ █▄▄ ▀▄▀ █ █ ▀ █");
 
-        // i and l sparkle at the same moment, the rest untouched
-        let (_, sparking) = at(INTRO_HOLD + INTRO_SPREAD + INTRO_SPARK * 0.3).unwrap();
-        let parts: Vec<_> = sparking[0].split_whitespace().collect();
-        assert!(parts[1].chars().all(|c| "✦✧⋆·".contains(c)), "{sparking:?}");
-        assert!(sparking[0].contains("█▄ █ █▀ █▀▀") && !sparking[0].contains("█   █ █"), "{sparking:?}");
-
-        // n and e start to go while the first gap is still closing
-        let overlap = INTRO_HOLD + INTRO_STEP + INTRO_SPREAD + INTRO_SPARK * 0.3;
-        let first_closing = (overlap - INTRO_HOLD - INTRO_SPREAD - INTRO_SPARK * 0.4) / INTRO_CLOSE;
-        assert!(first_closing > 0.0 && first_closing < 1.0);
-        assert!(at(overlap).unwrap().1[0].contains(['✦', '✧', '⋆', '·']));
-
-        // always moving inwards: t only ever right, the star only ever left
-        let (mut t_was, mut star_was) = (0, usize::MAX);
+        // one smooth move: t only ever right, the star only ever left, insel only ever fainter
+        let (mut t_was, mut star_was, mut solid_was) = (0, usize::MAX, 1.0);
         let mut t = 0.01;
         while t < INTRO_END {
             let (x, rows) = intro(t, area).unwrap();
-            let star = x + rows[0].chars().position(|c| c == '✶').unwrap();
-            assert!(x >= t_was && star <= star_was, "at {t}: {rows:?}");
-            (t_was, star_was) = (x, star);
+            let star = x + rows[0].iter().position(|c| c.0 == '✶').unwrap();
+            // how solid insel's faintest cell is; once it's all gone, nothing of it is left at all
+            let faded = rows.iter().flatten().filter(|c| c.0 != ' ' && c.1 < 1.0).map(|c| c.1);
+            let solid = match faded.fold(None, |m: Option<f32>, a| Some(m.map_or(a, |m| m.min(a)))) {
+                Some(a) => a,
+                None if t > INTRO_HOLD + 0.1 => 0.0,
+                None => 1.0,
+            };
+            assert!(x >= t_was && star <= star_was && solid <= solid_was, "at {t}: {rows:?}");
+            (t_was, star_was, solid_was) = (x, star, solid);
             t += 0.01;
         }
+        let (_, rows) = intro(INTRO_HOLD + INTRO_CLOSE * 0.5, area).unwrap();
+        assert!(rows[0].iter().any(|c| c.1 > 0.0 && c.1 < 1.0), "halfway, insel is half faded");
 
         let (x, end) = at(INTRO_END - 0.0001).unwrap();
         assert_eq!(x, (80 - 17) / 2, "it lands where the logo is drawn");
