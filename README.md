@@ -10,6 +10,12 @@ On macOS or Linux:
 curl -fsSL https://github.com/borhara/tvim/releases/latest/download/install.sh | sh
 ```
 
+Or with Homebrew:
+
+```sh
+brew install borhara/tap/tvim
+```
+
 Or, with Rust installed:
 
 ```sh
