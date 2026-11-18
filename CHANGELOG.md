@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/borhara/tvim/compare/v1.0.0...v1.1.0) - 2026-11-18
+
+### Added
+
+- add an install script that needs no rust
+
+### Fixed
+
+- drop the \\?\ prefix from windows paths
+
+### Other
+
+- add brew install to readme
+- publish a homebrew formula for each release
+- drop the homebrew formula
+- bump actions/checkout to v5
+- publish a homebrew formula for each release
+- attach prebuilt binaries to releases
+- fix install command in readme
+- compare paths with the same helper
+
 ## [1.0.0](https://github.com/borhara/tvim/releases/tag/v1.0.0) - 2026-11-18
 
 ### Added
