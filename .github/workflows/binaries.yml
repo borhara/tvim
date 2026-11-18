@@ -1,7 +1,8 @@
 name: Binaries
 
-# Builds tvim for each target, attaches the archives to a release and points the Homebrew
-# formula at them. Release calls this after publishing; run it by hand to backfill a tag.
+# Builds tvim for each target, attaches the archives and install.sh to a release and points
+# the Homebrew formula at them. Release calls this after publishing; run it by hand to
+# backfill a tag.
 on:
   workflow_call:
     inputs:
@@ -51,6 +52,19 @@ jobs:
           cp target/${{ matrix.target }}/release/tvim .
           tar czf "$ARCHIVE" tvim LICENSE README.md
           gh release upload "${{ inputs.tag }}" "$ARCHIVE" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # attached from the current commit rather than the tag, so backfilled releases get it too
+  installer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" install.sh --clobber --repo "$GITHUB_REPOSITORY"
 
   homebrew:
     needs: build
