@@ -261,6 +261,19 @@ pub fn awaits_command(keys: &[Key]) -> bool {
     count(rest).1 == rest.len()
 }
 
+/// Whether `keys` are an operator waiting for its motion, as `d` or `"a2c3` are.
+pub fn awaits_motion(keys: &[Key]) -> bool {
+    let rest = match keys {
+        [Key::Char('"'), Key::Char(c), rest @ ..] if is_register(*c) => rest,
+        rest => rest,
+    };
+    let rest = &rest[count(rest).1..];
+    match operator(rest, false) {
+        Some(Ok((_, len))) => count(&rest[len..]).1 == rest.len() - len,
+        _ => false,
+    }
+}
+
 pub fn is_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
 }
@@ -472,6 +485,16 @@ mod tests {
         assert!(awaits_command(&k("3")));
         assert!(!awaits_command(&k("d")));
         assert!(!awaits_command(&k("2g")));
+    }
+
+    #[test]
+    fn an_operator_awaits_its_motion() {
+        assert!(awaits_motion(&k("d")));
+        assert!(awaits_motion(&k("\"a2c3")));
+        assert!(awaits_motion(&k("gU")));
+        assert!(!awaits_motion(&k("g")));
+        assert!(!awaits_motion(&k("di")));
+        assert!(!awaits_motion(&k("")));
     }
 
     #[test]

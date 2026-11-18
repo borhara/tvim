@@ -1,10 +1,12 @@
 use tinsel::app::Key;
 
-/// The modes a mapping can be made for, as vim's n, x, i and c.
+/// The modes a mapping can be made for, as vim's n, x, o, i and c.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MapMode {
     Normal,
     Visual,
+    // after an operator, waiting for its motion
+    Operator,
     Insert,
     Command,
 }
@@ -14,6 +16,7 @@ impl MapMode {
         match self {
             MapMode::Normal => 'n',
             MapMode::Visual => 'x',
+            MapMode::Operator => 'o',
             MapMode::Insert => 'i',
             MapMode::Command => 'c',
         }

@@ -1049,6 +1049,7 @@ impl Editor {
         match self.mode {
             Mode::Normal if self.previews.contains_key(&self.focus) => None,
             Mode::Normal if fresh => Some(MapMode::Normal),
+            Mode::Normal if crate::command::awaits_motion(&self.pending) => Some(MapMode::Operator),
             m if m.is_visual() && fresh => Some(MapMode::Visual),
             Mode::Insert | Mode::Replace => Some(MapMode::Insert),
             Mode::Command | Mode::Search => Some(MapMode::Command),

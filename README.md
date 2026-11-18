@@ -104,7 +104,7 @@ nnoremap <leader>w :w<CR>
 
 ### Key mappings
 
-Mappings work as in vim. `:nnoremap`, `:xnoremap`, `:inoremap` and `:cnoremap` map keys in normal, visual, insert and command-line mode. `:noremap` covers normal and visual mode together, and `:noremap!` covers insert and the command line. The `map` forms (`:nmap`, `:imap` and so on) let the new keys run other mappings too. `<leader>` is `Space`, and `<Nop>` maps keys to nothing.
+Mappings work as in vim. `:nnoremap`, `:xnoremap`, `:inoremap` and `:cnoremap` map keys in normal, visual, insert and command-line mode, and `:onoremap` maps the keys typed after an operator such as `d`. `:noremap` covers normal, visual and after an operator, and `:noremap!` covers insert and the command line. The `map` forms (`:nmap`, `:imap` and so on) let the new keys run other mappings too. `<leader>` is `Space`, and `<Nop>` maps keys to nothing.
 
 `:nunmap` and its siblings remove a mapping, and `:mapclear` removes them all. `:map`, `:nmap` and the rest list mappings when given no keys to map to.
 

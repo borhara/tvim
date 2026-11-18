@@ -42,6 +42,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("nnoremap", "nn", "map keys in normal mode"),
     ("xnoremap", "xn", "map keys in visual mode"),
     ("inoremap", "ino", "map keys in insert mode"),
+    ("onoremap", "ono", "map keys after an operator"),
     ("map", "", "map keys, or list mappings"),
     ("unmap", "unm", "remove a mapping"),
     ("undo", "u", "undo"),
