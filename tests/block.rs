@@ -214,3 +214,41 @@ fn changing_a_block() {
     );
     assert_eq!(t("abcd\nefgh", "l<C-v>jlcX<Esc>u"), "abcd\nefgh");
 }
+
+#[test]
+fn replacing_and_changing_case_in_a_block() {
+    use common::text_after as t;
+    assert_eq!(t("abcd\nefgh", "l<C-v>jlrx"), "axxd\nexxh");
+    assert_eq!(t("abcd\nefgh", "l<C-v>jlU"), "aBCd\neFGh");
+    assert_eq!(t("ABCD\nEFGH", "l<C-v>jlu"), "AbcD\nEfgH");
+    assert_eq!(t("aBcd\neFgh", "l<C-v>jl~"), "abCd\nefGh");
+    assert_eq!(t("abcd\nefgh", "l<C-v>jlrxu"), "abcd\nefgh");
+}
+
+#[test]
+fn shifting_from_the_blocks_edge() {
+    use common::text_after as t;
+    assert_eq!(t("ab\ncd", "l<C-v>j>"), "a    b\nc    d");
+    assert_eq!(t("a      b\nc  d", "l<C-v>j<lt>"), "a  b\ncd");
+    assert_eq!(
+        t("ab\nc\nde", "l<C-v>jj2>"),
+        "a        b\nc\nd        e",
+        "short lines stay"
+    );
+}
+
+#[test]
+fn numbers_in_a_block_go_up_and_down() {
+    use common::text_after as t;
+    assert_eq!(t("1 1\n1 1", "ll<C-v>j<C-a>"), "1 2\n1 2");
+    assert_eq!(t("5 5\n5 5", "ll<C-v>j3<C-x>"), "5 2\n5 2");
+}
+
+#[test]
+fn joining_and_commenting_a_blocks_lines() {
+    use common::text_after as t;
+    assert_eq!(t("a\nb\nc", "<C-v>jJ"), "a b\nc");
+    let mut e = ed("a\nb\nc");
+    e.keys(&parse("l<C-v>jgc"));
+    assert_eq!(e.text(), "# a\n# b\nc");
+}
