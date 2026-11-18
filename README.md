@@ -4,7 +4,13 @@ tvim is a text editor for the terminal that uses vim's keys. If you already use 
 
 ## Install
 
-You need Rust. Then:
+On macOS or Linux:
+
+```sh
+curl -fsSL https://github.com/borhara/tvim/releases/latest/download/install.sh | sh
+```
+
+Or, with Rust installed:
 
 ```sh
 cargo install tvim
