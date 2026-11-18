@@ -419,6 +419,15 @@ fn draw_status(
                 };
                 parts.push(paint(quiet(mode), &size));
             }
+            if let Some(b) = e.block_selection() {
+                let rows = b.bottom - b.top + 1;
+                let size = if b.to_end() {
+                    plural(rows as u64, "line")
+                } else {
+                    format!("{rows}×{}", b.right - b.left)
+                };
+                parts.push(paint(quiet(mode), &size));
+            }
         }
         let p = e.cursor();
         let col = crate::text::vcol(e.buffer().line(p.row), p.col, e.options.tab_stop) + 1;
