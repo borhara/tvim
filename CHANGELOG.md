@@ -1,0 +1,713 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.0.0](https://github.com/borhara/tvim/releases/tag/v1.0.0) - 2026-11-18
+
+### Added
+
+- *(ui)* draw only when needed, at full speed while things move, 15 a second while the stars twinkle and the window has focus, and on the minute for the clock
+- *(ui)* hold tinselvim for a second before it squeezes into tvim
+- *(ui)* the intro squeezes insel away in one smooth move, fading it as t and vim glide together
+- *(ui)* a quicker intro, each pair going while the last gap still closes, so the letters keep drifting in
+- *(ui)* the welcome logo opens as tinselvim and sheds insel from the outside in
+- *(ui)* suspend to the shell, or say so where that isn't supported
+- *(anim)* stop the ambient clock while the terminal is in the background
+- *(editor)* bracketed paste puts text after the cursor in normal mode
+- *(ui)* show tabs after the indent as faint arrows
+- *(ui)* turn "written" messages into a saved toast that reads as a sentence
+- *(suggest)* a strip of key hints along the bottom of the text
+- *(suggest)* complete file names, folders first, with their sizes
+- *(suggest)* hints for what the pending keys can be followed by
+- *(suggest)* suggest commands, options and open files as the command line is typed
+- *(suggest)* suggest commands as they're typed, and tab through them
+- *(suggest)* hint tables for motions, objects, g, z and windows
+- *(suggest)* describe every option and show its current value
+- *(explorer)* show file sizes the way people read them
+- *(ui)* a floating command palette with suggestions and their values
+- *(ui)* the animations rest while the terminal window is out of focus
+- *(suggest)* list ex commands with their short names and what they do
+- *(anim)* a fading pulse on the line a jump lands on
+- *(ui)* the terminal window takes the editor's background colour too
+- *(anim)* slide the text column into place when zen mode toggles
+- *(anim)* ease the git menu open
+- *(anim)* fade the blame lens in once the cursor rests
+- *(anim)* follow the editor's scroll and keep frames coming while it moves
+- *(ui)* the sidebar and whatever sits behind the git menu dim by a fraction, so they can fade
+- *(smooth)* glow after searches, and after jumps that leave the screen
+- *(anim)* glide scrolls along an eased curve, snapping the small ones
+- *(zen)* a quiet bottom line for messages, typing and pending keys
+- *(zen)* toggle zen mode, giving focus back to the sidebar after
+- *(ui)* the sparkles in the sky wander about
+- *(zen)* a centred column with nothing else around it
+- *(ui)* shape and colour the cursor by mode, at the end of a tab like vim
+- *(ui)* the terminal's padding takes the editor's background
+- *(ui)* the cursor takes the colour of the mode
+- *(sky)* a star chart naming the items under the map, the cursor's one lit
+- *(sky)* bracket the dots each top-level item spans
+- *(sky)* a status row with recording, pending keys, matches, selection and place
+- *(sky)* tell when nothing has been opened or typed yet
+- *(ui)* find a code file's top-level items, with attributes and imports joined
+- *(sky)* cache the outline per buffer and version
+- *(ui)* an outline of sections for markdown, toml and code, cached per version
+- *(sky)* the file's path and scope on the status row, folder giving way first
+- *(sky)* mode-tinted labels and messages marked as notes or errors
+- *(sky)* map changes, matches and the cursor's star onto the dots
+- *(ui)* breadcrumbs of the headings or items the cursor sits in
+- *(sky)* a star line with the file's map in the middle
+- *(sky)* open files across the top bar, scrolled to keep the current one
+- *(ui)* name the function, type or impl a line opens, in several languages
+- *(sky)* a corner with language, line count, branch and clock that gives way
+- *(windows)* a title rule on each window with its name, changes and scope
+- *(sky)* an accent colour per mode and stars that twinkle a few at a time
+- *(sky)* lay out the top bar, sidebar, text, star line and status row
+- *(preview)* scroll the preview with j, k, ctrl-d and friends
+- *(preview)* follow the source's scroll unless scrolled by hand
+- *(preview)* tab moves to the preview when tabpreview is on
+- *(preview)* draw a preview window with its own gliding scroll and thumb
+- *(preview)* close previews, and prune them when their window goes
+- *(editor)* leader keys for files, buffers, zen, preview, git and grep
+- *(preview)* open a markdown preview beside or below the file
+- *(preview)* a preview pane tied to its source window
+- *(preview)* split markdown into blocks at blanks and headings, not inside fences
+- *(session)* :recent picks from recently opened files
+- *(session)* read set lines from a config file and report the bad ones
+- *(session)* list each open file with its cursor, for saving the session
+- *(session)* reopen the files from last time, back on the one in use
+- *(session)* save open files and recent places without clobbering another tvim
+- *(finder)* a recent files list that keeps its order and the line each was left at
+- *(set)* :set flags, numbers, no/inv/! toggles and ? queries
+- *(session)* reopen a file at the line it was left on
+- *(session)* remember where each file was left, most recent first
+- *(session)* look up boolean options by their long or short names
+- *(session)* read and write places as line, column and path
+- *(session)* find the state and config folders from TVIM_, XDG and HOME
+- *(gitmenu)* paste into the commit message or command line
+- *(gitmenu)* key hints that change with the tab and what's being typed
+- *(gitmenu)* run any git command typed after a colon
+- *(gitmenu)* split a command line into words, honouring quotes and escapes
+- *(gitmenu)* edit the typed line and recall earlier commands with up and down
+- *(gitmenu)* refresh the gutter and reload a clean buffer after a git command
+- *(gitmenu)* a prompt for commit messages, git commands and discard checks
+- *(gitmenu)* commit the staged files with a typed message
+- *(gitmenu)* fetch the peek for whatever is selected in the background
+- *(gitmenu)* peek at a file's diff, a commit or a branch's history
+- *(gitmenu)* a pane with the picked diff or a command's output
+- *(gitmenu)* pull and push, with git's output in a pane of its own
+- *(gitmenu)* enter on a branch switches to it, unless there are unsaved changes
+- *(ui)* a paste arrives whole, so a pasted newline isn't run as Enter
+- *(gitmenu)* log and branches tabs, read when switched to
+- *(gitmenu)* discard a change once confirmed, putting renames back
+- *(gitmenu)* colour diff and stat lines
+- *(gitmenu)* s stages or unstages the file under the cursor, renames included
+- *(gitmenu)* keys to move, refresh, stage, discard and commit
+- *(gitmenu)* poll the git menu, closing it with the error when it fails
+- *(gitmenu)* queue keys until the status is in and scroll output with j and k
+- *(gitmenu)* list commits and branches, the current one starred
+- *(gitmenu)* start a job unless one is still running, then read the status again
+- *(gitmenu)* pick up finished jobs on each tick
+- *(gitmenu)* track the tab and the selected row
+- *(gitmenu)* tell whether the status is ready or failed, and name the repo
+- *(gitmenu)* changed files grouped into staged, changes and untracked
+- *(gitmenu)* notes on what happened, plain or as errors
+- *(gitmenu)* a header with the branch, upstream and counts per group
+- *(gitmenu)* open the git menu and hand it keys, keeping its history
+- *(gitmenu)* a floating git panel that rises in, split into list and pane
+- *(gitmenu)* open the menu and read the status in the background
+- *(gitmenu)* run git work on a thread and keep only the newest result
+- *(gitmenu)* name the tabs, log entries, typed lines and output
+- *(gitmenu)* read the status from the repo's top folder
+- *(gitmenu)* parse porcelain status with the branch and its ahead and behind counts
+- *(gitmenu)* run git without a terminal, so ssh fails instead of hanging
+- *(gitmenu)* sort changes into staged, changes and untracked
+- *(blame)* blame on a thread and cache the result per file and head
+- *(blame)* show the line's blame faintly after its end
+- *(blame)* describe who last changed the cursor's line
+- *(blame)* run git blame against HEAD and note your own email
+- *(blame)* describe a line as who changed it, how long ago and why
+- *(blame)* read git blame's porcelain output into a commit per line
+- *(git)* reset the hunk under the cursor to its old lines
+- *(git)* branch, upstream and the sidebar's git status
+- *(git)* refresh a folder's statuses in the background
+- *(ui)* count added, changed and removed lines against git
+- *(git)* read porcelain status into file states and the folders above them
+- *(explorer)* head the tree with the branch and colour entries by git state
+- *(git)* file states for a tree, with an untracked folder covering what's in it
+- *(sky)* branch info with ahead, behind and change totals
+- *(git)* probe the repo on a thread and count commits ahead and behind
+- *(git)* find the branch and the committed version of a file, or that it's untracked
+- *(git)* run git quietly and read a trimmed line back
+- *(git)* diff the buffer against HEAD or the saved file, cached per version
+- *(git)* hold the branch, head and committed text of the open file
+- *(grep)* refresh results on each tick, or wait for them
+- *(grep)* paste the first line of the clipboard into the query
+- *(grep)* type to narrow the search and press enter to jump to a hit
+- *(grep)* a picker of matches across files, with counts while it reads
+- *(sync)* shrug off poisoned locks and wait for background work
+- *(grep)* show a hit's path, its line and the lines around it
+- *(grep)* report hits, files hit and whether the search was cut short
+- *(grep)* find one hit per line, ignoring case until a capital is typed
+- *(grep)* search across files and open a hit with the match highlighted
+- *(grep)* start a search across the project's files
+- *(grep)* read every text file under the root on a thread, in batches
+- *(ui)* writing a file pops a toast into the corner
+- *(jumps)* ctrl-o and ctrl-i go back and forth, across buffers
+- *(jumps)* find the latest jump on another line of a buffer
+- *(jumps)* step back and forward through the jump list
+- *(jumps)* record where jumps start, along with the buffer
+- *(jumps)* a capped jump list that keeps each line once
+- *(buffers)* pick from the open files in the finder
+- *(buffers)* tab names that add the folder when two files share a name
+- *(buffers)* write every modified buffer and find unsaved ones
+- *(buffers)* :ls lists open files and :b picks one by number or name
+- *(buffers)* close the current buffer unless it has unsaved changes
+- *(buffers)* open a path in a new buffer, or switch to it if already open
+- *(windows)* drop windows whose buffer has been closed
+- *(buffers)* recent files list the name first, then the folder and last line
+- *(finder)* pick from a given list of files under a title of its own
+- *(buffers)* start fresh buffers, reusing an untouched empty one
+- *(buffers)* switch to a buffer by index or cycle through them
+- *(ui)* a row too long for the screen scrolls sideways instead of being cut off
+- *(buffers)* list open buffers with their names and whether they're modified
+- *(buffers)* refuse to quit while another buffer has unsaved changes
+- *(ui)* cut long paths from the left so the file name stays
+- *(buffers)* stash the shown buffer away and bring another back
+- *(buffers)* a doc holds everything about a buffer that isn't showing
+- *(explorer)* paste into the filter while typing one
+- *(explorer)* pass keys to the sidebar and act on what it asks for
+- *(explorer)* keys to move, open, filter, show hidden files and change the root
+- *(explorer)* fuzzy filter the tree, keeping the folders that lead to each match
+- *(explorer)* reload expanded folders from disk, keeping the selection
+- *(explorer)* keep the open file showing in the sidebar
+- *(explorer)* - moves the root up a folder and keeps the old one open
+- *(explorer)* status row with the folder, filter and keys to use
+- *(explorer)* draw the file tree with guides, the current file starred and filter hits bold
+- *(explorer)* open files and toggle folders, with h folding back up
+- *(explorer)* toggle the sidebar, rooted at the working folder when the file is in it
+- *(explorer)* reveal a file by expanding the folders above it
+- *(explorer)* expose the visible rows and scroll them with the selection
+- *(explorer)* open a tree at a folder and list what's expanded, hiding dotfiles
+- *(explorer)* open a folder in the sidebar and focus it
+- *(explorer)* read a folder's entries, folders first, following links
+- *(finder)* preview the picked file with syntax colours and the line marked
+- *(finder)* preview the picked file, read only as far as it needs
+- *(finder)* open the picked file, or say why it couldn't be
+- *(finder)* paste the first line of the clipboard into the query
+- *(finder)* type to filter, move with ctrl-n and ctrl-p, open with enter
+- *(finder)* scroll the list as little as it can to keep the pick in view
+- *(finder)* list matches with icons and hits, the folder muted
+- *(finder)* expose the title, query, selection and whether the walk was cut short
+- *(finder)* rank the files again whenever the query changes
+- *(finder)* open the fuzzy file finder from the working folder
+- *(finder)* open a finder over every file under the current folder
+- *(ui)* file icons and colours by extension
+- *(finder)* skip bare names and single-star globs from .gitignore
+- *(finder)* walk the project, skipping build folders and giving up on huge trees
+- *(finder)* a centred picker frame with a query line and room for a preview
+- *(finder)* score matches, favouring the file name, runs and word starts
+- *(finder)* match query letters in order, pulled together so they cluster
+- *(completion)* put the chosen word in, and replay it as typed text
+- *(completion)* a popup of words by the cursor, above or below where there's room
+- *(completion)* gather words before the cursor and cycle through them
+- *(completion)* ctrl-n and ctrl-p open word completion in insert mode
+- *(editor)* find every plain occurrence of a word in a line
+- *(ui)* light up other uses of the word under the cursor
+- *(editor)* find the bracket matching the one under the cursor
+- *(ui)* work out indents through blank lines and the scope around the cursor
+- *(windows)* a view of each window, with its own cursor and scroll
+- *(windows)* draw every window in its region, ruled off from its neighbours
+- *(ui)* a scrollbar thumb with search matches marked along it
+- *(ui)* draw lines with numbers, change marks, matches, guides and sky past the end
+- *(windows)* views pair a window's place with the text of its buffer
+- *(editor)* detect a buffer's syntax and highlight its lines
+- *(ui)* paint each token kind in its own colour, tabs and control chars shown
+- *(windows)* ctrl-w keys to split, move, close and resize
+- *(windows)* even out every split
+- *(windows)* grow and shrink a window, never below its minimum size
+- *(windows)* move focus to the nearest window in a direction, or cycle them
+- *(windows)* keep other windows on the same file in place as lines change
+- *(windows)* close a window or keep only the current one
+- *(windows)* split the focused window, refusing when there's no room
+- *(windows)* save and restore each window's cursor when focus moves
+- *(windows)* fit the editor's screen to the focused window's rect
+- *(windows)* count windows and know which one has focus
+- *(windows)* remove a window and give its room to a neighbour
+- *(windows)* split a window in place, taking half its room
+- *(windows)* walk the layout tree for its windows, first, last and members
+- *(windows)* share a rect out between splits and place every window
+- *(windows)* a window per view and a layout tree of splits
+- *(search)* move to the first match as the pattern is typed
+- *(editor)* * and # search for the whole word under the cursor
+- *(editor)* count search matches and say which one the cursor is on
+- *(editor)* find a pattern forwards or backwards, wrapping around the ends
+- *(editor)* compile search patterns once and reuse them while the case rules hold
+- *(ex)* refuse to drop unsaved changes without a !
+- *(ui)* run shell commands with the terminal handed back until enter
+- *(ex)* :s with any delimiter, flags, groups and replacements that split lines
+- *(ex)* hand shell commands and suspends to the app as effects
+- *(ex)* :r reads a file in below the cursor or at line zero
+- *(editor)* browse command and search history with up and down
+- *(sky)* type commands and searches on the status row, with a match count
+- *(ex)* :e reloads the file or opens another, minding unsaved changes
+- *(editor)* run or cancel the command line, as an ex command or a search
+- *(ui)* a one-line input that scrolls to keep its cursor in view
+- *(ex)* line ranges with numbers, . $ % marks and +/- offsets
+- *(editor)* edit the command line with the usual readline keys
+- *(ex)* run : commands by name or abbreviation, from :w and :q to :normal and :version
+- *(editor)* a command line with its own cursor and prompt
+- *(editor)* list registers in vim's order and share the marks
+- *(editor)* play a macro with a count, @@ and @: included
+- *(editor)* stop recording on q, appending for an uppercase register
+- *(registers)* :registers and :marks show what's stored
+- *(editor)* set marks, start recordings and play macros
+- *(editor)* dot repeats the last change, with its count and register
+- *(editor)* read registers back, including the clipboard and last search
+- *(editor)* put a register's text before or after the cursor
+- *(editor)* store yanks and deletes in named, numbered and small-delete registers
+- *(editor)* visual mode keys for deleting, putting, joining and inserting
+- *(ui)* tint selected columns, linewise or charwise
+- *(editor)* motions, text objects and operators on a visual selection
+- *(editor)* enter and leave visual mode, setting the < and > marks
+- *(editor)* line a typed closing bracket up with its opener
+- *(editor)* close brackets and quotes as they're typed, and step over closers
+- *(editor)* leave insert mode, repeating what was typed for a count
+- *(editor)* ctrl-w deletes the word before the cursor
+- *(editor)* backspace by a shift width over spaces, and restore replaced text
+- *(ui)* in insert mode the indent guide under the cursor becomes the cursor
+- *(editor)* autoindent new lines and drop indent nobody typed on
+- *(editor)* insert mode keys for tabs, newlines, deletes, registers and shifts
+- *(editor)* type characters, overwriting them in replace mode
+- *(editor)* o and O open lines, indented deeper after an opening bracket
+- *(editor)* begin an insert session that remembers its count
+- *(editor)* gv, gJ, gp, gP and gi
+- *(editor)* ctrl-a and ctrl-x add to the number under the cursor, keeping zero padding
+- *(editor)* r replaces characters, or splits the line on enter
+- *(editor)* join lines, with or without spaces between them
+- *(editor)* ~ toggles the case of characters under the cursor
+- *(editor)* helpers for a range's text, its span and indents of a width
+- *(ui)* a welcome screen with the logo, a few keys to start and sparkles
+- *(editor)* scroll by lines with ctrl-e/ctrl-y and place the cursor line with z
+- *(ui)* split the text area into a gutter and a body and keep it scrolled
+- *(ui)* lay out each frame, then overlays, then put the cursor where typing happens
+- *(ui)* name the window after the file, keep ctrl-c for vim and take the mouse
+- *(ui)* run the editor as a tinsel app that draws each frame and feeds it keys
+- *(editor)* normal mode keys for edits, inserts, scrolling and searching
+- *(editor)* gather normal mode keys until they parse as a command
+- *(editor)* send each input to whichever mode or panel has it
+- *(editor)* take keys one at a time or as a sequence
+- *(command)* parse normal and visual keys into commands with counts and registers
+- *(command)* parse operators and text object targets
+- *(command)* read counts and register names
+- *(command)* parse motions, including f, t and other two-key ones
+- *(keys)* write keys back as notation or short symbols
+- *(keys)* parse vim key notation like <Esc> and <C-r>
+- *(editor)* yank, delete, change, shift, case and comment over a range
+- *(editor)* cw changes to the end of the word, like ce
+- *(editor)* operators over lines, text objects and motions
+- *(editor)* turn a motion into a range, following vim's exclusive rules
+- *(editor)* ranges and motion kinds for operators to work on
+- *(main)* open the file named on the command line, with -h and -V
+- *(editor)* scroll by half pages and whole pages
+- *(editor)* scroll to keep the cursor in view, with scrolloff
+- *(ui)* start on line N, the last line or the first line holding text
+- *(editor)* size the text area and number gutter from the screen
+- *(ui)* a dark colour scheme tinsel can flip for light terminals
+- *(editor)* write the buffer or a range of lines, refusing to clobber other files
+- *(editor)* rebuild the file's text as saved, and show file info on ctrl-g
+- *(editor)* load a file, noting dos line endings and a missing final newline
+- *(editor)* work out where each motion lands and whether it's inclusive, exclusive or linewise
+- *(editor)* move the cursor by a motion, keeping the wanted column
+- *(editor)* run a parsed command, whether a motion, operator or key
+- *(editor)* undo and redo with counts, and say when there's nothing left
+- *(editor)* group edits into one undo step, capped at a thousand
+- *(editor)* snapshot lines and cursor so a change can be put back
+- *(editor)* keep the cursor on the text and remember the column it wants
+- *(editor)* expose the buffer, cursor, mode, unsaved changes and quitting
+- *(editor)* start empty, from a string, or from a file on disk
+- *(editor)* show info and error messages, and clear them
+- *(editor)* keep the file's path, line endings and final newline, and name it
+- *(editor)* one struct holding the whole editor's state
+- *(editor)* options with vim's defaults, plus a few of tvim's own
+- *(editor)* modes, each with the name the status line shows
+- *(command)* operators, targets and the commands they make
+- *(command)* motions a normal-mode command can name
+- *(complete)* word candidates, nearest first, then from other buffers
+- *(time)* local hours and minutes from the C library's time zone
+- *(clipboard)* an in-memory clipboard for when there's no system one
+- *(clipboard)* copy and paste through pbcopy, wl-copy, xclip, xsel or clip.exe
+- *(comment)* comment markers for html, css, sql, lisp and more
+- *(syntax)* each language's line and block comment markers
+- *(comment)* toggle comments on lines, lined up at the shallowest indent
+- *(diff)* mark added, changed and removed lines for the gutter
+- *(diff)* turn common lines into hunks, giving up on huge ones
+- *(diff)* find the longest common run of lines after trimming equal ends
+- *(diff)* marks and hunks for changed lines, placed where the gutter shows them
+- *(syntax)* inline markdown code, bold, emphasis and links
+- *(syntax)* markdown headings, lists, quotes and fenced code
+- *(syntax)* tokenise code into keywords, strings, numbers and comments, over lines
+- *(syntax)* helpers to find closing quotes and spot function names
+- *(syntax)* colour comments and pick out TODO, FIXME and friends
+- *(syntax)* constants and quote characters per language
+- *(syntax)* keywords for every language
+- *(syntax)* token kinds and a line state carried between lines
+- *(syntax)* detect a file's language from its name or extension
+- *(regex)* escape text so it matches literally
+- *(regex)* ignore case and smart case, with \c and \C winning over both
+- *(regex)* every match in a line, without an empty one where the last ended
+- *(regex)* match sets, classes, anchors and word edges
+- *(regex)* backtracking matcher with a step limit
+- *(regex)* build a regex from a pattern
+- *(regex)* emit instructions for every kind of node
+- *(regex)* compile to a small instruction set and refuse patterns that grow too big
+- *(regex)* bracket sets with ranges, negation and literal ] and -
+- *(regex)* *, +, ? and {n,m} repeats, with a cap on counts
+- *(regex)* parse atoms, groups, \d \w \s classes and escapes
+- *(regex)* parse alternation and sequences
+- *(regex)* a syntax tree for patterns with sets, anchors, groups and repeats
+- *(object)* ip and ap over paragraphs and the blank lines between
+- *(object)* bracket blocks, nested by count and whole lines when they span them
+- *(object)* quoted strings that skip escaped quotes
+- *(object)* iw and aw, taking the blanks around a word
+- *(object)* pick a text object by its key
+- *(motion)* f, t, F and T within a line, with counts and repeats
+- *(motion)* % to the matching bracket, even over lines
+- *(motion)* jump between paragraphs with { and }
+- *(motion)* b and ge back over words and empty lines
+- *(motion)* w and e, with W and E treating punctuation as part of a word
+- *(buffer)* delete, replace and insert whole lines, always keeping one
+- *(buffer)* slice and delete text across lines
+- *(buffer)* insert text that may span several lines
+- *(buffer)* look up lines, characters and the end of the buffer
+- *(buffer)* read the text back and tell an empty buffer apart
+- *(buffer)* positions and a buffer of lines built from text
+- *(text)* expand tabs and show control characters as carets
+- *(text)* map columns to screen cells through tabs and wide characters
+- *(text)* count chars, find byte offsets and read a line's indent
+- *(text)* sort characters into blanks, word characters and punctuation
+- initial cargo project
+
+### Fixed
+
+- show recent file paths properly on windows
+- *(ui)* the git menu's spinners ask for frames while git works, now nothing is drawn unasked
+- *(ui)* alt and a key still reaches vim as esc then the key, now tinsel tells them apart
+- *(ui)* send the whole screen again once the opening glide settles, for iTerm's margin
+
+### Other
+
+- run all tests even if some fail
+- the test repos keep their line endings as written, as Windows' git would change them
+- the path under the explorer is checked by what's around it, as Windows writes its own kind
+- a temporary folder on Windows starts with its drive
+- check a word with all() and sort the finder's tests by key, as newer clippy asks
+- count the explorer's entries rather than expecting eight, and accept a temporary folder short enough to show whole
+- format with rustfmt, as CI now checks
+- test on Linux, macOS and Windows, and release with release-plz once CI passes on main
+- depend on tinsel 1 from crates.io rather than a path beside it
+- *(ui)* pass tinsel's RAMP as the slice it is now
+- move through the finder's and search's lists with tinsel's picker keys
+- *(editor)* edit the command line with tinsel's TextInput, words split as vim splits them
+- *(gitmenu)* type commands and commit messages in a tinsel TextInput, with its History for the commands run before
+- match, rank and highlight files with tinsel's fuzzy matching, and keep lists in view with keep_in_view
+- *(ui)* draw rules, scrollbars, right-aligned and centred text and the zen fade with tinsel's drawing helpers
+- *(ui)* popups are panels with tinsel's backgrounds, and the git menu opens as a tinsel modal
+- *(gitmenu)* run git's work and peeks as tinsel jobs instead of its own slots
+- *(clipboard)* copy and paste through tinsel, which also reaches the clipboard over ssh
+- take the clock, line counts and blame ages from tinsel's format helpers
+- *(ui)* cut paths from the front and measure tabs with tinsel's text helpers
+- *(keys)* read and write vim's key notation with tinsel's
+- *(ui)* glide on tinsel's Glide and Glider, each effect asking for its own frames, and drop ui/anim.rs
+- *(ui)* leave the window's margin colour to tinsel, which sends it again once things settle
+- read the terminal cursor by its fields, as tinsel now names them
+- *(anim)* keep time in f64 seconds, as tinsel's clock now is
+- *(ui)* take sample from tinsel::style in the sky too
+- *(ui)* take the ramp, sample and gradient from tinsel::style
+- *(ui)* follow tinsel's paint_on
+- *(preview)* follow tinsel's markdown::wrapped
+- *(ui)* follow tinsel's frames fading rather than dimming
+- *(keys)* name keys tinsel may add later, and build mouse events with Mouse::new
+- ignore .DS_Store
+- install with cargo install
+- set the minimum rust version, keywords and categories
+- how to contribute
+- settings and the config file
+- the extras vim doesn't have
+- what's the same as vim and what isn't
+- opening files, folders and line numbers from the shell
+- how to install
+- what tvim is
+- *(ui)* ctrl-c doesn't quit, and the mouse is caught and ignored
+- *(ui)* the window title names the file and marks changes
+- *(insert)* pasted text keeps its own indent, in either mode
+- *(ui)* the terminal cursor sits on the character, shaped by mode
+- *(ui)* written messages read as a sentence
+- *(toasts)* saving shows a toast instead of a message
+- *(suggest)* hints skip the register and count
+- *(suggest)* commands by short name, options with values and open buffers
+- *(suggest)* hints for what comes next after a pause
+- *(explorer)* cover fuzzy names and human sizes
+- *(suggest)* ctrl-w shows its keys
+- *(suggest)* hints for a pending key sit in a strip
+- *(ex)* cover :set flags, queries, errors and option suggestions
+- *(suggest)* the command line floats with suggestions as it's typed
+- *(smooth)* far jumps glow too, near ones don't
+- *(smooth)* the editor is already there, and small scrolls snap
+- *(smooth)* a search lights up the line it lands on
+- *(zen)* the column slides in
+- *(smooth)* every jump glides, unless smooth is off or it's a snapshot
+- *(preview)* the preview glides when the cursor jumps
+- *(ui)* draw at 60fps only while something moves or a toast shows
+- *(preview)* cover block splitting, rendering by block and row mapping
+- *(smooth)* half pages glide into place
+- *(zen)* it's in the command palette and the space hints
+- *(zen)* messages and searches stay quiet at the bottom
+- *(zen)* the sidebar hides and comes back with its focus
+- *(zen)* zen shows only the focused window
+- *(zen)* zen from the text leaves the preview out
+- *(zen)* leaving puts everything back, narrow screens use all of it
+- *(zen)* only the text in a centred column
+- *(ui)* tiny screens don't break the drawing
+- *(ui)* a blank slate says hello with the version and no cursor
+- *(sky)* roomy leaves a blank row around the text and the sidebar
+- *(sky)* the view follows the cursor and the star line shows the place
+- *(sky)* open files as a constellation with the file's facts in the corner
+- *(ui)* markdown headings and toml tables as sections
+- *(sky)* typing on the status row puts the cursor after it
+- *(ui)* the top-level items of rust and python
+- *(sky)* tiny screens don't break the bars
+- *(explorer)* the sidebar beside the file, ruled off from the text
+- *(sky)* the cursor and lit label take the mode's colour
+- *(sky)* everything sits on the darkest colour, in one look
+- *(sky)* stars drift only past the end, the same each moment
+- *(sky)* messages, pending keys and selection sizes on the bottom line
+- *(sky)* a short file sits brighter in the middle of the sky
+- *(ui)* breadcrumbs follow the cursor into an impl
+- *(sky)* the star line runs the full width above the last row
+- *(sky)* messages and pending keys take the last row back
+- *(sky)* the last row follows the mode, a pending search and recording
+- *(sky)* markdown, toml and plain files each get a chart
+- *(explorer)* on a narrow screen it takes the whole width
+- *(ui)* symbols from rust, python and go lines
+- *(sky)* the lit label stays put while the star moves
+- *(sky)* the last row names the stretches of the star line
+- *(sky)* the text sits on the night sky with the star line below
+- *(sky)* the open files are listed across the top
+- *(preview)* tab cycles through text, preview and sidebar
+- *(preview)* tab reaches the preview only with tabpreview set
+- *(preview)* space lists the preview key
+- *(preview)* the preview window gets its own title
+- *(preview)* closing the source window or buffer closes its preview
+- *(preview)* q, esc and ctrl-w o from the preview keep the text
+- *(preview)* hand scrolling holds until the source moves
+- *(preview)* a focused preview scrolls and ignores edits
+- *(preview)* the preview scrolls along with the text
+- *(preview)* it rerenders as you type and undo
+- *(preview)* toggle it from either window, and only for markdown
+- *(preview)* a narrow screen puts it below
+- *(preview)* render markdown block by block, reusing blocks that haven't changed
+- *(preview)* space m opens a rendered markdown preview beside
+- *(session)* the config file sets options and reports bad lines
+- *(session)* where state and config live, by environment
+- *(session)* move, filter and open recent files from the picker
+- *(session)* space r lists recent files, or says there are none
+- *(session)* the welcome screen points to recent files
+- *(session)* the recent list is capped and merges with what's on disk
+- *(session)* recent files are most recent first and remember the line
+- *(session)* files that are gone are skipped on restore
+- *(session)* open files come back where they were
+- *(gitmenu)* a staged rename unstages and discards as a whole
+- *(gitmenu)* split quoted arguments and group porcelain status
+- *(gitmenu)* only a message outside a repo, and enter opens the file
+- *(gitmenu)* the command box runs git and keeps a history
+- *(gitmenu)* stage, unstage and commit from the menu
+- *(gitmenu)* browse the log and switch branches, refusing over local changes
+- *(blame)* the lens is drawn after the line only when it fits
+- *(git)* the sidebar paints each file's status in its own colour
+- *(git)* the branch and its diff totals sit at the top right
+- *(grep)* the picker floats with a preview of the line
+- *(finder)* it floats over the editor with a preview
+- *(complete)* the choices pop up below the word
+- *(windows)* windows are drawn with titles and a divider
+- *(gitmenu)* discarding asks first and reloads the clean buffer
+- *(blame)* the lens names who changed the line and when
+- *(gitmenu)* space G opens the menu with staged, changed and untracked files
+- *(blame)* cover porcelain parsing and ages that read naturally
+- *(blame)* the lens hides while typing, mid-command and when turned off
+- *(git)* sidebar status follows saves and counts untracked folders
+- *(git)* cover porcelain status, renames and ignored files
+- *(git)* saving picks up a new commit, and a detached head shows a short sha
+- *(git)* untracked, ignored and repo-less files fall back to the saved text
+- *(git)* gutter marks compare against HEAD in a throwaway repo
+- *(git)* space h r resets the hunk under the cursor, and undoes
+- *(git)* lines changed since saving are marked in the gutter
+- *(git)* ]c and [c walk the hunks without wrapping, as jumps
+- *(grep)* case follows capitals and wide characters count once in columns
+- *(grep)* typing narrows the hits and enter jumps to one
+- *(grep)* find every matching line across a small project
+- *(grep)* escape changes nothing, :grep starts with a query
+- *(grep)* typing searches every file and enter jumps to the line
+- *(editor)* space is the leader for grep, files and open buffers
+- *(jumps)* jump across files and reopen a closed one
+- *(jumps)* new jumps drop newer ones and the list is capped
+- *(jumps)* '' and `` go back to the last jump
+- *(jumps)* back and forward
+- *(jumps)* new jumps drop newer ones, lines are kept once, the list is capped
+- *(jumps)* searches, marks and big moves count as jumps, plain moves don't
+- *(jumps)* ctrl-o and ctrl-i walk back and forth through jumps
+- *(buffers)* closing buffers with :bd and listing them with :ls
+- *(buffers)* pick from the open files
+- *(explorer)* unsaved changes stay open in the background
+- *(buffers)* cover :wa and :wqa
+- *(finder)* opening keeps the changed file open
+- *(complete)* words come from other buffers too, the current one first
+- *(buffers)* each keeps its own cursor and undo, and quitting minds them all
+- *(ui)* long paths keep their end, counted in columns
+- *(buffers)* cover gt, gT and :b commands between files
+- *(buffers)* opening files adds buffers without doubling up
+- *(explorer)* the open file's folders open by themselves and follow switches
+- *(windows)* :new splits an empty buffer, :bd closes its windows
+- *(windows)* split with a file without reloading it
+- *(explorer)* :e on a folder browses it
+- *(explorer)* q hides it, :Lex toggles it, commands still work
+- *(explorer)* filtering by letters in order, inside open folders too
+- *(explorer)* moving around and dash going up to the parent
+- *(explorer)* folders open and fold in place
+- *(explorer)* enter opens a file and tab moves between it and the browser
+- *(explorer)* folders first then files, hidden ones left out
+- *(finder)* cover simple gitignore names and globs
+- *(finder)* matches bunch together and the file name counts most
+- *(finder)* letters in order match, ignoring case and spaces
+- *(finder)* ctrl-p and :find open it
+- *(ui)* icons by kind of file
+- *(finder)* moving the pick and closing
+- *(finder)* typing narrows, enter opens, and does nothing on no match
+- *(finder)* lists every file but ignored ones
+- *(complete)* skip the word being typed, and undo and dot use the choice
+- *(ex)* tab completes command, option and file names
+- *(complete)* esc and ctrl-e put back the typed text, other keys accept
+- *(complete)* ctrl-n and ctrl-p cycle through nearby words
+- *(highlight)* colouring carries over lines and follows edits and undo
+- *(syntax)* cache tokeniser state per line and keep it above the first change
+- *(windows)* a window on another file draws that file
+- *(windows)* resize and even out windows
+- *(windows)* every window is drawn, the cursor in the focused one
+- *(windows)* :s still reads as one, and splits need room
+- *(windows)* edits below leave the other window alone
+- *(windows)* each window keeps its own cursor over a shared buffer
+- *(windows)* move between windows in every direction
+- *(windows)* ctrl-w q, :close and :only
+- *(windows)* split by key and command, and :q closes until the last
+- *(search)* * searches for the whole word with \< and \>
+- *(search)* bad patterns say so, matches cover what was matched
+- *(search)* history for searches and the command line
+- *(search)* an empty search repeats, and :noh stops the highlight
+- *(search)* show how many matches while searching
+- *(search)* the / register holds the last search
+- *(search)* searches as motions, and incremental matches that esc undoes
+- *(search)* smart case, and * and # for whole words
+- *(search)* / and ? go round the ends and say when they do
+- *(ex)* editing keys on the command line, and pasting into it
+- *(files)* write errors, and :wq versus :x
+- *(ex)* cover delimiter escapes and & and \1 in replacements
+- *(ex)* shell commands and suspending go to the screen
+- *(ex)* writing and quitting, and :0r reading above the first line
+- *(files)* reloading, switching and reading files in
+- *(ex)* unknown commands and quitting with or without changes
+- *(ex)* colon from a selection works on its lines
+- *(ex)* @: repeats the last command line, and @@ repeats that
+- *(ex)* :reg lists the registers that are set
+- *(files)* writing elsewhere, with ! and line ranges
+- *(ex)* delete, yank, shift, join and :normal over ranges
+- *(ex)* :s reaching the whole range and skipping empty matches
+- *(files)* a new file is marked new until written
+- *(ex)* :s with regular expressions and bad patterns
+- *(ex)* cover :s flags, messages and undo as one change
+- *(files)* line endings and the final newline survive a write
+- *(ex)* cover going to lines by number, $, offsets and marks
+- *(macros)* play what's in the register, and append with a capital
+- *(registers)* numbered and small delete registers, and empty ones say so
+- *(macros)* record and play macros, stopping one that calls itself
+- *(marks)* ' and ` return to a mark's line or exact place
+- *(comment)* one undo for the lot, and dot repeats it
+- *(registers)* named, appended and black hole registers
+- *(repeat)* dot repeats the last change, keeping its register
+- *(comment)* gcc toggles lines in each language's own comment
+- *(files)* opening says what was read, and binary files don't open
+- *(editor)* a helper for an editor with a memory clipboard and fixed screen
+- *(visual)* I and A at the ends, and yanking goes to the start
+- *(visual)* change case, replace and put over a selection
+- *(visual)* stop at an empty last line, and repeat whole-line puts
+- *(comment)* gc in visual mode
+- *(visual)* text objects grow the selection
+- *(visual)* switch modes, leave, reselect with gv and swap ends with o
+- *(visual)* characterwise and linewise selections
+- *(insert)* ctrl-c leaves insert mode but doesn't quit
+- *(pairs)* auto pairs turn off, undo and repeat
+- *(insert)* ctrl-t, ctrl-d and ctrl-r while typing
+- *(insert)* ctrl-w, ctrl-u and the arrow keys while typing
+- *(pairs)* enter between brackets opens a middle line, replace mode doesn't pair
+- *(insert)* tab and backspace step by whole indents
+- *(pairs)* no pairing next to words, and backspace takes an empty pair
+- *(insert)* drop an unused indent and line closers up with their opener
+- *(insert)* new lines keep the indent and indent inside blocks
+- *(pairs)* openers bring their closers and typing a closer steps over it
+- *(insert)* every way into insert mode, with counts that repeat the text
+- *(operators)* ctrl-a and ctrl-x add to numbers
+- *(operators)* replace characters with r and R
+- *(undo)* undoing to the saved text clears modified, moves aren't changes
+- *(operators)* join lines with and without spaces
+- *(comment)* blocks commented at their least indent, mixed lines all at once
+- *(operators)* yank and put by lines and characters, Y to the line's end
+- *(operators)* upper, lower and swap case
+- *(operators)* indent and outdent lines with > and <
+- *(operators)* x, X and s on single characters
+- *(command)* registers, plain commands and visual operators
+- *(syntax)* markdown and languages from file names
+- *(keys)* parse and show plain and named keys
+- *(syntax)* config files and shell
+- *(undo)* undo and redo whole changes, and say when there's nothing left
+- *(operators)* to line ends, and exclusive motions that end at a line start
+- *(operators)* whole-line deletes and changes, leaving one line behind
+- *(operators)* delete and change by words, cw keeping the space after
+- *(ui)* long lines scroll sideways, keeping the last column clear
+- *(motion)* H, M and L go to the screen's top, middle and bottom
+- *(ui)* line numbers with leading zeros or relative to the cursor
+- *(editor)* a temp path per test run
+- *(files)* the language comes from the file name
+- *(editor)* helpers for the text and cursor after some keys
+- *(command)* operators and their targets
+- *(command)* motions with counts
+- *(registers)* + and * go through the clipboard
+- *(diff)* cover added, changed, removed and scattered lines
+- *(syntax)* comments and strings that run over lines
+- *(syntax)* escaped backslashes and attributes end where they should
+- *(syntax)* highlight a line of rust
+- *(regex)* bad patterns fail and catastrophic ones still finish
+- *(regex)* escapes and case options
+- *(regex)* groups, alternation and quantifiers
+- *(regex)* classes, anchors and word edges
+- *(regex)* literals and dots, counted in chars
+- *(search)* patterns are regular expressions with case flags
+- *(regex)* remember dead states once backtracking gets slow
+- *(object)* blocks over lines and paragraphs
+- *(object)* quotes and nested brackets
+- *(object)* inner and outer words
+- *(object)* delete and change words, quotes, brackets and paragraphs
+- *(motion)* % finds the bracket on a very long line
+- *(motion)* finding characters in a line, till and repeated
+- *(motion)* paragraphs and matching brackets
+- *(motion)* word ends and moving back
+- *(motion)* match brackets and skip paragraphs
+- *(motion)* words forward over punctuation and empty lines
+- *(motion)* go to lines by number and find characters with f and t
+- *(motion)* line starts and ends, and word motions
+- *(motion)* hjkl with counts and a remembered column
+- *(motion)* keep the current line's chars while stepping, so long lines aren't rescanned
+- *(buffer)* cover inserts, deletes across lines and wide characters
+- *(text)* cover classes, tab columns and indents
+- depend on tinsel for the terminal and its widths
