@@ -195,6 +195,18 @@ struct Dot {
     count: Option<usize>,
     register: Option<char>,
     inputs: Vec<Input>,
+    // a change made in visual mode repeats on as much text from the cursor
+    visual: Option<VisualSize>,
+}
+
+/// How much a visual selection held, to select as much again: lines, and either characters
+/// on a single line, the column it ended at on its last line, or a block's width.
+#[derive(Clone, Copy, Debug)]
+struct VisualSize {
+    mode: Mode,
+    lines: usize,
+    cols: usize,
+    to_end: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1840,7 +1852,19 @@ impl Editor {
             Parse::Done(cmd) => {
                 self.pending.clear();
                 if self.mode.is_visual() {
+                    let change = Self::is_visual_change(&cmd) && !self.replaying;
+                    if change {
+                        self.building = Some(Dot {
+                            count: cmd.count,
+                            register: cmd.register,
+                            inputs: cmd.keys.iter().map(|&k| Input::Key(k)).collect(),
+                            visual: Some(self.visual_size()),
+                        });
+                    }
                     self.run_visual(cmd);
+                    if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
+                        self.dot = self.building.take();
+                    }
                 } else {
                     self.run(cmd);
                 }
@@ -1858,6 +1882,62 @@ impl Editor {
         }
     }
 
+    // gc repeats as gcc, and so isn't here
+    fn is_visual_change(cmd: &Cmd) -> bool {
+        match cmd.act {
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment),
+            Act::Key(Key::Char(c)) => "xXDsSCRJpPIA".contains(c),
+            Act::Key(Key::Ctrl('a' | 'x')) | Act::With('r', _) => true,
+            _ => false,
+        }
+    }
+
+    fn visual_size(&self) -> VisualSize {
+        let (a, b) = if self.cursor < self.anchor {
+            (self.cursor, self.anchor)
+        } else {
+            (self.anchor, self.cursor)
+        };
+        let lines = b.row - a.row + 1;
+        let (cols, to_end) = match self.mode {
+            Mode::VisualBlock => {
+                let blk = self.block();
+                (blk.right.saturating_sub(blk.left), blk.to_end())
+            }
+            Mode::Visual if lines == 1 => (b.col - a.col + 1, false),
+            Mode::Visual => (b.col, false),
+            _ => (0, false),
+        };
+        VisualSize {
+            mode: self.mode,
+            lines,
+            cols,
+            to_end,
+        }
+    }
+
+    // selects as much as v held, from the cursor
+    fn select_again(&mut self, v: VisualSize) {
+        let ts = self.options.tab_stop;
+        self.anchor = self.cursor;
+        let row = (self.cursor.row + v.lines - 1).min(self.buf.last_row());
+        let last = |e: &Self, row: usize| e.buf.line_len(row).saturating_sub(1);
+        self.cursor = match v.mode {
+            Mode::Visual if v.lines == 1 => Pos::new(row, (self.cursor.col + v.cols - 1).min(last(self, row))),
+            Mode::Visual => Pos::new(row, v.cols.min(last(self, row))),
+            Mode::VisualBlock => {
+                let left = vcol(self.buf.line(self.anchor.row), self.anchor.col, ts);
+                Pos::new(row, col_at(self.buf.line(row), left + v.cols.max(1) - 1, ts))
+            }
+            _ => Pos::new(row, self.cursor.col),
+        };
+        self.mode = v.mode;
+        self.set_want();
+        if v.to_end {
+            self.want = usize::MAX;
+        }
+    }
+
     fn run(&mut self, cmd: Cmd) {
         let change = Self::is_change(&cmd) && !self.replaying;
         if change {
@@ -1865,6 +1945,7 @@ impl Editor {
                 count: cmd.count,
                 register: cmd.register,
                 inputs: cmd.keys.iter().map(|&k| Input::Key(k)).collect(),
+                visual: None,
             });
         }
         let n = cmd.n();
@@ -2966,6 +3047,9 @@ impl Editor {
         inputs.extend(dot.inputs.iter().cloned());
         self.replaying = true;
         self.end_change();
+        if let Some(v) = dot.visual {
+            self.select_again(v);
+        }
         for i in inputs {
             self.input(i);
         }
@@ -3637,6 +3721,7 @@ impl Editor {
                         count: Some(r.last_row() - r.start.row + 1),
                         register: None,
                         inputs: crate::keys::parse("gcc").into_iter().map(Input::Key).collect(),
+                        visual: None,
                     });
                 }
             }
