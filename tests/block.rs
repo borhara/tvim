@@ -3,6 +3,13 @@ use common::ed;
 use tvim::Mode;
 use tvim::editor::Block;
 use tvim::keys::parse;
+use tvim::ui::Tvim;
+
+fn screen(e: tvim::Editor) -> String {
+    tinsel::with_color_mode(tinsel::ColorMode::None, || {
+        tinsel::app::snapshot(&Tvim::new(e), 50, 8).plain()
+    })
+}
 
 #[test]
 fn ctrl_v_selects_a_block() {
@@ -72,6 +79,14 @@ fn tabs_count_by_the_columns_they_fill() {
     e.keys(&parse("j<C-v>kl"));
     let b = e.block_selection().unwrap();
     assert_eq!((b.left, b.right), (0, 5), "the tab fills columns 0 to 3, then x");
+}
+
+#[test]
+fn the_status_line_gives_the_blocks_size() {
+    let mut e = ed("abcd\nefgh\nijkl");
+    e.keys(&parse("<C-v>jjl"));
+    let shown = screen(e);
+    assert!(shown.contains("3×2"), "{shown}");
 }
 
 #[test]
