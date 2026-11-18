@@ -12,7 +12,7 @@ fn folder(name: &str) -> std::path::PathBuf {
     std::fs::write(root.join("Zed.md"), "# zed\n").unwrap();
     std::fs::write(root.join(".hidden"), "").unwrap();
     std::fs::write(root.join("sub/inner.txt"), "inside\n").unwrap();
-    root.canonicalize().unwrap()
+    tvim::paths::canonical(&root).unwrap()
 }
 
 fn names(e: &Editor) -> Vec<String> {
