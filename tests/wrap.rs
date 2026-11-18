@@ -161,3 +161,13 @@ fn without_wrap_gj_is_j() {
         "and keeps the column it wants"
     );
 }
+
+#[test]
+fn linebreak_wraps_between_words() {
+    let mut e = wrapping("the quick brown fox jumps over");
+    e.keys(&parse(":set lbr<CR>"));
+    let shown = screen(e, 30, 8);
+    let rows: Vec<&str> = shown.lines().collect();
+    assert_eq!(rows[1], "    1 › the quick brown fox", "{shown}");
+    assert_eq!(rows[2], "        jumps over");
+}

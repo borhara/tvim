@@ -109,6 +109,7 @@ pub struct Options {
     pub roomy: bool,
     pub zero_pad: bool,
     pub wrap: bool,
+    pub linebreak: bool,
 }
 
 impl Default for Options {
@@ -137,6 +138,7 @@ impl Default for Options {
             roomy: true,
             zero_pad: false,
             wrap: false,
+            linebreak: false,
         }
     }
 }
@@ -167,6 +169,7 @@ impl Options {
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
+            "linebreak" | "lbr" => ("linebreak", &mut self.linebreak),
             _ => return None,
         })
     }
@@ -859,7 +862,7 @@ impl Editor {
     /// Where a line breaks into screen rows `width` wide: one row unless wrap is on.
     pub(crate) fn wrapped(&self, line: &str, width: usize) -> Vec<(usize, usize)> {
         if self.options.wrap {
-            crate::text::wrap_rows(line, width, self.options.tab_stop, false)
+            crate::text::wrap_rows(line, width, self.options.tab_stop, self.options.linebreak)
         } else {
             vec![(0, 0)]
         }
