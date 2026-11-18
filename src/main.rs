@@ -117,7 +117,7 @@ fn go_to(editor: &mut Editor, start: &str) {
         let mut keys = tvim::keys::parse("G$/");
         keys.extend(text.chars().map(tinsel::app::Key::Char));
         keys.push(tinsel::app::Key::Enter);
-        editor.keys(&keys);
+        editor.keys_noremap(&keys);
         return;
     }
     let row = if start.is_empty() {
@@ -125,5 +125,5 @@ fn go_to(editor: &mut Editor, start: &str) {
     } else {
         start.parse::<usize>().map_or(0, |n| n.saturating_sub(1)).min(last)
     };
-    editor.keys(&tvim::keys::parse(&format!("{}G", row + 1)));
+    editor.keys_noremap(&tvim::keys::parse(&format!("{}G", row + 1)));
 }

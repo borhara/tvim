@@ -172,7 +172,11 @@ mod tests {
         assert_eq!(maps.lookup(MapMode::Insert, &k("j")), Lookup::Prefix { exact: None });
         assert!(matches!(maps.lookup(MapMode::Insert, &k("jk")), Lookup::Exact(_)));
         assert_eq!(maps.lookup(MapMode::Insert, &k("jj")), Lookup::None);
-        assert_eq!(maps.lookup(MapMode::Normal, &k("j")), Lookup::None, "modes are kept apart");
+        assert_eq!(
+            maps.lookup(MapMode::Normal, &k("j")),
+            Lookup::None,
+            "modes are kept apart"
+        );
         assert!(matches!(
             maps.lookup(MapMode::Normal, &k("g")),
             Lookup::Prefix { exact: Some(m) } if m.rhs == k("x")
