@@ -236,7 +236,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 
     let simple = if visual { VISUAL_KEYS } else { NORMAL_KEYS };
-    let ctrl = if visual { "acx" } else { "rglaxzcpoi" };
+    let ctrl = if visual { "acxvq" } else { "rglaxzcpoivq" };
     match key {
         Key::Char(c) if simple.contains(c) => done(Act::Key(key), i + 1, count1),
         Key::Ctrl(c) if "dufbey".contains(c) || ctrl.contains(c) => done(Act::Key(key), i + 1, count1),
