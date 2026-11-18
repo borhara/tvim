@@ -119,3 +119,45 @@ fn zz_and_zb_with_long_lines() {
     e.keys(&parse("zz"));
     assert_eq!(e.top(), 7);
 }
+
+#[test]
+fn gj_and_gk_move_by_screen_rows() {
+    let text = format!("{}\nshort", "a".repeat(50));
+    let mut e = wrapping(&text);
+    e.set_screen(30, 12);
+    e.keys(&parse("3lgj"));
+    assert_eq!(
+        (e.cursor().row, e.cursor().col),
+        (0, 25),
+        "22 columns a row, so 3 becomes 25"
+    );
+    e.keys(&parse("gj"));
+    assert_eq!((e.cursor().row, e.cursor().col), (0, 47));
+    e.keys(&parse("gj"));
+    assert_eq!((e.cursor().row, e.cursor().col), (1, 3), "then on to the next line");
+    e.keys(&parse("gk"));
+    assert_eq!(
+        (e.cursor().row, e.cursor().col),
+        (0, 47),
+        "and back to the last row of the line"
+    );
+    e.keys(&parse("2gk"));
+    assert_eq!((e.cursor().row, e.cursor().col), (0, 3));
+    e.keys(&parse("dgj"));
+    assert_eq!(
+        e.text().lines().next().map(str::len),
+        Some(28),
+        "gj works after an operator"
+    );
+}
+
+#[test]
+fn without_wrap_gj_is_j() {
+    let mut e = ed("abcdef\nab\nabcdef");
+    e.keys(&parse("4lgjgj"));
+    assert_eq!(
+        (e.cursor().row, e.cursor().col),
+        (2, 4),
+        "and keeps the column it wants"
+    );
+}
