@@ -249,6 +249,16 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
 const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&";
 const VISUAL_KEYS: &str = "xXsSDCYpPJ~uUoORvV:IA";
 
+/// Whether `keys` are no more than a register and a count, so a new command starts next.
+pub fn awaits_command(keys: &[Key]) -> bool {
+    let rest = match keys {
+        [Key::Char('"')] => return false,
+        [Key::Char('"'), Key::Char(c), rest @ ..] if is_register(*c) => rest,
+        rest => rest,
+    };
+    count(rest).1 == rest.len()
+}
+
 pub fn is_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
 }
@@ -449,6 +459,15 @@ mod tests {
         assert_eq!(cmd("gv").act, Act::G('v'));
         assert_eq!(cmd("<C-r>").act, Act::Key(Key::Ctrl('r')));
         assert_eq!(state("Q"), Parse::Invalid);
+    }
+
+    #[test]
+    fn a_register_and_count_still_await_a_command() {
+        assert!(awaits_command(&[]));
+        assert!(awaits_command(&k("\"a12")));
+        assert!(awaits_command(&k("3")));
+        assert!(!awaits_command(&k("d")));
+        assert!(!awaits_command(&k("2g")));
     }
 
     #[test]
