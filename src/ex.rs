@@ -1,6 +1,7 @@
 use crate::buffer::Pos;
 use crate::command::Op;
 use crate::editor::{Editor, Effect, Range, expand_home};
+use crate::mapping::{self, MapMode, Mapping};
 use crate::regex::{Regex, Span};
 
 type Lines = (usize, usize);
@@ -62,6 +63,9 @@ impl Editor {
         let current = (self.cursor.row, self.cursor.row);
         let is = |full: &str, min: usize| name.len() >= min && full.starts_with(name);
 
+        if let Some((modes, kind)) = map_command(name, force) {
+            return self.map_ex(&modes, kind, arg);
+        }
         if is("write", 1) {
             self.write(non_empty(arg), force, range);
         } else if is("update", 2) {
@@ -547,6 +551,52 @@ impl Editor {
         Ok(())
     }
 
+    fn map_ex(&mut self, modes: &[MapMode], kind: MapKind, arg: &str) {
+        let mut arg = arg;
+        // these change nothing here, but a vimrc line may well have them
+        while let Some(rest) = ["<silent>", "<nowait>", "<unique>", "<buffer>"].iter().find_map(|m| {
+            arg.get(..m.len())
+                .filter(|a| a.eq_ignore_ascii_case(m))
+                .map(|_| &arg[m.len()..])
+        }) {
+            arg = rest.trim_start();
+        }
+        let (lhs, rhs) = arg.split_once(char::is_whitespace).unwrap_or((arg, ""));
+        let lhs = mapping::parse_keys(lhs);
+        match kind {
+            MapKind::Clear => modes.iter().for_each(|&m| self.maps.clear(m)),
+            MapKind::Unmap if lhs.is_empty() => self.error("E474: Invalid argument"),
+            MapKind::Unmap => {
+                let mut gone = false;
+                for &m in modes {
+                    gone |= self.maps.remove(m, &lhs);
+                }
+                if !gone {
+                    self.error("E31: No such mapping");
+                }
+            }
+            MapKind::Map { .. } if rhs.trim().is_empty() => {
+                let found: Vec<String> = self.maps.list(modes, &lhs).into_iter().map(mapping::describe).collect();
+                if found.is_empty() {
+                    self.info("No mapping found");
+                } else {
+                    self.info(found.join("  ·  "));
+                }
+            }
+            MapKind::Map { noremap } => {
+                let rhs = mapping::parse_keys(rhs.trim_start());
+                for &mode in modes {
+                    self.maps.add(Mapping {
+                        mode,
+                        lhs: lhs.clone(),
+                        rhs: rhs.clone(),
+                        noremap,
+                    });
+                }
+            }
+        }
+    }
+
     fn show_registers(&mut self) {
         let all = self.registers_list();
         if all.is_empty() {
@@ -574,6 +624,51 @@ impl Editor {
             .collect();
         self.info(shown.join("  "));
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MapKind {
+    Map { noremap: bool },
+    Unmap,
+    Clear,
+}
+
+// :map, :nnoremap, :iunmap, :mapclear and the rest, with vim's shortest names
+fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKind)> {
+    use MapMode::*;
+    let (modes, rest) = match name.chars().next()? {
+        'n' if !name.starts_with("no") => (vec![Normal], &name[1..]),
+        'v' | 'x' => (vec![Visual], &name[1..]),
+        'i' => (vec![Insert], &name[1..]),
+        'c' => (vec![Command], &name[1..]),
+        _ if bang => (vec![Insert, Command], name),
+        _ => (vec![Normal, Visual], name),
+    };
+    // map! and friends are only for the plain names
+    if bang && modes.len() == 1 {
+        return None;
+    }
+    let is = |full: &str, min: usize| rest.len() >= min && full.starts_with(rest);
+    // nn is :nnoremap but cn is :cnext, and nu is :number
+    let first = name.chars().next()?;
+    let (map_min, noremap_min, unmap_min) = match first {
+        _ if modes.len() == 2 => (3, 2, 3),
+        'n' => (1, 1, 2),
+        'v' | 'x' => (1, 1, 1),
+        _ => (1, 2, 1),
+    };
+    let kind = if is("mapclear", 4) {
+        MapKind::Clear
+    } else if is("map", map_min) {
+        MapKind::Map { noremap: false }
+    } else if is("noremap", noremap_min) {
+        MapKind::Map { noremap: true }
+    } else if is("unmap", unmap_min) {
+        MapKind::Unmap
+    } else {
+        return None;
+    };
+    Some((modes, kind))
 }
 
 fn is_known(word: &str) -> bool {
