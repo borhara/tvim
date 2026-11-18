@@ -43,8 +43,9 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 - **Brackets and quotes** close themselves as you type. Turn this off with `:set noap`.
 - **Opening another file** never asks you to save first. Unsaved files stay open with a dot next to their name, and `:q` won't quit while any are left.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
+- **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines, and they always use spaces.
 
-There is no line wrapping and no block visual mode (`Ctrl-v`) yet.
+There is no line wrapping yet.
 
 ## Extras
 
