@@ -887,6 +887,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let time = frame.time();
     let mode = if active { e.mode() } else { Mode::Normal };
     let selection = e.selection().filter(|_| active);
+    let block = e.block_selection().filter(|_| active);
     let pattern = e.search_pattern();
     let marks = v.text.change_marks();
     let word = (mode == Mode::Normal && focused)
@@ -984,6 +985,14 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         };
         if let Some((from, to)) = selection.and_then(|sel| selected_cols(&sel, row, char_count(line))) {
             tint(frame, from, to, c.selection);
+        }
+        if let Some(b) = block.filter(|b| (b.top..=b.bottom).contains(&row)) {
+            // the block's columns, as far as the line reaches
+            let end = b.right.min(vcol(line, char_count(line), ts));
+            let (a, z) = (b.left.max(left) - left, end.saturating_sub(left).min(body.width));
+            if a < z {
+                frame.tint(Rect::new(body.x + a, y, z - a, 1), c.selection);
+            }
         }
         if let Some(pat) = pattern {
             for (from, to) in e.matches_in(line, pat) {
