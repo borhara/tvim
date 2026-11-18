@@ -108,6 +108,7 @@ pub struct Options {
     pub gitlens: bool,
     pub roomy: bool,
     pub zero_pad: bool,
+    pub wrap: bool,
 }
 
 impl Default for Options {
@@ -135,6 +136,7 @@ impl Default for Options {
             gitlens: true,
             roomy: true,
             zero_pad: false,
+            wrap: false,
         }
     }
 }
@@ -164,6 +166,7 @@ impl Options {
             "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
+            "wrap" => ("wrap", &mut self.wrap),
             _ => return None,
         })
     }
@@ -394,6 +397,18 @@ impl Text<'_> {
     pub fn change_marks(&self) -> Rc<[Option<Mark>]> {
         self.diffed().2
     }
+}
+
+/// What one screen row of a window shows: part of line `row`, from character `col`, which
+/// sits at screen column `left`, for `width` columns. Rows past the end have `row` past it too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Slice {
+    pub row: usize,
+    pub col: usize,
+    pub left: usize,
+    pub width: usize,
+    pub first: bool,
+    pub last: bool,
 }
 
 pub(crate) struct View<'a> {
@@ -841,6 +856,58 @@ impl Editor {
         self.screen.get().0.saturating_sub(self.gutter() + 1).max(1)
     }
 
+    /// Where a line breaks into screen rows `width` wide: one row unless wrap is on.
+    pub(crate) fn wrapped(&self, line: &str, width: usize) -> Vec<(usize, usize)> {
+        if self.options.wrap {
+            crate::text::wrap_rows(line, width, self.options.tab_stop, false)
+        } else {
+            vec![(0, 0)]
+        }
+    }
+
+    /// The screen rows of a window `height` high showing `buf` from line `top`.
+    pub(crate) fn slices(&self, buf: &Buffer, top: usize, left: usize, width: usize, height: usize) -> Vec<Slice> {
+        let mut out = Vec::with_capacity(height);
+        let mut row = top;
+        while out.len() < height {
+            if row >= buf.len() {
+                out.push(Slice {
+                    row,
+                    col: 0,
+                    left: 0,
+                    width,
+                    first: true,
+                    last: true,
+                });
+            } else if !self.options.wrap {
+                out.push(Slice {
+                    row,
+                    col: 0,
+                    left,
+                    width,
+                    first: true,
+                    last: true,
+                });
+            } else {
+                let rows = self.wrapped(buf.line(row), width);
+                for (k, &(col, at)) in rows.iter().enumerate() {
+                    let end = rows.get(k + 1).map_or(at + width, |r| r.1);
+                    out.push(Slice {
+                        row,
+                        col,
+                        left: at,
+                        width: (end - at).min(width),
+                        first: k == 0,
+                        last: k + 1 == rows.len(),
+                    });
+                }
+            }
+            row += 1;
+        }
+        out.truncate(height);
+        out
+    }
+
     pub fn top(&self) -> usize {
         self.top.get()
     }
@@ -868,6 +935,10 @@ impl Editor {
         self.top.set(top);
 
         let cols = self.text_cols();
+        if self.options.wrap {
+            self.left.set(0);
+            return;
+        }
         let line = self.buf.line(row);
         let start = vcol(line, self.cursor.col, self.options.tab_stop);
         let end = vcol(line, self.cursor.col + 1, self.options.tab_stop).max(start + 1);
