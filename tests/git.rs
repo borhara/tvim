@@ -311,7 +311,7 @@ fn the_sidebar_status_follows_saves() {
     let mut e = open(&dir.join("a.txt"));
     e.ex("Explore");
     e.wait_for_git();
-    let path = dir.canonicalize().unwrap().join("a.txt");
+    let path = tvim::paths::canonical(&dir).unwrap().join("a.txt");
     assert_eq!(e.tree().with(|t| t.file(&path)), None);
     e.keys(&parse("<Tab>ox<Esc>"));
     e.ex("w");
@@ -329,8 +329,8 @@ fn files_in_an_untracked_folder_count_as_untracked() {
     let tree = tvim::git::Tree::default();
     tree.refresh(&dir);
     tree.wait();
-    let file = dir.join("new/deeper/x.rs").canonicalize().unwrap();
-    let root = dir.canonicalize().unwrap();
+    let file = tvim::paths::canonical(&dir.join("new/deeper/x.rs")).unwrap();
+    let root = tvim::paths::canonical(&dir).unwrap();
     tree.with(|s| {
         let found = s.file(&file).or_else(|| s.file(&root.join("new/deeper/x.rs")));
         assert_eq!(found, Some(tvim::git::FileState::Untracked));

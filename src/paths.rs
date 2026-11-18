@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 /// The path with links and `..` resolved, as `canonicalize` gives it, but on Windows without
 /// the `\\?\` it puts in front whenever the plain path means the same thing: that prefix isn't
 /// for people, and a path with it never equals one without.
-pub(crate) fn canonical(path: &Path) -> io::Result<PathBuf> {
+pub fn canonical(path: &Path) -> io::Result<PathBuf> {
     let path = path.canonicalize()?;
     if cfg!(windows) {
         if let Some(plain) = path.to_str().and_then(plain) {

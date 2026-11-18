@@ -17,7 +17,7 @@ fn numbered(dir: &Path, name: &str, lines: usize) -> PathBuf {
     let path = dir.join(name);
     let text: String = (1..=lines).map(|i| format!("line {i}\n")).collect();
     std::fs::write(&path, text).unwrap();
-    path.canonicalize().unwrap()
+    tvim::paths::canonical(&path).unwrap()
 }
 
 fn screen(e: Editor, width: usize, height: usize) -> String {
@@ -207,7 +207,7 @@ fn moving_filtering_and_opening_recent_files() {
     assert_eq!(e.finder().unwrap().match_count(), 1);
     e.keys(&parse("<CR>"));
     assert!(e.finder().is_none());
-    assert_eq!(e.file().path.as_ref().unwrap().canonicalize().unwrap(), b);
+    assert_eq!(tvim::paths::canonical(e.file().path.as_ref().unwrap()).unwrap(), b);
     assert_eq!(e.cursor(), Pos::new(20, 2), "at the remembered place");
 
     e.ex("recent");

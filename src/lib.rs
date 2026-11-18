@@ -16,7 +16,7 @@ pub mod jumps;
 pub mod keys;
 pub mod motion;
 pub mod object;
-mod paths;
+pub mod paths;
 mod preview;
 pub mod regex;
 pub mod session;
