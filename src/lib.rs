@@ -14,6 +14,7 @@ pub mod gitmenu;
 pub mod grep;
 pub mod jumps;
 pub mod keys;
+pub mod mapping;
 pub mod motion;
 pub mod object;
 pub mod paths;
