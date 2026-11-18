@@ -97,3 +97,66 @@ fn leaving_sets_the_corner_marks() {
     e.keys(&parse("`<"));
     assert_eq!((e.cursor().row, e.cursor().col), (0, 1));
 }
+
+#[test]
+fn deleting_a_block() {
+    use common::{after, text_after as t};
+    assert_eq!(after("abcd\nefgh\nijkl", "l<C-v>jld"), ("ad\neh\nijkl".into(), (0, 1)));
+    assert_eq!(t("abcd\nefgh", "l<C-v>jx"), "acd\negh");
+    assert_eq!(
+        t("abcd\ne\nijkl", "ll<C-v>jjd"),
+        "abd\ne\nijl",
+        "short lines lose nothing"
+    );
+    assert_eq!(t("abcd\nefghij", "l<C-v>j$d"), "a\ne");
+    assert_eq!(t("abcd\nefghij", "l<C-v>jD"), "a\ne", "D goes to the ends of the lines");
+    assert_eq!(t("abcd\nefgh", "l<C-v>jdu"), "abcd\nefgh", "one undo puts it back");
+}
+
+#[test]
+fn yanking_and_putting_a_block() {
+    use common::{after, text_after as t};
+    assert_eq!(t("ab\ncd", "<C-v>jy$p"), "aba\ncdc");
+    assert_eq!(t("ab\ncd", "<C-v>jyP"), "aab\nccd");
+    assert_eq!(after("xy\nzw", "l<C-v>jy0p"), ("xyy\nzww".into(), (0, 1)));
+    assert_eq!(
+        t("abc\nd\nefg", "<C-v>jjyG$p"),
+        "abc\nd\nefga\n   d\n   e",
+        "lines past the end are added and padded"
+    );
+    assert_eq!(t("a\nbcd", "<C-v>jlyj$p"), "a\nbcda\n   bc");
+    assert_eq!(t("ab\ncd", "<C-v>jy2P"), "aaab\ncccd", "a count puts it side by side");
+}
+
+#[test]
+fn a_block_is_padded_to_line_up_with_text_after_it() {
+    use common::text_after as t;
+    assert_eq!(t("a\nbcd\nxyz\nxyz", "<C-v>jlyjjP"), "a\nbcd\na xyz\nbcxyz");
+}
+
+#[test]
+fn putting_over_a_block() {
+    use common::text_after as t;
+    assert_eq!(
+        t("Xbc\ndef", "yll<C-v>jlp"),
+        "XX\ndX",
+        "a piece of a line goes on every line"
+    );
+    assert_eq!(
+        t("ab\ncd\nef\ngh", "<C-v>jyjjl<C-v>jp"),
+        "ab\ncd\nea\ngc",
+        "a block replaces a block"
+    );
+    assert_eq!(t("Xbc\ndef", "yll<C-v>jlPu"), "Xbc\ndef");
+}
+
+#[test]
+fn block_registers_say_so() {
+    let mut e = ed("ab\ncd");
+    e.keys(&parse("<C-v>jy"));
+    let r = e.register('"').unwrap();
+    assert_eq!((r.text.as_str(), r.block, r.linewise), ("a\nc", true, false));
+    assert!(e.register('0').unwrap().block);
+    e.keys(&parse("yl"));
+    assert!(!e.register('"').unwrap().block);
+}

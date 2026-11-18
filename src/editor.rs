@@ -67,6 +67,8 @@ pub enum Input {
 pub struct Register {
     pub text: String,
     pub linewise: bool,
+    // a block from block visual mode, one line of it per row
+    pub block: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1614,7 +1616,11 @@ impl Editor {
     }
 
     fn store(&mut self, register: Option<char>, text: String, linewise: bool, yank: bool) {
-        let r = Register { text, linewise };
+        let r = Register {
+            text,
+            linewise,
+            block: false,
+        };
         // @ plays the new text, not an older recording
         if let Some(c) = register.filter(char::is_ascii_alphabetic) {
             self.macros.remove(&c.to_ascii_lowercase());
@@ -1664,9 +1670,13 @@ impl Editor {
                 Some(Register {
                     text: text.strip_suffix('\n').unwrap_or(&text).to_string(),
                     linewise,
+                    block: false,
                 })
             }
-            '/' => self.last_search.clone().map(|text| Register { text, linewise: false }),
+            '/' => self.last_search.clone().map(|text| Register {
+                text,
+                ..Register::default()
+            }),
             c => {
                 let r = self.registers.get(&c.to_ascii_lowercase()).cloned();
                 if r.is_none() {
@@ -2632,13 +2642,16 @@ impl Editor {
     fn put(&mut self, register: Option<char>, count: usize, before: bool) {
         let Some(r) = self.fetch(register) else { return };
         let end = self.put_register(&r, count, before);
-        if !r.linewise && !r.text.contains('\n') {
+        if !r.linewise && !r.block && !r.text.contains('\n') {
             self.cursor = Pos::new(end.row, end.col.saturating_sub(1));
         }
         self.set_want();
     }
 
     fn put_register(&mut self, r: &Register, count: usize, before: bool) -> Pos {
+        if r.block {
+            return self.put_block(r, count, before);
+        }
         self.touch();
         if r.linewise {
             let mut lines = Vec::new();
@@ -2863,7 +2876,13 @@ impl Editor {
             }
             let name = name.to_ascii_lowercase();
             if name.is_ascii_alphabetic() {
-                self.registers.insert(name, Register { text, linewise: false });
+                self.registers.insert(
+                    name,
+                    Register {
+                        text,
+                        ..Register::default()
+                    },
+                );
             }
             self.macros.insert(name, keys);
         }
