@@ -70,6 +70,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("autoindent", "", "new lines keep the indent"),
     ("autopairs", "", "brackets and quotes close themselves"),
     ("scrolloff", "=", "lines kept around the cursor"),
+    ("timeoutlen", "=", "milliseconds to wait for the rest of a mapping"),
     ("smooth", "", "glide when the view jumps"),
     ("tabpreview", "", "tab moves into the markdown preview"),
     ("dim", "", "fade whichever of text and sidebar is not in use"),
@@ -87,6 +88,7 @@ fn option_value(name: &str, o: &Options) -> String {
         "tabstop" => o.tab_stop.to_string(),
         "shiftwidth" => o.shift_width.to_string(),
         "scrolloff" => o.scroll_off.to_string(),
+        "timeoutlen" => o.timeout_len.to_string(),
         _ => o
             .flag(name)
             .map_or_else(String::new, |on| if on { "on" } else { "off" }.to_string()),
