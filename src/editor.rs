@@ -2272,6 +2272,7 @@ impl Editor {
         self.cursor = to;
         match m {
             Motion::Up | Motion::Down => {}
+            Motion::ScreenUp | Motion::ScreenDown if !self.options.wrap => {}
             Motion::LineEnd => self.want = usize::MAX,
             _ => self.set_want(),
         }
@@ -2281,6 +2282,41 @@ impl Editor {
         if jump {
             self.land(matches!(m, Motion::SearchNext(_)));
         }
+    }
+
+    // gj and gk on wrapped lines: down or up n screen rows, keeping the place along the row
+    fn screen_row_move(&self, p: Pos, n: usize, down: bool) -> Option<Pos> {
+        let (ts, width) = (self.options.tab_stop, self.text_cols());
+        let rows_of = |row: usize| self.wrapped(self.buf.line(row), width);
+        let mut rows = rows_of(p.row);
+        let mut seg = crate::text::row_holding(&rows, p.col);
+        let along = vcol(self.buf.line(p.row), p.col, ts) - rows[seg].1;
+        let (mut row, start) = (p.row, (p.row, seg));
+        for _ in 0..n {
+            if down && seg + 1 < rows.len() {
+                seg += 1;
+            } else if down && row < self.buf.last_row() {
+                row += 1;
+                rows = rows_of(row);
+                seg = 0;
+            } else if !down && seg > 0 {
+                seg -= 1;
+            } else if !down && row > 0 {
+                row -= 1;
+                rows = rows_of(row);
+                seg = rows.len() - 1;
+            }
+        }
+        if (row, seg) == start {
+            return None;
+        }
+        let line = self.buf.line(row);
+        let col = col_at(line, rows[seg].1 + along, ts);
+        // short of the next row's first character, and of the end in normal mode
+        let end = rows
+            .get(seg + 1)
+            .map_or(self.max_col(char_count(line)), |r| r.0.saturating_sub(1));
+        Some(Pos::new(row, col.min(end).max(rows[seg].0)))
     }
 
     // searches always glow; other jumps only when they leave the screen
@@ -2333,6 +2369,15 @@ impl Editor {
                 let row = p.row.saturating_sub(n);
                 (Pos::new(row, self.col_for_want(row)), Linewise)
             }
+            Motion::ScreenUp | Motion::ScreenDown if !self.options.wrap => {
+                let line_wise = if m == Motion::ScreenUp {
+                    Motion::Up
+                } else {
+                    Motion::Down
+                };
+                return self.target(line_wise, count, for_op);
+            }
+            Motion::ScreenUp | Motion::ScreenDown => (self.screen_row_move(p, n, m == Motion::ScreenDown)?, Exclusive),
             Motion::Down => {
                 if p.row >= b.last_row() {
                     return None;
