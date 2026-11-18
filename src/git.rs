@@ -197,7 +197,8 @@ impl Tree {
 
 fn statuses(dir: &Path) -> Statuses {
     let out = Statuses::default();
-    let Some(root) = git_line(dir, &["rev-parse", "--show-toplevel"]).and_then(|r| std::fs::canonicalize(r).ok())
+    let Some(root) =
+        git_line(dir, &["rev-parse", "--show-toplevel"]).and_then(|r| crate::paths::canonical(Path::new(&r)).ok())
     else {
         return out;
     };

@@ -59,7 +59,7 @@ fn read(dir: &Path) -> io::Result<Vec<(String, bool)>> {
 
 impl Explorer {
     pub fn open(dir: &Path, select: Option<&Path>) -> io::Result<Explorer> {
-        let root = std::fs::canonicalize(dir)?;
+        let root = crate::paths::canonical(dir)?;
         let mut x = Explorer {
             loaded: HashMap::from([(root.clone(), read(&root)?)]),
             root,
@@ -371,7 +371,7 @@ impl Explorer {
             Key::Char('h') | Key::Left | Key::Backspace => self.collapse(),
             Key::Char('-') => return self.up(),
             Key::Char('~') => {
-                if let Some(home) = std::env::var_os("HOME").and_then(|h| std::fs::canonicalize(h).ok()) {
+                if let Some(home) = std::env::var_os("HOME").and_then(|h| crate::paths::canonical(Path::new(&h)).ok()) {
                     return self.reroot(home);
                 }
             }

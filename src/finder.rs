@@ -75,7 +75,7 @@ pub fn walk(root: &Path) -> (Vec<String>, bool) {
 
 impl Finder {
     pub fn new(root: &Path, query: &str) -> Finder {
-        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let root = crate::paths::canonical(root).unwrap_or_else(|_| root.to_path_buf());
         let (files, cut_short) = walk(&root);
         let name = root
             .file_name()

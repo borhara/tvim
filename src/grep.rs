@@ -66,7 +66,7 @@ pub struct Grep {
 
 impl Grep {
     pub fn new(root: &Path, query: &str) -> Grep {
-        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let root = crate::paths::canonical(root).unwrap_or_else(|_| root.to_path_buf());
         let loaded = Arc::new(Mutex::new(Loaded::default()));
         let shared = loaded.clone();
         let from = root.clone();

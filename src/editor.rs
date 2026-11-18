@@ -1073,7 +1073,7 @@ impl Editor {
             self.explore(path);
             return Ok(());
         }
-        let canon = |p: &Path| p.canonicalize().ok();
+        let canon = |p: &Path| crate::paths::canonical(p).ok();
         let want = canon(path);
         if want.is_some() {
             if self.file.path.as_deref().and_then(canon) == want {
@@ -1230,7 +1230,7 @@ impl Editor {
             .buffers()
             .into_iter()
             .filter_map(|b| b.path)
-            .map(|p| listed(&p.canonicalize().unwrap_or(p)))
+            .map(|p| listed(&crate::paths::canonical(&p).unwrap_or(p)))
             .collect();
         self.pending.clear();
         self.finder = Some(Finder::from_list(&root, names, "open files"));
@@ -1304,15 +1304,15 @@ impl Editor {
     // the working folder when the file is inside it, so its tree shows where the file sits
     fn sidebar_root(&self) -> PathBuf {
         let dir = self.file_dir();
-        let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).ok();
-        match (cwd, dir.canonicalize().ok()) {
+        let cwd = std::env::current_dir().and_then(|d| crate::paths::canonical(&d)).ok();
+        match (cwd, crate::paths::canonical(&dir).ok()) {
             (Some(cwd), Some(d)) if d.starts_with(&cwd) => cwd,
             _ => dir,
         }
     }
 
     fn current_file(&self) -> Option<PathBuf> {
-        self.file.path.as_ref().and_then(|p| p.canonicalize().ok())
+        self.file.path.as_ref().and_then(|p| crate::paths::canonical(p).ok())
     }
 
     // keeps the open file showing in the sidebar, or moves the sidebar to its folder
@@ -4137,7 +4137,9 @@ pub(crate) fn cwd() -> PathBuf {
 }
 
 pub(crate) fn relative_to_cwd(path: &Path) -> PathBuf {
-    let cwd = std::env::current_dir().ok().and_then(|d| d.canonicalize().ok());
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|d| crate::paths::canonical(&d).ok());
     match cwd.as_deref().and_then(|d| path.strip_prefix(d).ok()) {
         Some(rel) if !rel.as_os_str().is_empty() => rel.to_path_buf(),
         _ => path.to_path_buf(),
@@ -4150,20 +4152,12 @@ pub(crate) fn listed(path: &Path) -> String {
     slashed(&relative_to_cwd(path).display().to_string(), cfg!(windows))
 }
 
-/// On Windows, drop the `\\?\` that canonicalize puts in front, which isn't for people and
-/// doesn't work with `/`, then use `/` between the parts.
+/// On Windows, without any `\\?\` in front and with `/` between the parts.
 fn slashed(path: &str, windows: bool) -> String {
     if !windows {
         return path.to_string();
     }
-    let path = match path.strip_prefix(r"\\?\") {
-        Some(rest) => match rest.strip_prefix(r"UNC\") {
-            Some(share) => format!(r"\\{share}"),
-            None => rest.to_string(),
-        },
-        None => path.to_string(),
-    };
-    path.replace('\\', "/")
+    crate::paths::plain(path).as_deref().unwrap_or(path).replace('\\', "/")
 }
 
 pub(crate) fn expand_home(path: &str) -> String {

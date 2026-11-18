@@ -266,8 +266,8 @@ impl Editor {
     fn edit(&mut self, path: Option<&str>, force: bool) {
         if let Some(p) = path {
             let target = std::path::PathBuf::from(expand_home(p));
-            let here = self.file().path.as_ref().and_then(|f| f.canonicalize().ok());
-            let same = here.is_some() && target.canonicalize().ok() == here;
+            let here = self.file().path.as_ref().and_then(|f| crate::paths::canonical(f).ok());
+            let same = here.is_some() && crate::paths::canonical(&target).ok() == here;
             if !same {
                 if let Err(e) = self.open_path(&target) {
                     self.error(format!("\"{}\" {e}", target.display()));
