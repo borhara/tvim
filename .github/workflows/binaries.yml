@@ -1,7 +1,7 @@
 name: Binaries
 
-# Builds tvim for each target and attaches the archives to a release. Release calls this
-# after publishing; run it by hand to backfill a tag.
+# Builds tvim for each target, attaches the archives to a release and points the Homebrew
+# formula at them. Release calls this after publishing; run it by hand to backfill a tag.
 on:
   workflow_call:
     inputs:
@@ -51,3 +51,83 @@ jobs:
           cp target/${{ matrix.target }}/release/tvim .
           tar czf "$ARCHIVE" tvim LICENSE README.md
           gh release upload "${{ inputs.tag }}" "$ARCHIVE" --clobber --repo "$GITHUB_REPOSITORY"
+
+  homebrew:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # skips the rest when the tap isn't set up, so the binaries still get released
+      - id: check
+        env:
+          HOMEBREW_TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: echo "enabled=${HOMEBREW_TAP_KEY:+true}" >> "$GITHUB_OUTPUT"
+      - name: Download archives
+        if: steps.check.outputs.enabled
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ inputs.tag }}" --pattern 'tvim-*.tar.gz' --repo "$GITHUB_REPOSITORY"
+      - name: Write formula
+        if: steps.check.outputs.enabled
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          sha() { sha256sum "tvim-$1.tar.gz" | cut -d' ' -f1; }
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          cat > tvim.rb <<EOF
+          class Tvim < Formula
+            desc "Vim-like terminal text editor written in Rust"
+            homepage "https://github.com/$GITHUB_REPOSITORY"
+            version "${TAG#v}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "$url/tvim-aarch64-apple-darwin.tar.gz"
+                sha256 "$(sha aarch64-apple-darwin)"
+              end
+              on_intel do
+                url "$url/tvim-x86_64-apple-darwin.tar.gz"
+                sha256 "$(sha x86_64-apple-darwin)"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "$url/tvim-aarch64-unknown-linux-musl.tar.gz"
+                sha256 "$(sha aarch64-unknown-linux-musl)"
+              end
+              on_intel do
+                url "$url/tvim-x86_64-unknown-linux-musl.tar.gz"
+                sha256 "$(sha x86_64-unknown-linux-musl)"
+              end
+            end
+
+            def install
+              bin.install "tvim"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/tvim --version")
+            end
+          end
+          EOF
+          cat tvim.rb
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.enabled
+        with:
+          repository: borhara/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_KEY }}
+          path: tap
+      - name: Push formula
+        if: steps.check.outputs.enabled
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p tap/Formula
+          mv tvim.rb tap/Formula/tvim.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/tvim.rb
+          git diff --cached --quiet || git commit -m "tvim ${TAG#v}"
+          git push

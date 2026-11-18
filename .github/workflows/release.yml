@@ -33,8 +33,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-  # Attaches prebuilt binaries to the new release. Called from here rather than on the tag,
-  # because tags pushed with GITHUB_TOKEN don't trigger workflows.
+  # Attaches prebuilt binaries to the new release and updates the Homebrew formula. Called
+  # from here rather than on the tag, because tags pushed with GITHUB_TOKEN don't trigger
+  # workflows.
   binaries:
     needs: release
     if: needs.release.outputs.releases_created == 'true'
