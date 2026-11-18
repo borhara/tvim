@@ -28,6 +28,8 @@ pub struct Tvim {
     pub editor: Editor,
     toasts: Toasts,
     pending_since: Option<f64>,
+    // when keys started waiting for the rest of a mapping
+    map_since: Option<f64>,
 }
 
 impl Tvim {
@@ -36,6 +38,7 @@ impl Tvim {
             editor,
             toasts: Toasts::new().life(3.0),
             pending_since: None,
+            map_since: None,
         }
     }
 
@@ -44,6 +47,11 @@ impl Tvim {
             (true, _) => None,
             (false, None) => Some(app::time()),
             (false, since) => since,
+        };
+        self.map_since = match (self.editor.mapping_pending(), self.map_since) {
+            (false, _) => None,
+            (true, None) => Some(app::time()),
+            (true, since) => since,
         };
         let written = self
             .editor
@@ -57,8 +65,18 @@ impl Tvim {
     }
 }
 
+impl Tvim {
+    fn map_due(&self) -> Option<f64> {
+        self.map_since
+            .map(|since| since + self.editor.options.timeout_len as f64 / 1000.0)
+    }
+}
+
 impl App for Tvim {
     fn view(&self, frame: &mut Frame) {
+        if let Some(due) = self.map_due() {
+            frame.redraw_at(due);
+        }
         let hints = self.pending_since.is_some_and(|t| frame.time() - t >= HINT_DELAY);
         if let Some(t) = self.pending_since.filter(|_| !hints) {
             frame.redraw_at(t + HINT_DELAY);
@@ -81,6 +99,9 @@ impl App for Tvim {
                 self.editor.key(k);
             }
             Event::Paste(text) => self.editor.paste(text),
+            Event::Wake | Event::Tick if self.map_due().is_some_and(|due| app::time() >= due) => {
+                self.editor.flush_mapping();
+            }
             Event::Wake | Event::Tick => {
                 self.editor.tick();
                 return Flow::Continue;
