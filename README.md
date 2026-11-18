@@ -7,7 +7,7 @@ tvim is a text editor for the terminal that uses vim's keys. If you already use 
 You need Rust. Then:
 
 ```sh
-cargo install tinsel
+cargo install tvim
 ```
 
 ## Opening files
