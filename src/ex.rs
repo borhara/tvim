@@ -165,18 +165,22 @@ impl Editor {
             let (a, b) = range.unwrap_or(current);
             let n = if b > a { b - a + 1 } else { 2 };
             self.set_cursor(Pos::new(a, 0));
-            self.keys(&crate::keys::parse(&format!("{n}J")));
+            self.keys_noremap(&crate::keys::parse(&format!("{n}J")));
         } else if is("normal", 4) {
             let (a, b) = range.unwrap_or(current);
             let keys = crate::keys::parse(arg);
+            // :normal! leaves mappings out
+            self.noremap += usize::from(force);
             for row in a..=b.min(self.buf.last_row()) {
                 self.set_cursor(Pos::new(row, 0));
                 self.keys(&keys);
+                self.flush_mapping();
                 if matches!(self.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
                     self.key(tinsel::app::Key::Esc);
                 }
                 self.leave_visual_if_any();
             }
+            self.noremap -= usize::from(force);
         } else if is("set", 2) {
             self.set(arg);
         } else if is("nohlsearch", 3) {
@@ -193,9 +197,9 @@ impl Editor {
         } else if is("stop", 2) || is("suspend", 3) {
             self.push_effect(Effect::Suspend);
         } else if is("undo", 1) {
-            self.key(tinsel::app::Key::Char('u'));
+            self.keys_noremap(&[tinsel::app::Key::Char('u')]);
         } else if is("redo", 3) {
-            self.key(tinsel::app::Key::Ctrl('r'));
+            self.keys_noremap(&[tinsel::app::Key::Ctrl('r')]);
         } else if is("version", 2) {
             self.info(format!("tvim {}", env!("CARGO_PKG_VERSION")));
         } else {
