@@ -243,11 +243,27 @@ impl Editor {
             let rest: String = tail.chars().skip(blank).collect();
             let width = vcol(&line, at + blank, ts) - start;
             let width = if right { width + by } else { width.saturating_sub(by) };
-            // spaces, as tabs mid-line would shift with the text before them
-            self.buf.set_line(row, format!("{head}{}{rest}", " ".repeat(width)));
+            let blanks = self.blanks_between(start, start + width);
+            self.buf.set_line(row, format!("{head}{blanks}{rest}"));
         }
         self.cursor = Pos::new(b.top, self.block_cols(b.top, b).0);
         self.set_want();
+    }
+
+    // whitespace filling screen columns from..to, with tabs where noexpandtab wants them
+    fn blanks_between(&self, from: usize, to: usize) -> String {
+        if self.options.expand_tab {
+            return " ".repeat(to - from);
+        }
+        let ts = self.options.tab_stop.max(1);
+        let mut out = String::new();
+        let mut v = from;
+        while (v / ts + 1) * ts <= to {
+            out.push('\t');
+            v = (v / ts + 1) * ts;
+        }
+        out.push_str(&" ".repeat(to - v));
+        out
     }
 
     fn block_insert(&mut self, b: &Block, at: Where) {

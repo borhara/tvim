@@ -238,6 +238,27 @@ fn shifting_from_the_blocks_edge() {
 }
 
 #[test]
+fn noexpandtab_shifts_with_tabs() {
+    use common::text_after as t;
+    assert_eq!(
+        t("ab", ":set noet<CR>l<C-v>>"),
+        "a\t b",
+        "a tab to column 4, then a space to 5"
+    );
+    assert_eq!(
+        t("abcd", ":set noet<CR>3l<C-v>>"),
+        "abc\t   d",
+        "a tab from column 3 is one wide, so three more"
+    );
+    assert_eq!(t("a\tb", ":set noet<CR>l<C-v><lt>"), "ab");
+    assert_eq!(
+        t("a\t\tb", ":set noet<CR>l<C-v><lt>"),
+        "a\tb",
+        "eight columns less four is a tab to 4"
+    );
+}
+
+#[test]
 fn numbers_in_a_block_go_up_and_down() {
     use common::text_after as t;
     assert_eq!(t("1 1\n1 1", "ll<C-v>j<C-a>"), "1 2\n1 2");
