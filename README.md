@@ -45,8 +45,6 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
 - **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines, and they always use spaces.
 
-There is no line wrapping yet.
-
 ## Extras
 
 `Space` is the leader key. Pause after pressing it, or after `d`, `c`, `y`, `g`, `z`, `"`, `@` or `'`, and a strip along the bottom shows what can come next.
@@ -101,6 +99,8 @@ nnoremap <leader>w :w<CR>
 | `gitlens` | `gl` | on | show who last changed the cursor's line |
 | `roomy` | `ro` | on | a little space above and below the text |
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
+| `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
+| `linebreak` | `lbr` | off | with `wrap`, break lines between words |
 
 ### Key mappings
 
