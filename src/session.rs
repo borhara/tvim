@@ -64,7 +64,7 @@ pub fn read_recent(dir: &Path) -> Vec<Place> {
 }
 
 fn absolute(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    crate::paths::canonical(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn push_front(list: &mut Vec<Place>, place: Place) {

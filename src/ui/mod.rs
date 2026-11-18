@@ -1136,7 +1136,7 @@ fn draw_explorer(e: &Editor, x: &Explorer, frame: &mut Frame, area: Rect, c: &Co
         return;
     }
     let top = x.top(list.height);
-    let current = e.file().path.as_ref().and_then(|p| p.canonicalize().ok());
+    let current = e.file().path.as_ref().and_then(|p| crate::paths::canonical(p).ok());
     let focused = e.explorer_focused();
     for (i, (entry, hits)) in shown.iter().enumerate().skip(top).take(list.height) {
         let y = list.y + i - top;
