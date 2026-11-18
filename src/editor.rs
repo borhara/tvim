@@ -89,6 +89,8 @@ pub struct Options {
     pub incremental_search: bool,
     pub auto_indent: bool,
     pub scroll_off: usize,
+    // milliseconds to wait for the rest of a mapping
+    pub timeout_len: usize,
     pub syntax: bool,
     pub cursor_line: bool,
     pub indent_guides: bool,
@@ -115,6 +117,7 @@ impl Default for Options {
             incremental_search: true,
             auto_indent: true,
             scroll_off: 3,
+            timeout_len: 1000,
             syntax: true,
             cursor_line: true,
             indent_guides: true,

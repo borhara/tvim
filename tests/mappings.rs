@@ -128,3 +128,18 @@ fn other_commands_keep_their_short_names() {
     e.keys(&parse(":nohl<CR>:norm x<CR>"));
     assert_eq!(e.text(), "\nb");
 }
+
+#[test]
+fn held_keys_go_through_once_timeoutlen_is_up() {
+    use tinsel::app::{App, Event, Key};
+    let mut e = ed("");
+    e.keys(&parse(":inoremap jk <lt>Esc><CR>i"));
+    let mut tvim = tvim::ui::Tvim::new(e);
+    tvim.event(&Event::Key(Key::Char('j')));
+    tvim.event(&Event::Tick);
+    assert_eq!(tvim.editor.text(), "", "a second hasn't passed");
+    tvim.editor.options.timeout_len = 0;
+    tvim.event(&Event::Tick);
+    assert_eq!(tvim.editor.text(), "j");
+    assert!(!tvim.editor.mapping_pending());
+}
