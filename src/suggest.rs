@@ -81,6 +81,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
         "a twinkling row under the top line and a blank one above the stars",
     ),
     ("zeropad", "", "line numbers start with zeros, as in 01"),
+    ("wrap", "", "long lines carry on below"),
 ];
 
 fn option_value(name: &str, o: &Options) -> String {
