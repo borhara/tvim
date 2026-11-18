@@ -199,6 +199,7 @@ struct InsertSession {
     replaced: Vec<Option<char>>,
     auto_indent: Option<usize>,
     register_next: bool,
+    block: Option<block::BlockInsert>,
 }
 
 #[derive(Clone, Debug)]
@@ -3340,6 +3341,7 @@ impl Editor {
 
     fn leave_insert(&mut self) {
         self.completion = None;
+        self.finish_block_insert();
         let count = self.insert.count;
         if count > 1 && !self.insert_replay {
             let typed = std::mem::take(&mut self.insert.typed);
