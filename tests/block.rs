@@ -160,3 +160,57 @@ fn block_registers_say_so() {
     e.keys(&parse("yl"));
     assert!(!e.register('"').unwrap().block);
 }
+
+#[test]
+fn inserting_on_every_line() {
+    use common::{after, text_after as t};
+    assert_eq!(
+        after("abc\ndef\nghi", "l<C-v>jjI--<Esc>"),
+        ("a--bc\nd--ef\ng--hi".into(), (0, 2))
+    );
+    assert_eq!(
+        t("abc\n\ndef", "l<C-v>jjIx<Esc>"),
+        "axbc\n\ndxef",
+        "lines that don't reach the block are left"
+    );
+    assert_eq!(
+        t("ab\ncd", "<C-v>jIx<CR>y<Esc>"),
+        "x\nyab\ncd",
+        "a new line stops the copying"
+    );
+    assert_eq!(
+        t("abc\ndef", "<C-v>jIxy<BS><Esc>u"),
+        "abc\ndef",
+        "one undo takes it all back"
+    );
+}
+
+#[test]
+fn appending_on_every_line() {
+    use common::text_after as t;
+    assert_eq!(t("abc\ndef", "<C-v>jA!<Esc>"), "a!bc\nd!ef");
+    assert_eq!(
+        t("abcd\na\nabcd", "ll<C-v>jjA!<Esc>"),
+        "abc!d\na  !\nabc!d",
+        "short lines are padded"
+    );
+    assert_eq!(
+        t("ab\nabcd", "<C-v>j$A;<Esc>"),
+        "ab;\nabcd;",
+        "after $ it's each line's end"
+    );
+    assert_eq!(t("abcd\na\nabcd", "ll<C-v>jjA!<Esc>u"), "abcd\na\nabcd");
+}
+
+#[test]
+fn changing_a_block() {
+    use common::text_after as t;
+    assert_eq!(t("abcd\nefgh", "l<C-v>jlcX<Esc>"), "aXd\neXh");
+    assert_eq!(t("abcd\nefgh", "l<C-v>jlsXY<Esc>"), "aXYd\neXYh");
+    assert_eq!(
+        t("abcd\nefgh", "l<C-v>jCX<Esc>"),
+        "aX\neX",
+        "C changes to the ends of the lines"
+    );
+    assert_eq!(t("abcd\nefgh", "l<C-v>jlcX<Esc>u"), "abcd\nefgh");
+}
