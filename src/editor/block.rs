@@ -21,6 +21,24 @@ impl Block {
     }
 }
 
+/// Text typed on a block's first line, to go on its other lines too once insert mode ends.
+#[derive(Clone, Debug)]
+pub(crate) struct BlockInsert {
+    start: Pos,
+    lines: usize,
+    rows: std::ops::RangeInclusive<usize>,
+    at: Where,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Where {
+    // at this screen column, in lines that reach into it
+    Column(usize),
+    // at this screen column, padding short lines out to it
+    Padded(usize),
+    End,
+}
+
 impl Editor {
     pub fn block_selection(&self) -> Option<Block> {
         (self.mode == Mode::VisualBlock).then(|| self.block())
@@ -122,7 +140,80 @@ impl Editor {
                 self.set_want();
                 true
             }
+            Act::Key(Key::Char('I')) => {
+                let b = self.take_block();
+                self.cursor = Pos::new(b.top, self.block_cols(b.top, &b).0);
+                self.block_insert(&b, Where::Column(b.left));
+                true
+            }
+            Act::Key(Key::Char('A')) => {
+                let b = self.take_block();
+                // padding the first line is part of the change
+                self.touch();
+                let at = if b.to_end() { Where::End } else { Where::Padded(b.right) };
+                self.cursor = match at {
+                    Where::End => Pos::new(b.top, char_count(self.buf.line(b.top))),
+                    _ => Pos::new(b.top, self.padded_col(b.top, b.right)),
+                };
+                self.block_insert(&b, at);
+                true
+            }
+            Act::Operate(Op::Change, _) | Act::Key(Key::Char('s' | 'C')) => {
+                let mut b = self.take_block();
+                if cmd.act == Act::Key(Key::Char('C')) {
+                    b.right = usize::MAX;
+                }
+                self.cut_block(b, cmd.register);
+                // a block to the line ends leaves every line ending where it began
+                let at = if b.to_end() {
+                    Where::Padded(b.left)
+                } else {
+                    Where::Column(b.left)
+                };
+                self.block_insert(&b, at);
+                true
+            }
             _ => false,
+        }
+    }
+
+    fn block_insert(&mut self, b: &Block, at: Where) {
+        self.touch();
+        self.begin_insert(1, None);
+        self.insert.block = Some(BlockInsert {
+            start: self.cursor,
+            lines: self.buf.len(),
+            rows: b.top + 1..=b.bottom,
+            at,
+        });
+    }
+
+    /// Copies what was typed on a block's first line to the rest of it, as long as the typing
+    /// stayed on that line.
+    pub(crate) fn finish_block_insert(&mut self) {
+        let Some(bi) = self.insert.block.take() else { return };
+        let (start, end) = (bi.start, self.cursor);
+        if end.row != start.row || end.col <= start.col || self.buf.len() != bi.lines {
+            return;
+        }
+        let typed: String = self
+            .buf
+            .line(start.row)
+            .chars()
+            .skip(start.col)
+            .take(end.col - start.col)
+            .collect();
+        let ts = self.options.tab_stop;
+        for row in bi.rows {
+            let line = self.buf.line(row);
+            let width = vcol(line, char_count(line), ts);
+            let col = match bi.at {
+                Where::Column(v) if width <= v => continue,
+                Where::Column(v) => col_at(line, v, ts),
+                Where::Padded(v) => self.padded_col(row, v),
+                Where::End => char_count(line),
+            };
+            self.buf.insert(Pos::new(row, col), &typed);
         }
     }
 
