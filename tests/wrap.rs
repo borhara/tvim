@@ -60,3 +60,62 @@ fn a_full_row_puts_the_insert_cursor_below() {
     e.keys(&parse("A"));
     assert_eq!(cursor(&e, 30, 8), Some((8, 2)));
 }
+
+fn long(n: usize) -> String {
+    // lines two rows long in a 30-column window
+    (0..n)
+        .map(|i| format!("{i:02}{}", "x".repeat(30)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn the_view_scrolls_by_screen_rows() {
+    let mut e = wrapping(&long(20));
+    e.keys(&parse(":set so=0<CR>"));
+    e.set_screen(30, 12);
+    e.keys(&parse("4j"));
+    e.scroll();
+    assert_eq!(e.top(), 0, "lines 0 to 4 take ten rows, which fit");
+    e.keys(&parse("j"));
+    e.scroll();
+    assert_eq!(e.top(), 1, "line 5 needs two more");
+    e.keys(&parse("$"));
+    e.scroll();
+    assert_eq!(e.top(), 1);
+}
+
+#[test]
+fn scrolloff_counts_the_rows_below_too() {
+    let mut e = wrapping(&long(20));
+    e.keys(&parse(":set so=1<CR>"));
+    e.set_screen(30, 12);
+    e.keys(&parse("3j"));
+    e.scroll();
+    assert_eq!(e.top(), 0);
+    e.keys(&parse("j"));
+    e.scroll();
+    assert_eq!(e.top(), 1);
+}
+
+#[test]
+fn h_m_and_l_go_by_whats_shown() {
+    let mut e = wrapping(&long(20));
+    e.keys(&parse(":set so=0<CR>"));
+    e.set_screen(30, 12);
+    e.keys(&parse("L"));
+    assert_eq!(e.cursor().row, 4, "five lines of two rows fill the ten");
+    e.keys(&parse("M"));
+    assert_eq!(e.cursor().row, 2);
+}
+
+#[test]
+fn zz_and_zb_with_long_lines() {
+    let mut e = wrapping(&long(20));
+    e.keys(&parse(":set so=0<CR>"));
+    e.set_screen(30, 12);
+    e.keys(&parse("10Gzb"));
+    assert_eq!(e.top(), 5, "lines 5 to 9 fill the screen down to the cursor's");
+    e.keys(&parse("zz"));
+    assert_eq!(e.top(), 7);
+}

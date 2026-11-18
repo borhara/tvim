@@ -928,9 +928,19 @@ impl Editor {
         if row < top + so {
             top = row.saturating_sub(so);
         }
-        let below = (row + so).min(self.buf.last_row());
-        if below >= top + rows {
-            top = below + 1 - rows;
+        if self.options.wrap {
+            // the screen rows the cursor's line takes down to the cursor, and the lines below
+            let line = self.buf.line(row);
+            let upto = crate::text::row_holding(&self.wrapped(line, self.text_cols()), self.cursor.col) + 1;
+            let below: usize = (row + 1..=(row + so).min(self.buf.last_row()))
+                .map(|r| self.line_height(r))
+                .sum();
+            top = top.max(self.top_with_above(row, rows.saturating_sub(upto + below)));
+        } else {
+            let below = (row + so).min(self.buf.last_row());
+            if below >= top + rows {
+                top = below + 1 - rows;
+            }
         }
         self.top.set(top);
 
@@ -950,6 +960,38 @@ impl Editor {
             left = end - cols;
         }
         self.left.set(left);
+    }
+
+    /// How many screen rows line `row` takes.
+    pub(crate) fn line_height(&self, row: usize) -> usize {
+        if self.options.wrap {
+            self.wrapped(self.buf.line(row), self.text_cols()).len()
+        } else {
+            1
+        }
+    }
+
+    /// The highest line that can be at the top with no more than `above` screen rows between
+    /// it and line `row`.
+    pub(crate) fn top_with_above(&self, row: usize, above: usize) -> usize {
+        let (mut top, mut used) = (row, 0);
+        while top > 0 && used + self.line_height(top - 1) <= above {
+            top -= 1;
+            used += self.line_height(top);
+        }
+        top
+    }
+
+    /// The last line shown in full with `top` at the top.
+    pub(crate) fn last_shown(&self, top: usize) -> usize {
+        let rows = self.text_rows();
+        let top = top.min(self.buf.last_row());
+        let (mut row, mut used) = (top, self.line_height(top));
+        while row < self.buf.last_row() && used + self.line_height(row + 1) <= rows {
+            row += 1;
+            used += self.line_height(row);
+        }
+        row
     }
 
     pub fn keys(&mut self, keys: &[Key]) {
@@ -2157,10 +2199,22 @@ impl Editor {
         let rows = self.text_rows();
         let so = self.scroll_off();
         let row = self.cursor.row;
-        let top = match key {
-            Key::Char('z' | '.') => row.saturating_sub(rows / 2),
-            Key::Char('t') | Key::Enter => row.saturating_sub(so),
-            _ => (row + so + 1).saturating_sub(rows),
+        let top = if self.options.wrap {
+            let below: usize = (row + 1..=(row + so).min(self.buf.last_row()))
+                .map(|r| self.line_height(r))
+                .sum();
+            let room = rows.saturating_sub(self.line_height(row));
+            match key {
+                Key::Char('z' | '.') => self.top_with_above(row, room / 2),
+                Key::Char('t') | Key::Enter => row.saturating_sub(so),
+                _ => self.top_with_above(row, room.saturating_sub(below)),
+            }
+        } else {
+            match key {
+                Key::Char('z' | '.') => row.saturating_sub(rows / 2),
+                Key::Char('t') | Key::Enter => row.saturating_sub(so),
+                _ => (row + so + 1).saturating_sub(rows),
+            }
         };
         self.top.set(top);
         if matches!(key, Key::Enter | Key::Char('.' | '-')) {
@@ -2232,7 +2286,7 @@ impl Editor {
     // searches always glow; other jumps only when they leave the screen
     pub(crate) fn land(&self, search: bool) {
         let top = self.top.get();
-        if search || !(top..top + self.text_rows()).contains(&self.cursor.row) {
+        if search || !(top..=self.last_shown(top)).contains(&self.cursor.row) {
             self.anim.land();
         }
     }
@@ -2399,8 +2453,7 @@ impl Editor {
             }
             Motion::ScreenTop | Motion::ScreenMiddle | Motion::ScreenBottom => {
                 let top = self.top.get();
-                let rows = self.text_rows();
-                let bottom = (top + rows - 1).min(b.last_row());
+                let bottom = self.last_shown(top);
                 let so = self.scroll_off();
                 let row = match m {
                     Motion::ScreenTop => {
