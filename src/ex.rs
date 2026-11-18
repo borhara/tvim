@@ -630,14 +630,14 @@ impl Editor {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MapKind {
+pub(crate) enum MapKind {
     Map { noremap: bool },
     Unmap,
     Clear,
 }
 
 // :map, :nnoremap, :iunmap, :mapclear and the rest, with vim's shortest names
-fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKind)> {
+pub(crate) fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKind)> {
     use MapMode::*;
     let (modes, rest) = match name.chars().next()? {
         'n' if !name.starts_with("no") => (vec![Normal], &name[1..]),

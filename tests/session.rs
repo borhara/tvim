@@ -275,6 +275,16 @@ se rnu
 }
 
 #[test]
+fn config_lines_can_map_keys() {
+    let mut e = common::ed("one two");
+    let config = "nnoremap <leader>d dw\ninoremap jk <Esc>\nmap! QQ hi\n";
+    assert_eq!(e.apply_config(config), None);
+    e.keys(&parse(" dAxjk"));
+    assert_eq!(e.text(), "twox");
+    assert_eq!(e.mode(), tvim::Mode::Normal);
+}
+
+#[test]
 fn bad_config_lines_say_so() {
     let mut e = Editor::new();
     let problem = e.apply_config("set ts=3\nset bogus\nnormal dd\nset sw=0\n");
@@ -287,6 +297,6 @@ fn bad_config_lines_say_so() {
     let mut e = Editor::new();
     assert_eq!(
         e.apply_config("dd").as_deref(),
-        Some("config line 1: only set lines are allowed: dd")
+        Some("config line 1: only set and map lines are allowed: dd")
     );
 }

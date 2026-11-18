@@ -19,7 +19,7 @@ usage: tvim [options] [file or folder]
   -h, --help    show this and exit
   -V, --version show the version and exit
 
-settings are read from ~/.config/tvim/config, one :set line each";
+settings are read from ~/.config/tvim/config, one :set or :map line each";
 
 fn main() -> ExitCode {
     let mut file: Option<PathBuf> = None;
