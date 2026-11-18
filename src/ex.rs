@@ -8,6 +8,47 @@ type Lines = (usize, usize);
 
 impl Editor {
     pub fn ex(&mut self, line: &str) {
+        let line = line.trim_start_matches([' ', ':']);
+        let Some((first, rest)) = self.split_bar(line) else {
+            return self.ex_one(line);
+        };
+        self.ex_one(&first);
+        // an error stops the commands after it
+        let stop = self.message.as_ref().is_some_and(|m| m.error) || self.should_quit();
+        if !stop && !rest.trim().is_empty() {
+            self.ex(rest);
+        }
+    }
+
+    /// Splits `a | b` at its first `|`, unless the command takes the rest of the line as it
+    /// is, as :s does for patterns such as (a|b). `\|` is a `|` that doesn't split.
+    fn split_bar<'a>(&self, line: &'a str) -> Option<(String, &'a str)> {
+        let after = self.parse_range(line).map_or(line, |(_, rest)| rest).trim_start();
+        let name = &after[..after.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(after.len())];
+        let whole = after.starts_with('!')
+            || name == "s"
+            || name.len() >= 2 && "substitute".starts_with(name)
+            || name.len() >= 4 && "normal".starts_with(name);
+        if whole {
+            return None;
+        }
+        let mut first = String::new();
+        let mut chars = line.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '\\' if chars.peek().is_some_and(|&(_, n)| n == '|') => {
+                    first.push('|');
+                    chars.next();
+                }
+                '|' => return Some((first, &line[i + 1..])),
+                c => first.push(c),
+            }
+        }
+        // no | to split at, but a \| to take as it is
+        (first != line).then_some((first, ""))
+    }
+
+    fn ex_one(&mut self, line: &str) {
         let line = line.trim_start_matches([' ', ':']).trim_end();
         self.message = None;
         if line.is_empty() {
