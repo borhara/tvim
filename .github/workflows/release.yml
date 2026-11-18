@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      releases: ${{ steps.release-plz.outputs.releases }}
+      releases_created: ${{ steps.release-plz.outputs.releases_created }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,11 +26,24 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: release-plz/action@v0.5
+        id: release-plz
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # Attaches prebuilt binaries to the new release. Called from here rather than on the tag,
+  # because tags pushed with GITHUB_TOKEN don't trigger workflows.
+  binaries:
+    needs: release
+    if: needs.release.outputs.releases_created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/binaries.yml
+    with:
+      tag: ${{ fromJSON(needs.release.outputs.releases)[0].tag }}
+    secrets: inherit
 
   # Opens or updates a PR bumping the version and changelog from the commits since the last
   # release.
