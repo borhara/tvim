@@ -314,7 +314,7 @@ fn mode_color(mode: Mode) -> Rgb {
         Mode::Command | Mode::Search => palette::BLUSH,
         Mode::Insert => palette::SAGE,
         Mode::Replace => palette::RED,
-        Mode::Visual | Mode::VisualLine => palette::AMBER,
+        Mode::Visual | Mode::VisualLine | Mode::VisualBlock => palette::AMBER,
     }
 }
 
