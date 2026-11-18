@@ -1,0 +1,84 @@
+mod common;
+use common::ed;
+use tvim::Mode;
+use tvim::editor::Block;
+use tvim::keys::parse;
+
+#[test]
+fn ctrl_v_selects_a_block() {
+    let mut e = ed("abcd\nefgh\nijkl");
+    e.keys(&parse("l<C-v>jl"));
+    assert_eq!(e.mode(), Mode::VisualBlock);
+    assert_eq!(e.mode().name(), "V-BLOCK");
+    assert_eq!(
+        e.block_selection(),
+        Some(Block {
+            top: 0,
+            bottom: 1,
+            left: 1,
+            right: 3
+        })
+    );
+    e.keys(&parse("<Esc>"));
+    assert_eq!(e.mode(), Mode::Normal);
+    assert_eq!(e.block_selection(), None);
+}
+
+#[test]
+fn switching_between_visual_modes() {
+    let mut e = ed("abc\ndef");
+    e.keys(&parse("<C-v>"));
+    assert_eq!(e.mode(), Mode::VisualBlock);
+    e.keys(&parse("v"));
+    assert_eq!(e.mode(), Mode::Visual);
+    e.keys(&parse("<C-v>"));
+    assert_eq!(e.mode(), Mode::VisualBlock);
+    e.keys(&parse("V"));
+    assert_eq!(e.mode(), Mode::VisualLine);
+    e.keys(&parse("<C-q><C-v>"));
+    assert_eq!(e.mode(), Mode::Normal, "Ctrl-q is Ctrl-v too, and Ctrl-v again leaves");
+    e.keys(&parse("<C-v>jl<Esc>gv"));
+    assert_eq!(e.mode(), Mode::VisualBlock, "gv brings the block back");
+}
+
+#[test]
+fn o_and_capital_o_go_to_the_other_corners() {
+    let mut e = ed("abcd\nefgh");
+    e.keys(&parse("<C-v>jll"));
+    assert_eq!((e.cursor().row, e.cursor().col), (1, 2));
+    e.keys(&parse("O"));
+    assert_eq!(
+        (e.cursor().row, e.cursor().col),
+        (1, 0),
+        "O swaps sides on the same line"
+    );
+    e.keys(&parse("o"));
+    assert_eq!((e.cursor().row, e.cursor().col), (0, 2), "o goes to the far corner");
+    assert_eq!(e.block_selection().map(|b| (b.left, b.right)), Some((0, 3)));
+}
+
+#[test]
+fn dollar_takes_the_block_to_every_line_end() {
+    let mut e = ed("ab\nabcdef");
+    e.keys(&parse("<C-v>j$"));
+    assert!(e.block_selection().unwrap().to_end());
+    e.keys(&parse("h"));
+    assert!(!e.block_selection().unwrap().to_end());
+}
+
+#[test]
+fn tabs_count_by_the_columns_they_fill() {
+    let mut e = ed("\tx\nabcdefgh");
+    e.keys(&parse("j<C-v>kl"));
+    let b = e.block_selection().unwrap();
+    assert_eq!((b.left, b.right), (0, 5), "the tab fills columns 0 to 3, then x");
+}
+
+#[test]
+fn leaving_sets_the_corner_marks() {
+    let mut e = ed("abcd\nefgh\nijkl");
+    e.keys(&parse("l<C-v>jjl<Esc>gg0`>"));
+    assert_eq!((e.cursor().row, e.cursor().col), (2, 2));
+    e.keys(&parse("`<"));
+    assert_eq!((e.cursor().row, e.cursor().col), (0, 1));
+}

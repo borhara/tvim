@@ -696,7 +696,7 @@ fn star_chart(e: &Editor, frame: &mut Frame, row: Rect, map: Rect, c: &Colors, r
 
 // insert, replace and visual colour the labels row; normal leaves it quiet
 fn tone(mode: Mode) -> Option<Rgb> {
-    matches!(mode, Mode::Insert | Mode::Replace | Mode::Visual | Mode::VisualLine).then(|| super::mode_color(mode))
+    (matches!(mode, Mode::Insert | Mode::Replace) || mode.is_visual()).then(|| super::mode_color(mode))
 }
 
 fn quiet(mode: Mode) -> Rgb {

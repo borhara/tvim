@@ -25,6 +25,9 @@ use crate::syntax::{self, State, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::{Node, Win};
 
+mod block;
+pub use block::Block;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Normal,
@@ -32,6 +35,7 @@ pub enum Mode {
     Replace,
     Visual,
     VisualLine,
+    VisualBlock,
     Command,
     Search,
 }
@@ -44,11 +48,12 @@ impl Mode {
             Mode::Replace => "REPLACE",
             Mode::Visual => "VISUAL",
             Mode::VisualLine => "V-LINE",
+            Mode::VisualBlock => "V-BLOCK",
         }
     }
 
     pub fn is_visual(self) -> bool {
-        matches!(self, Mode::Visual | Mode::VisualLine)
+        matches!(self, Mode::Visual | Mode::VisualLine | Mode::VisualBlock)
     }
 }
 
@@ -756,7 +761,7 @@ impl Editor {
     }
 
     pub fn selection(&self) -> Option<Range> {
-        self.mode.is_visual().then(|| self.visual_range())
+        (self.mode.is_visual() && self.mode != Mode::VisualBlock).then(|| self.visual_range())
     }
 
     pub fn search_pattern(&self) -> Option<&str> {
@@ -1024,11 +1029,11 @@ impl Editor {
             }
         }
         match self.mode {
-            Mode::Normal | Mode::Visual | Mode::VisualLine => self.normal(input),
+            Mode::Normal | Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.normal(input),
             Mode::Insert | Mode::Replace => self.insert_input(input),
             Mode::Command | Mode::Search => self.cmdline_input(input),
         }
-        if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::VisualLine) && self.pending.is_empty() {
+        if (self.mode == Mode::Normal || self.mode.is_visual()) && self.pending.is_empty() {
             self.end_change();
         }
         self.clamp();
@@ -2006,6 +2011,8 @@ impl Editor {
             Key::Tab if self.jumps.has_newer() => self.jump_newer(n),
             Key::Tab => self.tab_focus(),
             Key::Ctrl('p') => self.find_files(None),
+            // terminals often keep Ctrl-q for themselves
+            Key::Ctrl('v' | 'q') => self.enter_visual(Mode::VisualBlock),
             _ => {}
         }
     }
@@ -3376,6 +3383,16 @@ impl Editor {
         if self.mode == Mode::VisualLine {
             return Range::lines(a.row, b.row);
         }
+        if self.mode == Mode::VisualBlock {
+            let blk = self.block();
+            let (from, _) = self.block_cols(blk.top, &blk);
+            let (_, to) = self.block_cols(blk.bottom, &blk);
+            return Range {
+                start: Pos::new(blk.top, from),
+                end: Pos::new(blk.bottom, to),
+                linewise: false,
+            };
+        }
         let len = self.buf.line_len(b.row);
         let end = if len == 0 && b.row < self.buf.last_row() {
             Pos::new(b.row + 1, 0)
@@ -3391,6 +3408,9 @@ impl Editor {
 
     fn run_visual(&mut self, cmd: Cmd) {
         let n = cmd.n();
+        if self.mode == Mode::VisualBlock && self.run_block(&cmd) {
+            return;
+        }
         match cmd.act {
             Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::Select { kind, inner } => {
@@ -3427,6 +3447,7 @@ impl Editor {
                 }
             }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
+            Act::Key(Key::Ctrl('v' | 'q')) => self.switch_visual(Mode::VisualBlock),
             Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {
                 let r = self.visual_range();
                 self.leave_visual();
@@ -3461,18 +3482,21 @@ impl Editor {
         }
     }
 
+    // v in visual mode leaves it, V switches to lines, and so on
+    fn switch_visual(&mut self, want: Mode) {
+        if self.mode == want {
+            self.leave_visual();
+        } else {
+            self.mode = want;
+        }
+    }
+
     fn visual_key(&mut self, c: char, register: Option<char>, n: usize) {
         let r = self.visual_range();
         let lines = Range::lines(r.start.row, r.last_row());
         match c {
-            'v' | 'V' => {
-                let want = if c == 'v' { Mode::Visual } else { Mode::VisualLine };
-                if self.mode == want {
-                    self.leave_visual();
-                } else {
-                    self.mode = want;
-                }
-            }
+            'v' => self.switch_visual(Mode::Visual),
+            'V' => self.switch_visual(Mode::VisualLine),
             'o' | 'O' => std::mem::swap(&mut self.anchor, &mut self.cursor),
             'x' => {
                 self.leave_visual();
