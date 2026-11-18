@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::buffer::Pos;
-use crate::editor::{Editor, Mode, relative_to_cwd};
+use crate::editor::{Editor, Mode, listed, relative_to_cwd};
 use crate::finder::Finder;
 
 pub const RECENT_SHOWN: usize = 20;
@@ -217,7 +217,7 @@ impl Editor {
             .iter()
             .filter(|p| Some(&p.path) != here.as_ref() && p.path.is_file())
             .take(RECENT_SHOWN)
-            .map(|p| (relative_to_cwd(&p.path).display().to_string(), p.pos.row))
+            .map(|p| (listed(&p.path), p.pos.row))
             .unzip();
         self.pending.clear();
         self.message = None;

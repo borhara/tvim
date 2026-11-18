@@ -1230,7 +1230,7 @@ impl Editor {
             .buffers()
             .into_iter()
             .filter_map(|b| b.path)
-            .map(|p| relative_to_cwd(&p.canonicalize().unwrap_or(p)).display().to_string())
+            .map(|p| listed(&p.canonicalize().unwrap_or(p)))
             .collect();
         self.pending.clear();
         self.finder = Some(Finder::from_list(&root, names, "open files"));
@@ -4144,9 +4144,44 @@ pub(crate) fn relative_to_cwd(path: &Path) -> PathBuf {
     }
 }
 
+/// A path as the finder lists it: relative to the working directory, with `/` between its
+/// parts on every system, so its name is found the same way everywhere.
+pub(crate) fn listed(path: &Path) -> String {
+    slashed(&relative_to_cwd(path).display().to_string(), cfg!(windows))
+}
+
+/// On Windows, drop the `\\?\` that canonicalize puts in front, which isn't for people and
+/// doesn't work with `/`, then use `/` between the parts.
+fn slashed(path: &str, windows: bool) -> String {
+    if !windows {
+        return path.to_string();
+    }
+    let path = match path.strip_prefix(r"\\?\") {
+        Some(rest) => match rest.strip_prefix(r"UNC\") {
+            Some(share) => format!(r"\\{share}"),
+            None => rest.to_string(),
+        },
+        None => path.to_string(),
+    };
+    path.replace('\\', "/")
+}
+
 pub(crate) fn expand_home(path: &str) -> String {
     match (path.strip_prefix("~/"), std::env::var("HOME")) {
         (Some(rest), Ok(home)) => format!("{home}/{rest}"),
         _ => path.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::slashed;
+
+    #[test]
+    fn windows_paths_are_listed_with_slashes_and_without_their_prefix() {
+        assert_eq!(slashed(r"\\?\C:\Users\me\a.rs", true), "C:/Users/me/a.rs");
+        assert_eq!(slashed(r"\\?\UNC\server\share\a.rs", true), "//server/share/a.rs");
+        assert_eq!(slashed(r"src\ui\mod.rs", true), "src/ui/mod.rs");
+        assert_eq!(slashed(r"src\ui\mod.rs", false), r"src\ui\mod.rs");
     }
 }
