@@ -489,6 +489,7 @@ impl Editor {
                 flag(o.gitlens, "gitlens"),
                 flag(o.roomy, "roomy"),
                 flag(o.zero_pad, "zeropad"),
+                flag(o.wrap, "wrap"),
             ];
             return self.info(all.join("  "));
         }
