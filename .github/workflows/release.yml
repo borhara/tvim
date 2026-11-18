@@ -19,7 +19,7 @@ jobs:
       releases: ${{ steps.release-plz.outputs.releases }}
       releases_created: ${{ steps.release-plz.outputs.releases_created }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -59,7 +59,7 @@ jobs:
       cancel-in-progress: false
     steps:
       # the branch, not the commit: release-pr needs a branch to open its PR against
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
