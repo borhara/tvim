@@ -490,6 +490,7 @@ impl Editor {
                 flag(o.roomy, "roomy"),
                 flag(o.zero_pad, "zeropad"),
                 flag(o.wrap, "wrap"),
+                flag(o.linebreak, "linebreak"),
             ];
             return self.info(all.join("  "));
         }
