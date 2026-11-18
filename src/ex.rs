@@ -646,8 +646,9 @@ pub(crate) fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKi
         'v' | 'x' => (vec![Visual], &name[1..]),
         'i' => (vec![Insert], &name[1..]),
         'c' => (vec![Command], &name[1..]),
+        'o' => (vec![Operator], &name[1..]),
         _ if bang => (vec![Insert, Command], name),
-        _ => (vec![Normal, Visual], name),
+        _ => (vec![Normal, Visual, Operator], name),
     };
     // map! and friends are only for the plain names
     if bang && modes.len() == 1 {
@@ -657,7 +658,7 @@ pub(crate) fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKi
     // nn is :nnoremap but cn is :cnext, and nu is :number
     let first = name.chars().next()?;
     let (map_min, noremap_min, unmap_min) = match first {
-        _ if modes.len() == 2 => (3, 2, 3),
+        _ if modes.len() > 1 => (3, 2, 3),
         'n' => (1, 1, 2),
         'v' | 'x' => (1, 1, 1),
         _ => (1, 2, 1),

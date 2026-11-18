@@ -85,6 +85,32 @@ fn visual_and_command_line_mappings() {
 }
 
 #[test]
+fn operator_pending_mappings() {
+    assert_eq!(t("f(a, b) x", "4l:onoremap p i(<CR>dp"), "f() x", "dp is di(");
+    assert_eq!(
+        t("f(a, b) x", "4l:onoremap p i(<CR>p"),
+        "f(a, b) x",
+        "but p alone is still p"
+    );
+    assert_eq!(
+        t("one two three", ":onoremap w e<CR>2dw"),
+        " three",
+        "a count before the operator still counts"
+    );
+    assert_eq!(t("one two three", ":onoremap w e<CR>yw$p"), "one two threeone");
+    assert_eq!(t("a b", ":map Q w<CR>dQ"), "b", ":map covers operators too");
+    assert_eq!(t("a b", ":onoremap Q w<CR>:ounmap Q<CR>dQ"), "a b");
+    let mut e = ed("");
+    e.keys(&parse(":onoremap p i(<CR>:omap<CR>"));
+    assert_eq!(e.message().map(|m| m.text.as_str()), Some("o  p *i("));
+    e.keys(&parse(":only<CR>"));
+    assert!(
+        e.message().is_none_or(|m| !m.text.contains("E492")),
+        ":on is still :only"
+    );
+}
+
+#[test]
 fn unmapping_and_listing() {
     assert_eq!(t("ab", ":nnoremap Q x<CR>:nunmap Q<CR>Q"), "ab");
     assert_eq!(t("ab", ":nnoremap Q x<CR>:mapclear<CR>Q"), "ab");
