@@ -10,7 +10,7 @@ checksum = "4020efd47a819f7ce102b0640688abbe7f510c72d53576d86c8ba64b11b7e2a8"
 
 [[package]]
 name = "tvim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tinsel",
 ]
