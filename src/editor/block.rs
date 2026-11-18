@@ -1,6 +1,6 @@
 use tinsel::app::Key;
 
-use super::{Editor, Mode, Register};
+use super::{Editor, Mode, Register, single, toggle};
 use crate::buffer::Pos;
 use crate::command::{Act, Cmd, Op};
 use crate::text::{cell_width, char_count, col_at, vcol};
@@ -173,8 +173,81 @@ impl Editor {
                 self.block_insert(&b, at);
                 true
             }
+            Act::With('r', ch) if ch != '\n' => {
+                let b = self.take_block();
+                self.map_block(&b, |_| ch);
+                true
+            }
+            Act::Operate(op @ (Op::Lower | Op::Upper | Op::ToggleCase), _) => {
+                let b = self.take_block();
+                self.map_block(&b, |c| match op {
+                    Op::Lower => single(c.to_lowercase()).unwrap_or(c),
+                    Op::Upper => single(c.to_uppercase()).unwrap_or(c),
+                    _ => toggle(c),
+                });
+                true
+            }
+            Act::Operate(op @ (Op::Indent | Op::Dedent), _) => {
+                let b = self.take_block();
+                self.shift_block(&b, op == Op::Indent, cmd.n());
+                true
+            }
+            Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {
+                let b = self.take_block();
+                let by = if c == 'a' { cmd.n() as i64 } else { -(cmd.n() as i64) };
+                for row in b.top..=b.bottom {
+                    let (from, to) = self.block_cols(row, &b);
+                    if from < to {
+                        self.cursor = Pos::new(row, from);
+                        self.increment(by);
+                    }
+                }
+                self.cursor = Pos::new(b.top, self.block_cols(b.top, &b).0);
+                true
+            }
             _ => false,
         }
+    }
+
+    fn map_block(&mut self, b: &Block, f: impl Fn(char) -> char) {
+        self.touch();
+        for row in b.top..=b.bottom {
+            let (from, to) = self.block_cols(row, b);
+            let line: String = self
+                .buf
+                .line(row)
+                .chars()
+                .enumerate()
+                .map(|(i, c)| if (from..to).contains(&i) && c != '\t' { f(c) } else { c })
+                .collect();
+            self.buf.set_line(row, line);
+        }
+        self.cursor = Pos::new(b.top, self.block_cols(b.top, b).0);
+        self.set_want();
+    }
+
+    // > and < move the text from the block's left edge on, not the whole line
+    fn shift_block(&mut self, b: &Block, right: bool, times: usize) {
+        let ts = self.options.tab_stop;
+        let by = self.options.shift_width.max(1) * times;
+        self.touch();
+        for row in b.top..=b.bottom {
+            let line = self.buf.line(row).to_string();
+            if vcol(&line, char_count(&line), ts) <= b.left {
+                continue;
+            }
+            let at = col_at(&line, b.left, ts);
+            let (head, tail): (String, String) = (line.chars().take(at).collect(), line.chars().skip(at).collect());
+            let start = vcol(&line, at, ts);
+            let blank = tail.chars().take_while(|c| matches!(c, ' ' | '\t')).count();
+            let rest: String = tail.chars().skip(blank).collect();
+            let width = vcol(&line, at + blank, ts) - start;
+            let width = if right { width + by } else { width.saturating_sub(by) };
+            // spaces, as tabs mid-line would shift with the text before them
+            self.buf.set_line(row, format!("{head}{}{rest}", " ".repeat(width)));
+        }
+        self.cursor = Pos::new(b.top, self.block_cols(b.top, b).0);
+        self.set_want();
     }
 
     fn block_insert(&mut self, b: &Block, at: Where) {
