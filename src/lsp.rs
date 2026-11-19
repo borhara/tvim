@@ -5,11 +5,13 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tinsel::app::Waker;
 
 use crate::json::Json;
+use crate::sync::lock;
 
 // bigger than any real message, small enough that a garbled header can't exhaust memory
 const MAX_MESSAGE: usize = 64 << 20;
@@ -55,6 +57,8 @@ pub struct Server {
     state: State,
     encoding: Encoding,
     capabilities: Json,
+    // the last line the server wrote to stderr, to say why it stopped
+    last_words: Arc<Mutex<String>>,
 }
 
 impl Server {
@@ -64,21 +68,34 @@ impl Server {
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
         let input = child.stdin.take().expect("stdin is piped");
         let output = child.stdout.take().expect("stdout is piped");
-        let mut server = Server::connect(output, input, root);
+        let errors = child.stderr.take().expect("stderr is piped");
+        let mut server = Server::connect(output, input, errors, root);
         server.child = Some(child);
         Ok(server)
     }
 
-    fn connect(from: impl Read + Send + 'static, to: impl Write + Send + 'static, root: &Path) -> Server {
+    fn connect(
+        from: impl Read + Send + 'static,
+        to: impl Write + Send + 'static,
+        errors: impl Read + Send + 'static,
+        root: &Path,
+    ) -> Server {
         let (outgoing, to_server) = mpsc::channel();
         let (from_server, incoming) = mpsc::channel();
+        let (errors_open, errors_closed) = mpsc::channel::<()>();
+        let last_words = Arc::new(Mutex::new(String::new()));
+        let words = last_words.clone();
         // writing gets its own thread too, so a server slow to read never stalls the editor
         std::thread::spawn(move || write_all(to, to_server));
-        std::thread::spawn(move || read_all(from, from_server, Waker::new()));
+        std::thread::spawn(move || read_all(from, from_server, errors_closed, Waker::new()));
+        std::thread::spawn(move || {
+            keep_last_line(errors, &words);
+            drop(errors_open);
+        });
         let server = Server {
             child: None,
             outgoing,
@@ -90,6 +107,7 @@ impl Server {
             },
             encoding: Encoding::Utf16,
             capabilities: Json::Null,
+            last_words,
         };
         server.write(message(Some(1.into()), "initialize", initialize_params(root)));
         server
@@ -138,11 +156,20 @@ impl Server {
                 Err(TryRecvError::Empty) => return None,
                 Err(TryRecvError::Disconnected) => {
                     if self.failure().is_none() {
-                        self.state = State::Failed("the server stopped".into());
+                        self.state = State::Failed(self.why_stopped());
                     }
                     return None;
                 }
             }
+        }
+    }
+
+    fn why_stopped(&self) -> String {
+        let words = lock(&self.last_words);
+        if words.is_empty() {
+            "the server stopped".to_string()
+        } else {
+            format!("the server stopped: {words}")
         }
     }
 
@@ -318,7 +345,7 @@ fn write_all(to: impl Write, outgoing: Receiver<Json>) {
     }
 }
 
-fn read_all(from: impl Read, incoming: Sender<Json>, waker: Waker) {
+fn read_all(from: impl Read, incoming: Sender<Json>, errors_closed: Receiver<()>, waker: Waker) {
     let mut from = BufReader::new(from);
     // a body that isn't JSON is skipped, but a broken frame loses our place, so it ends things
     while let Ok(Some(body)) = read_message(&mut from) {
@@ -330,9 +357,22 @@ fn read_all(from: impl Read, incoming: Sender<Json>, waker: Waker) {
         }
         waker.wake();
     }
+    // a moment for the last of stderr to be read, so the reason is there when the editor looks
+    let _ = errors_closed.recv_timeout(Duration::from_secs(1));
     // dropped before waking, so the editor finds the channel closed when it looks
     drop(incoming);
     waker.wake();
+}
+
+fn keep_last_line(errors: impl Read, last: &Mutex<String>) {
+    for line in BufReader::new(errors).split(b'\n') {
+        let Ok(line) = line else { return };
+        let line = String::from_utf8_lossy(&line);
+        let line = line.trim();
+        if !line.is_empty() {
+            *lock(last) = line.to_string();
+        }
+    }
 }
 
 fn write_message(to: &mut impl Write, msg: &Json) -> io::Result<()> {
@@ -510,9 +550,15 @@ mod tests {
     }
 
     fn connected() -> (Server, Fake) {
+        connected_saying("")
+    }
+
+    // with `errors` as what the server writes to stderr
+    fn connected_saying(errors: &'static str) -> (Server, Fake) {
         let (to_server, server_in) = pipe();
         let (server_out, from_server) = pipe();
-        let server = Server::connect(from_server, to_server, Path::new("/work/my project"));
+        let errors = io::Cursor::new(errors);
+        let server = Server::connect(from_server, to_server, errors, Path::new("/work/my project"));
         let fake = Fake {
             from: BufReader::new(server_in),
             to: server_out,
@@ -741,6 +787,14 @@ mod tests {
         settle(&mut server, |s| s.failure().is_some());
         assert_eq!(server.failure(), Some("the server stopped"));
         server.request("after", Json::Null);
+    }
+
+    #[test]
+    fn a_server_that_goes_away_says_why_if_it_can() {
+        let (mut server, fake) = connected_saying("starting\nerror: no toolchain\n\n");
+        drop(fake);
+        settle(&mut server, |s| s.failure().is_some());
+        assert_eq!(server.failure(), Some("the server stopped: error: no toolchain"));
     }
 
     #[test]
