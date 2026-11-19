@@ -84,6 +84,8 @@ pub struct Choice {
 pub struct Servers {
     // commands given with :lsp, None for a server turned off
     chosen: HashMap<&'static str, Option<Vec<String>>>,
+    // counts the changes made, so a choice worked out before can tell it's out of date
+    changes: u64,
 }
 
 impl Servers {
@@ -113,7 +115,12 @@ impl Servers {
             line => Some(split_args(line)?),
         };
         self.chosen.insert(known.name, command);
+        self.changes += 1;
         Ok(())
+    }
+
+    pub fn changes(&self) -> u64 {
+        self.changes
     }
 
     pub fn describe(&self, name: &str) -> Result<String, String> {
