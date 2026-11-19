@@ -13,6 +13,7 @@ use crate::json::Json;
 
 // bigger than any real message, small enough that a garbled header can't exhaust memory
 const MAX_MESSAGE: usize = 64 << 20;
+const METHOD_NOT_FOUND: i64 = -32601;
 
 // how columns are counted in positions sent either way
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,8 +161,11 @@ impl Server {
 
     fn receive(&mut self, msg: Json) -> Option<Incoming> {
         match (msg["method"].as_str(), msg.get("id")) {
-            // requests from the server aren't handled yet
-            (Some(_), Some(_)) => None,
+            (Some(method), Some(id)) => {
+                let answer = answer(method, &msg["params"]);
+                self.write(reply(id.clone(), answer));
+                None
+            }
             (Some(method), None) => Some(Incoming::Notice {
                 method: method.to_string(),
                 params: msg["params"].clone(),
@@ -263,6 +267,24 @@ fn initialize_params(root: &Path) -> Json {
     ])
 }
 
+// requests the server makes of the editor, none of which need anything from it yet
+fn answer(method: &str, params: &Json) -> Result<Json, ResponseError> {
+    match method {
+        // no settings of our own, so each one asked for is left to the server's default
+        "workspace/configuration" => {
+            let asked = params["items"].as_array().map_or(0, <[Json]>::len);
+            Ok(Json::Array(vec![Json::Null; asked]))
+        }
+        "window/workDoneProgress/create" | "client/registerCapability" | "client/unregisterCapability" => {
+            Ok(Json::Null)
+        }
+        _ => Err(ResponseError {
+            code: METHOD_NOT_FOUND,
+            message: format!("{method} isn't supported"),
+        }),
+    }
+}
+
 fn message(id: Option<Json>, method: &str, params: Json) -> Json {
     let mut fields = vec![("jsonrpc".to_string(), Json::from("2.0"))];
     if let Some(id) = id {
@@ -274,6 +296,17 @@ fn message(id: Option<Json>, method: &str, params: Json) -> Json {
         fields.push(("params".into(), params));
     }
     Json::Object(fields)
+}
+
+fn reply(id: Json, answer: Result<Json, ResponseError>) -> Json {
+    let outcome = match answer {
+        Ok(result) => ("result", result),
+        Err(e) => (
+            "error",
+            Json::object([("code", e.code.into()), ("message", e.message.into())]),
+        ),
+    };
+    Json::object([("jsonrpc", "2.0".into()), ("id", id), outcome])
 }
 
 fn write_all(to: impl Write, outgoing: Receiver<Json>) {
@@ -507,6 +540,16 @@ mod tests {
         }
     }
 
+    // messages are handled in order, so once a ping sent after them is seen, they've been dealt with
+    fn sync_up(server: &mut Server, fake: &mut Fake) {
+        fake.send(r#"{"jsonrpc":"2.0","method":"ping"}"#);
+        let ping = Incoming::Notice {
+            method: "ping".into(),
+            params: Json::Null,
+        };
+        assert_eq!(next(server), ping);
+    }
+
     fn framed(body: &str) -> String {
         format!("Content-Length: {}\r\n\r\n{body}", body.len())
     }
@@ -560,6 +603,15 @@ mod tests {
         assert_eq!(
             init["params"]["workspaceFolders"][0]["name"].as_str(),
             Some("my project")
+        );
+
+        // the server may ask things before it has answered, and is answered straight away
+        fake.send(r#"{"jsonrpc":"2.0","id":"cfg","method":"workspace/configuration","params":{"items":[{},{}]}}"#);
+        sync_up(&mut server, &mut fake);
+        let answer = fake.recv().unwrap();
+        assert_eq!(
+            answer.to_string(),
+            r#"{"jsonrpc":"2.0","id":"cfg","result":[null,null]}"#
         );
 
         let id = init["id"].as_i64().unwrap();
@@ -645,6 +697,16 @@ mod tests {
                 result: Err(error)
             }
         );
+    }
+
+    #[test]
+    fn requests_the_editor_cant_answer_get_an_error_back() {
+        let (mut server, mut fake) = started();
+        fake.send(r#"{"jsonrpc":"2.0","id":4,"method":"workspace/applyEdit","params":{}}"#);
+        sync_up(&mut server, &mut fake);
+        let answer = fake.recv().unwrap();
+        assert_eq!(answer["id"].as_i64(), Some(4));
+        assert_eq!(answer["error"]["code"].as_i64(), Some(METHOD_NOT_FOUND));
     }
 
     #[test]
