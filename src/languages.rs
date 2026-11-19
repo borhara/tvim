@@ -5,7 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::json::Json;
-use crate::lsp::{self, Server};
+use crate::lsp::{self, Encoding, Server};
 use crate::paths;
 use crate::servers::{Choice, Servers};
 
@@ -29,11 +29,24 @@ struct Synced {
     key: Key,
     path: PathBuf,
     uri: String,
+    version: u64,
+    // the text as the server has it, a line each, with an empty last line for a final newline
+    lines: Vec<String>,
+    // the version number the server was last given
+    sent: i64,
 }
 
 // how a server wants to hear about files, from its capabilities
 struct Sync {
     open_close: bool,
+    change: Change,
+}
+
+#[derive(PartialEq, Eq)]
+enum Change {
+    Never,
+    Whole,
+    Edits,
 }
 
 pub struct Languages {
@@ -148,26 +161,44 @@ impl Languages {
             return;
         }
         let sync = sync_of(server.capabilities());
-        if self.synced.contains_key(&doc.id) {
+        let Some(s) = self.synced.get_mut(&doc.id) else {
+            let lines = text_of(doc);
+            let uri = lsp::file_uri(&paths::absolute(path));
+            if sync.open_close {
+                let item = Json::object([
+                    ("uri", uri.clone().into()),
+                    ("languageId", choice.language.into()),
+                    ("version", 1.into()),
+                    ("text", lines.join("\n").into()),
+                ]);
+                server.notify("textDocument/didOpen", Json::object([("textDocument", item)]));
+            }
+            let synced = Synced {
+                key,
+                path: path.to_path_buf(),
+                uri,
+                version: doc.version,
+                lines,
+                sent: 1,
+            };
+            self.synced.insert(doc.id, synced);
             return;
-        }
-        let lines = text_of(doc);
-        let uri = lsp::file_uri(&paths::absolute(path));
-        if sync.open_close {
-            let item = Json::object([
-                ("uri", uri.clone().into()),
-                ("languageId", choice.language.into()),
-                ("version", 1.into()),
-                ("text", lines.join("\n").into()),
-            ]);
-            server.notify("textDocument/didOpen", Json::object([("textDocument", item)]));
-        }
-        let synced = Synced {
-            key,
-            path: path.to_path_buf(),
-            uri,
         };
-        self.synced.insert(doc.id, synced);
+        if s.version != doc.version {
+            let lines = text_of(doc);
+            if sync.open_close && sync.change != Change::Never {
+                let change = match sync.change {
+                    Change::Edits => edit(&s.lines, &lines, server.encoding()),
+                    _ => Json::object([("text", lines.join("\n").into())]),
+                };
+                s.sent += 1;
+                let item = Json::object([("uri", s.uri.clone().into()), ("version", s.sent.into())]);
+                let params = Json::object([("textDocument", item), ("contentChanges", vec![change].into())]);
+                server.notify("textDocument/didChange", params);
+            }
+            s.lines = lines;
+            s.version = doc.version;
+        }
     }
 }
 
@@ -190,10 +221,53 @@ fn text_of(doc: &OpenDoc) -> Vec<String> {
 
 fn sync_of(capabilities: &Json) -> Sync {
     let sync = &capabilities["textDocumentSync"];
-    // a bare number is the kind of change, and means opens and closes are wanted too
-    Sync {
-        open_close: sync.as_i64().is_some() || sync["openClose"].as_bool().unwrap_or(false),
+    let change = |kind: Option<i64>| match kind {
+        Some(1) => Change::Whole,
+        Some(2) => Change::Edits,
+        _ => Change::Never,
+    };
+    // a bare number is the kind of change, with opens and closes too
+    if let Some(kind) = sync.as_i64() {
+        return Sync {
+            open_close: true,
+            change: change(Some(kind)),
+        };
     }
+    Sync {
+        open_close: sync["openClose"].as_bool().unwrap_or(false),
+        change: change(sync["change"].as_i64()),
+    }
+}
+
+// the one edit that turns `old` into `new`: the lines between those the two share at the
+// start and at the end, replaced
+fn edit(old: &[String], new: &[String], encoding: Encoding) -> Json {
+    let head = old.iter().zip(new).take_while(|(a, b)| a == b).count();
+    let room = old.len().min(new.len()) - head;
+    let tail = old
+        .iter()
+        .rev()
+        .zip(new.iter().rev())
+        .take(room)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let end_of = |row: usize| (row, encoding.units(&old[row], usize::MAX));
+    let last = old.len() - 1;
+    let (from, to, text) = if tail > 0 {
+        // whole lines, up to the start of the first line after that's the same
+        let text: String = new[head..new.len() - tail].iter().map(|l| format!("{l}\n")).collect();
+        ((head, 0), (old.len() - tail, 0), text)
+    } else if head > 0 {
+        // the same to the end of a line, and different from there to the end of the text
+        let text: String = new[head..].iter().map(|l| format!("\n{l}")).collect();
+        (end_of(head - 1), end_of(last), text)
+    } else {
+        ((0, 0), end_of(last), new.join("\n"))
+    };
+    let position =
+        |(line, character): (usize, usize)| Json::object([("line", line.into()), ("character", character.into())]);
+    let range = Json::object([("start", position(from)), ("end", position(to))]);
+    Json::object([("range", range), ("text", text.into())])
 }
 
 #[cfg(test)]
@@ -307,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_is_opened_and_closed() {
+    fn a_file_is_opened_changed_and_closed() {
         let mut r = rig();
         let v1 = lines("fn main() {\n}");
         let mut fake = r.start(&[doc("/work/a.rs", 1, 1, &v1)], EDITS);
@@ -322,6 +396,16 @@ mod tests {
             "with its final newline"
         );
 
+        let v2 = lines("fn main() {\n    go();\n}");
+        r.update(&[doc("/work/a.rs", 2, 1, &v2)]);
+        let change = fake.recv().unwrap();
+        assert_eq!(change["method"].as_str(), Some("textDocument/didChange"));
+        assert_eq!(change["params"]["textDocument"]["version"].as_i64(), Some(2));
+        assert_eq!(
+            change["params"]["contentChanges"].to_string(),
+            r#"[{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":0}},"text":"    go();\n"}]"#
+        );
+
         r.update(&[]);
         assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
         assert_eq!(
@@ -329,6 +413,22 @@ mod tests {
             Some("shutdown"),
             "nothing needs it now"
         );
+    }
+
+    #[test]
+    fn a_server_without_edits_gets_the_whole_text() {
+        let mut r = rig();
+        let (v1, v2) = (lines("a"), lines("a\nb"));
+        let mut fake = r.start(&[doc("/work/a.py", 1, 1, &v1)], "{\"textDocumentSync\":1}");
+        assert_eq!(
+            fake.recv().unwrap()["params"]["textDocument"]["languageId"].as_str(),
+            Some("python")
+        );
+        r.update(&[doc("/work/a.py", 2, 2, &v2)]);
+        let change = fake.recv().unwrap();
+        assert_eq!(change["params"]["contentChanges"].to_string(), r#"[{"text":"a\nb\n"}]"#);
+        r.update(&[]);
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
     }
 
     #[test]
@@ -402,6 +502,52 @@ mod tests {
                 vec!["my-server".into(), "--fast".into()],
                 paths::absolute(Path::new("/work"))
             )
+        );
+    }
+
+    fn edited(old: &str, new: &str) -> String {
+        edit(&lines(old), &lines(new), Encoding::Utf16).to_string()
+    }
+
+    fn range(a: (usize, usize), b: (usize, usize), text: &str) -> String {
+        format!(
+            r#"{{"range":{{"start":{{"line":{},"character":{}}},"end":{{"line":{},"character":{}}}}},"text":{}}}"#,
+            a.0,
+            a.1,
+            b.0,
+            b.1,
+            Json::from(text)
+        )
+    }
+
+    #[test]
+    fn an_edit_covers_only_the_lines_that_differ() {
+        assert_eq!(edited("a\nb\nc", "a\nx\nc"), range((1, 0), (2, 0), "x\n"));
+        assert_eq!(edited("a\nc", "a\nb\nc"), range((1, 0), (1, 0), "b\n"), "a line put in");
+        assert_eq!(edited("a\nb\nc", "a\nc"), range((1, 0), (2, 0), ""), "a line taken out");
+        assert_eq!(
+            edited("a\nb", "a\nb\nc"),
+            range((1, 1), (1, 1), "\nc"),
+            "added at the end"
+        );
+        assert_eq!(
+            edited("a\nb\nc", "a\nb"),
+            range((1, 1), (2, 1), ""),
+            "taken off the end"
+        );
+        assert_eq!(edited("a\nb", "a\nB"), range((0, 1), (1, 1), "\nB"));
+        assert_eq!(edited("a", "b"), range((0, 0), (0, 1), "b"));
+        assert_eq!(edited("x\na", "y\na"), range((0, 0), (1, 0), "y\n"));
+        assert_eq!(
+            edited("a\na", "a\na\na"),
+            range((1, 1), (1, 1), "\na"),
+            "repeats share what they can"
+        );
+        assert_eq!(edited("é😀\n", "é😀x\n"), range((0, 0), (1, 0), "é😀x\n"));
+        assert_eq!(
+            edited("é😀", "é😀x"),
+            range((0, 0), (0, 3), "é😀x"),
+            "columns in UTF-16"
         );
     }
 }
