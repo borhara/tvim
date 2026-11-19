@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0](https://github.com/borhara/tvim/compare/v1.1.0...v1.2.0) - 2026-11-19
+
+### Added
+
+- run one command after another with |
+- repeat visual-mode changes with .
+- add :onoremap for the keys after an operator
+- add linebreak to wrap between words
+- move by screen rows with gj and gk
+- keep the cursor in view on wrapped lines
+- add the wrap option to show long lines in full
+- work out where long lines wrap into screen rows
+- replace, change case and shift within a block
+- insert, append and change on every line of a block
+- delete, yank and put blocks
+- draw the block selection and its size
+- add block visual mode on Ctrl-v
+- allow map lines in the config file
+- let held keys through after timeoutlen
+- add :map, :noremap and :unmap for each mode
+- expand key mappings as keys are typed
+- add a table of key mappings
+
+### Fixed
+
+- shift blocks with tabs when expandtab is off
+
+### Other
+
+- bump releases from commit messages, not the lib API
+- describe wrap and linebreak
+- describe block visual mode
+- describe key mappings
+
 ## [1.1.0](https://github.com/borhara/tvim/compare/v1.0.0...v1.1.0) - 2026-11-18
 
 ### Added
