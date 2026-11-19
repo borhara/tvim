@@ -606,6 +606,10 @@ impl Editor {
         let (name, command) = arg.split_once(char::is_whitespace).unwrap_or((arg, ""));
         let shown = match (name, command.trim()) {
             ("", _) => Ok(Some(self.server_for_file())),
+            ("restart", "") => {
+                self.languages.restart();
+                Ok(Some("language servers restarting".to_string()))
+            }
             (name, "") => self.servers.describe(name).map(Some),
             (name, command) => self.servers.set(name, command).map(|()| None),
         };
@@ -618,7 +622,13 @@ impl Editor {
 
     fn server_for_file(&self) -> String {
         match self.file.path.as_deref().and_then(|p| self.servers.for_file(p)) {
-            Some(c) => format!("{}: {} in {}", c.name, c.command.join(" "), listed(&c.root)),
+            Some(c) => format!(
+                "{}: {} in {}, {}",
+                c.name,
+                c.command.join(" "),
+                listed(&c.root),
+                self.languages.state(&c)
+            ),
             None => "no language server for this file".to_string(),
         }
     }
