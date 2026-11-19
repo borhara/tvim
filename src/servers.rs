@@ -1,5 +1,6 @@
 //! Which language server looks after a file, and where the file's project starts.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::syntax::extension;
@@ -80,7 +81,10 @@ pub struct Choice {
 }
 
 #[derive(Debug, Default)]
-pub struct Servers;
+pub struct Servers {
+    // commands given with :lsp, None for a server turned off
+    chosen: HashMap<&'static str, Option<Vec<String>>>,
+}
 
 impl Servers {
     pub fn for_file(&self, path: &Path) -> Option<Choice> {
@@ -89,7 +93,10 @@ impl Servers {
             let (language, _) = k.languages.iter().find(|(_, exts)| exts.contains(&ext.as_str()))?;
             Some((k, *language))
         })?;
-        let command = split_args(known.command).ok()?;
+        let command = match self.chosen.get(known.name) {
+            Some(chosen) => chosen.clone()?,
+            None => split_args(known.command).ok()?,
+        };
         Some(Choice {
             name: known.name,
             language,
@@ -97,6 +104,34 @@ impl Servers {
             root: project_root(path, known.roots),
         })
     }
+
+    // `off` turns a server off
+    pub fn set(&mut self, name: &str, command: &str) -> Result<(), String> {
+        let known = find(name)?;
+        let command = match command {
+            "off" => None,
+            line => Some(split_args(line)?),
+        };
+        self.chosen.insert(known.name, command);
+        Ok(())
+    }
+
+    pub fn describe(&self, name: &str) -> Result<String, String> {
+        let known = find(name)?;
+        let command = match self.chosen.get(known.name) {
+            Some(Some(words)) => words.join(" "),
+            Some(None) => "off".to_string(),
+            None => known.command.to_string(),
+        };
+        Ok(format!("{}: {command}", known.name))
+    }
+}
+
+fn find(name: &str) -> Result<&'static Known, String> {
+    KNOWN.iter().find(|k| k.name == name).ok_or_else(|| {
+        let names: Vec<&str> = KNOWN.iter().map(|k| k.name).collect();
+        format!("no language server called {name}, only {}", names.join(", "))
+    })
 }
 
 // the nearest folder up from the file holding one of the markers, or failing that the
@@ -140,6 +175,35 @@ mod tests {
         assert_eq!(tsx.command, ["typescript-language-server", "--stdio"]);
         assert_eq!(servers.for_file(Path::new("/x/notes.txt")), None);
         assert_eq!(servers.for_file(Path::new("/x/Makefile")), None);
+    }
+
+    #[test]
+    fn a_server_can_be_swapped_or_turned_off() {
+        let mut servers = Servers::default();
+        servers.set("rust", "my-server --log 'my log'").unwrap();
+        let c = servers.for_file(Path::new("/x/a.rs")).unwrap();
+        assert_eq!(c.command, ["my-server", "--log", "my log"]);
+        assert_eq!(servers.describe("rust").unwrap(), "rust: my-server --log my log");
+        servers.set("rust", "off").unwrap();
+        assert_eq!(servers.for_file(Path::new("/x/a.rs")), None);
+        assert_eq!(servers.describe("rust").unwrap(), "rust: off");
+        assert_eq!(
+            servers.describe("go").unwrap(),
+            "go: gopls",
+            "the others are left alone"
+        );
+    }
+
+    #[test]
+    fn mistakes_are_explained() {
+        let mut servers = Servers::default();
+        let err = servers.set("cobol", "x").unwrap_err();
+        assert!(
+            err.starts_with("no language server called cobol, only rust, python"),
+            "{err}"
+        );
+        assert!(servers.set("rust", "ra 'oops").is_err());
+        assert!(servers.describe("cobol").is_err());
     }
 
     #[test]
