@@ -24,6 +24,32 @@ pub enum Encoding {
     Utf16,
 }
 
+impl Encoding {
+    // how far into the line its first `chars` characters reach
+    pub fn units(self, line: &str, chars: usize) -> usize {
+        line.chars().take(chars).map(|c| self.width(c)).sum()
+    }
+
+    // which character `units` into the line falls in, or the end if that's past it
+    pub fn chars(self, line: &str, units: usize) -> usize {
+        let mut at = 0;
+        for (i, c) in line.chars().enumerate() {
+            at += self.width(c);
+            if at > units {
+                return i;
+            }
+        }
+        line.chars().count()
+    }
+
+    fn width(self, c: char) -> usize {
+        match self {
+            Encoding::Utf8 => c.len_utf8(),
+            Encoding::Utf16 => c.len_utf16(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResponseError {
     pub code: i64,
@@ -879,5 +905,18 @@ mod tests {
         ] {
             assert_eq!(path_of(uri, false), None, "{uri}");
         }
+    }
+
+    #[test]
+    fn columns_counted_each_way() {
+        let line = "aé😀b";
+        assert_eq!(Encoding::Utf16.units(line, 4), 5, "the emoji takes two");
+        assert_eq!(Encoding::Utf8.units(line, 4), 8);
+        assert_eq!(Encoding::Utf16.units(line, 99), 5, "past the end is the end");
+        assert_eq!(Encoding::Utf16.chars(line, 2), 2);
+        assert_eq!(Encoding::Utf16.chars(line, 3), 2, "inside the emoji is the emoji");
+        assert_eq!(Encoding::Utf16.chars(line, 4), 3);
+        assert_eq!(Encoding::Utf8.chars(line, 2), 1, "inside é is é");
+        assert_eq!(Encoding::Utf8.chars(line, 99), 4);
     }
 }
