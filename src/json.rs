@@ -19,6 +19,10 @@ pub enum Json {
 static NULL: Json = Json::Null;
 
 impl Json {
+    pub fn object<K: Into<String>>(fields: impl IntoIterator<Item = (K, Json)>) -> Json {
+        Json::Object(fields.into_iter().map(|(k, v)| (k.into(), v)).collect())
+    }
+
     // a repeated key reads as its last value
     pub fn get(&self, key: &str) -> Option<&Json> {
         match self {
@@ -84,5 +88,47 @@ impl Index<usize> for Json {
 
     fn index(&self, i: usize) -> &Json {
         self.as_array().and_then(|items| items.get(i)).unwrap_or(&NULL)
+    }
+}
+
+impl From<bool> for Json {
+    fn from(b: bool) -> Json {
+        Json::Bool(b)
+    }
+}
+
+impl From<&str> for Json {
+    fn from(s: &str) -> Json {
+        Json::String(s.to_string())
+    }
+}
+
+impl From<String> for Json {
+    fn from(s: String) -> Json {
+        Json::String(s)
+    }
+}
+
+macro_rules! from_number {
+    ($($t:ty),*) => {$(
+        impl From<$t> for Json {
+            fn from(n: $t) -> Json {
+                Json::Number(n as f64)
+            }
+        }
+    )*};
+}
+
+from_number!(i32, i64, u32, u64, usize, f64);
+
+impl<T: Into<Json>> From<Option<T>> for Json {
+    fn from(value: Option<T>) -> Json {
+        value.map_or(Json::Null, Into::into)
+    }
+}
+
+impl<T: Into<Json>> From<Vec<T>> for Json {
+    fn from(items: Vec<T>) -> Json {
+        Json::Array(items.into_iter().map(Into::into).collect())
     }
 }
