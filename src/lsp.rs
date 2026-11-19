@@ -14,6 +14,13 @@ use crate::json::Json;
 // bigger than any real message, small enough that a garbled header can't exhaust memory
 const MAX_MESSAGE: usize = 64 << 20;
 
+// how columns are counted in positions sent either way
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Encoding {
+    Utf8,
+    Utf16,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResponseError {
     pub code: i64,
@@ -33,6 +40,8 @@ pub enum Incoming {
 }
 
 enum State {
+    // nothing but replies may go out until the server answers initialize
+    Starting { init: i64, queued: Vec<Json> },
     Ready,
     Failed(String),
 }
@@ -43,6 +52,8 @@ pub struct Server {
     incoming: Receiver<Json>,
     next_id: i64,
     state: State,
+    encoding: Encoding,
+    capabilities: Json,
 }
 
 impl Server {
@@ -56,24 +67,35 @@ impl Server {
             .spawn()?;
         let input = child.stdin.take().expect("stdin is piped");
         let output = child.stdout.take().expect("stdout is piped");
-        let mut server = Server::connect(output, input);
+        let mut server = Server::connect(output, input, root);
         server.child = Some(child);
         Ok(server)
     }
 
-    fn connect(from: impl Read + Send + 'static, to: impl Write + Send + 'static) -> Server {
+    fn connect(from: impl Read + Send + 'static, to: impl Write + Send + 'static, root: &Path) -> Server {
         let (outgoing, to_server) = mpsc::channel();
         let (from_server, incoming) = mpsc::channel();
         // writing gets its own thread too, so a server slow to read never stalls the editor
         std::thread::spawn(move || write_all(to, to_server));
         std::thread::spawn(move || read_all(from, from_server, Waker::new()));
-        Server {
+        let server = Server {
             child: None,
             outgoing,
             incoming,
-            next_id: 1,
-            state: State::Ready,
-        }
+            next_id: 2,
+            state: State::Starting {
+                init: 1,
+                queued: Vec::new(),
+            },
+            encoding: Encoding::Utf16,
+            capabilities: Json::Null,
+        };
+        server.write(message(Some(1.into()), "initialize", initialize_params(root)));
+        server
+    }
+
+    pub fn ready(&self) -> bool {
+        matches!(self.state, State::Ready)
     }
 
     pub fn failure(&self) -> Option<&str> {
@@ -81,6 +103,14 @@ impl Server {
             State::Failed(why) => Some(why),
             _ => None,
         }
+    }
+
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+
+    pub fn capabilities(&self) -> &Json {
+        &self.capabilities
     }
 
     // the id comes back on the reply, to tell which request it answers
@@ -117,6 +147,7 @@ impl Server {
 
     fn send(&mut self, msg: Json) {
         match &mut self.state {
+            State::Starting { queued, .. } => queued.push(msg),
             State::Ready => self.write(msg),
             State::Failed(_) => {}
         }
@@ -144,16 +175,39 @@ impl Server {
                     }),
                     None => Ok(msg["result"].clone()),
                 };
+                if matches!(self.state, State::Starting { init, .. } if init == id) {
+                    self.started(result);
+                    return None;
+                }
                 Some(Incoming::Reply { id, result })
             }
             (None, None) => None,
+        }
+    }
+
+    fn started(&mut self, result: Result<Json, ResponseError>) {
+        let State::Starting { queued, .. } = std::mem::replace(&mut self.state, State::Ready) else {
+            return;
+        };
+        match result {
+            Ok(result) => {
+                self.capabilities = result["capabilities"].clone();
+                if self.capabilities["positionEncoding"].as_str() == Some("utf-8") {
+                    self.encoding = Encoding::Utf8;
+                }
+                self.write(message(None, "initialized", Json::Object(Vec::new())));
+                for msg in queued {
+                    self.write(msg);
+                }
+            }
+            Err(e) => self.state = State::Failed(format!("the server wouldn't start: {}", e.message)),
         }
     }
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
-        if self.failure().is_none() {
+        if self.ready() {
             let id = self.next_id;
             self.write(message(Some(id.into()), "shutdown", Json::Null));
         }
@@ -172,6 +226,41 @@ impl Drop for Server {
             });
         }
     }
+}
+
+fn initialize_params(root: &Path) -> Json {
+    let uri = file_uri(root);
+    let name = root
+        .file_name()
+        .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+    Json::object([
+        ("processId", std::process::id().into()),
+        (
+            "clientInfo",
+            Json::object([("name", "tvim".into()), ("version", env!("CARGO_PKG_VERSION").into())]),
+        ),
+        ("rootUri", uri.clone().into()),
+        (
+            "workspaceFolders",
+            vec![Json::object([("uri", uri.into()), ("name", name.into())])].into(),
+        ),
+        (
+            "capabilities",
+            Json::object([
+                (
+                    "general",
+                    Json::object([("positionEncodings", vec!["utf-8", "utf-16"].into())]),
+                ),
+                (
+                    "textDocument",
+                    Json::object([
+                        ("synchronization", Json::object([("didSave", true.into())])),
+                        ("publishDiagnostics", Json::Object(Vec::new())),
+                    ]),
+                ),
+            ]),
+        ),
+    ])
 }
 
 fn message(id: Option<Json>, method: &str, params: Json) -> Json {
@@ -390,7 +479,7 @@ mod tests {
     fn connected() -> (Server, Fake) {
         let (to_server, server_in) = pipe();
         let (server_out, from_server) = pipe();
-        let server = Server::connect(from_server, to_server);
+        let server = Server::connect(from_server, to_server, Path::new("/work/my project"));
         let fake = Fake {
             from: BufReader::new(server_in),
             to: server_out,
@@ -455,8 +544,53 @@ mod tests {
     }
 
     #[test]
-    fn requests_are_numbered_and_sent_in_order() {
+    fn the_handshake_comes_first_and_requests_wait_for_it() {
         let (mut server, mut fake) = connected();
+        let early = server.request("textDocument/hover", Json::object([("x", 1.into())]));
+        server.notify("textDocument/didOpen", Json::object([("y", 2.into())]));
+        assert!(!server.ready());
+
+        let init = fake.recv().unwrap();
+        assert_eq!(init["method"].as_str(), Some("initialize"));
+        assert_eq!(
+            init["params"]["processId"].as_u64(),
+            Some(u64::from(std::process::id()))
+        );
+        assert_eq!(init["params"]["rootUri"].as_str(), Some("file:///work/my%20project"));
+        assert_eq!(
+            init["params"]["workspaceFolders"][0]["name"].as_str(),
+            Some("my project")
+        );
+
+        let id = init["id"].as_i64().unwrap();
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"result":{{"capabilities":{{"positionEncoding":"utf-8","hoverProvider":true}}}}}}"#
+        ));
+        settle(&mut server, Server::ready);
+        assert_eq!(server.encoding(), Encoding::Utf8);
+        assert_eq!(server.capabilities()["hoverProvider"].as_bool(), Some(true));
+
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("initialized"));
+        let hover = fake.recv().unwrap();
+        assert_eq!(hover["method"].as_str(), Some("textDocument/hover"));
+        assert_eq!(hover["id"].as_i64(), Some(early));
+        assert_eq!(fake.recv().unwrap()["params"]["y"].as_i64(), Some(2));
+    }
+
+    fn started() -> (Server, Fake) {
+        let (mut server, mut fake) = connected();
+        let id = fake.recv().unwrap()["id"].as_i64().unwrap();
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"result":{{"capabilities":{{}}}}}}"#
+        ));
+        settle(&mut server, Server::ready);
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("initialized"));
+        (server, fake)
+    }
+
+    #[test]
+    fn requests_are_numbered_and_sent_in_order() {
+        let (mut server, mut fake) = started();
         let a = server.request("a", Json::object([("x", 1.into())]));
         server.notify("n", Json::Null);
         let b = server.request("b", Json::Null);
@@ -473,7 +607,8 @@ mod tests {
 
     #[test]
     fn replies_and_notices_arrive_in_order() {
-        let (mut server, mut fake) = connected();
+        let (mut server, mut fake) = started();
+        assert_eq!(server.encoding(), Encoding::Utf16, "unless the server picks otherwise");
         let a = server.request("a", Json::Null);
         let b = server.request("b", Json::Null);
         fake.recv().unwrap();
@@ -514,7 +649,7 @@ mod tests {
 
     #[test]
     fn garbage_between_messages_is_skipped() {
-        let (mut server, mut fake) = connected();
+        let (mut server, mut fake) = started();
         fake.to.write_all(framed("not json").as_bytes()).unwrap();
         fake.send(r#"{"jsonrpc":"2.0","method":"ping"}"#);
         assert_eq!(
@@ -527,8 +662,19 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_start_is_a_failure() {
+        let (mut server, mut fake) = connected();
+        let id = fake.recv().unwrap()["id"].as_i64().unwrap();
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":1,"message":"no workspace"}}}}"#
+        ));
+        settle(&mut server, |s| s.failure().is_some());
+        assert_eq!(server.failure(), Some("the server wouldn't start: no workspace"));
+    }
+
+    #[test]
     fn a_server_that_goes_away_is_a_failure() {
-        let (mut server, fake) = connected();
+        let (mut server, fake) = started();
         drop(fake);
         settle(&mut server, |s| s.failure().is_some());
         assert_eq!(server.failure(), Some("the server stopped"));
@@ -537,7 +683,7 @@ mod tests {
 
     #[test]
     fn dropping_shuts_the_server_down() {
-        let (server, mut fake) = connected();
+        let (server, mut fake) = started();
         drop(server);
         assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("shutdown"));
         assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("exit"));
