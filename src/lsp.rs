@@ -4,7 +4,7 @@
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 
 use tinsel::app::Waker;
 
@@ -31,11 +31,17 @@ pub enum Incoming {
     },
 }
 
+enum State {
+    Ready,
+    Failed(String),
+}
+
 pub struct Server {
     child: Option<Child>,
     outgoing: Sender<Json>,
     incoming: Receiver<Json>,
     next_id: i64,
+    state: State,
 }
 
 impl Server {
@@ -65,6 +71,14 @@ impl Server {
             outgoing,
             incoming,
             next_id: 1,
+            state: State::Ready,
+        }
+    }
+
+    pub fn failure(&self) -> Option<&str> {
+        match &self.state {
+            State::Failed(why) => Some(why),
+            _ => None,
         }
     }
 
@@ -72,12 +86,12 @@ impl Server {
     pub fn request(&mut self, method: &str, params: Json) -> i64 {
         let id = self.next_id;
         self.next_id += 1;
-        self.write(message(Some(id.into()), method, params));
+        self.send(message(Some(id.into()), method, params));
         id
     }
 
     pub fn notify(&mut self, method: &str, params: Json) {
-        self.write(message(None, method, params));
+        self.send(message(None, method, params));
     }
 
     // what has arrived since last time, one at a time; None once there's nothing waiting
@@ -89,13 +103,26 @@ impl Server {
                         return Some(incoming);
                     }
                 }
-                Err(_) => return None,
+                Err(TryRecvError::Empty) => return None,
+                Err(TryRecvError::Disconnected) => {
+                    if self.failure().is_none() {
+                        self.state = State::Failed("the server stopped".into());
+                    }
+                    return None;
+                }
             }
         }
     }
 
+    fn send(&mut self, msg: Json) {
+        match &mut self.state {
+            State::Ready => self.write(msg),
+            State::Failed(_) => {}
+        }
+    }
+
     fn write(&self, msg: Json) {
-        // a closed channel means the server has gone, and there's nothing to do about it here
+        // a closed channel means the server has gone, which poll reports
         let _ = self.outgoing.send(msg);
     }
 
@@ -157,6 +184,9 @@ fn read_all(from: impl Read, incoming: Sender<Json>, waker: Waker) {
         }
         waker.wake();
     }
+    // dropped before waking, so the editor finds the channel closed when it looks
+    drop(incoming);
+    waker.wake();
 }
 
 fn write_message(to: &mut impl Write, msg: &Json) -> io::Result<()> {
@@ -355,6 +385,15 @@ mod tests {
         }
     }
 
+    fn settle(server: &mut Server, until: impl Fn(&Server) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !until(server) {
+            assert_eq!(server.poll(), None);
+            assert!(Instant::now() < deadline, "never settled");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
     fn framed(body: &str) -> String {
         format!("Content-Length: {}\r\n\r\n{body}", body.len())
     }
@@ -461,6 +500,15 @@ mod tests {
                 params: Json::Null
             }
         );
+    }
+
+    #[test]
+    fn a_server_that_goes_away_is_a_failure() {
+        let (mut server, fake) = connected();
+        drop(fake);
+        settle(&mut server, |s| s.failure().is_some());
+        assert_eq!(server.failure(), Some("the server stopped"));
+        server.request("after", Json::Null);
     }
 
     #[test]
