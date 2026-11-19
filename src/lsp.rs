@@ -5,6 +5,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::time::Duration;
 
 use tinsel::app::Waker;
 
@@ -146,6 +147,29 @@ impl Server {
                 Some(Incoming::Reply { id, result })
             }
             (None, None) => None,
+        }
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        if self.failure().is_none() {
+            let id = self.next_id;
+            self.write(message(Some(id.into()), "shutdown", Json::Null));
+        }
+        self.write(message(None, "exit", Json::Null));
+        // the server should leave on its own; one that doesn't is stopped, without the editor waiting
+        if let Some(mut child) = self.child.take() {
+            std::thread::spawn(move || {
+                for _ in 0..50 {
+                    if !matches!(child.try_wait(), Ok(None)) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+            });
         }
     }
 }
@@ -299,7 +323,7 @@ fn decode(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     // one end of an in-memory pipe each way, standing in for a server process
     struct PipeIn {
@@ -509,6 +533,15 @@ mod tests {
         settle(&mut server, |s| s.failure().is_some());
         assert_eq!(server.failure(), Some("the server stopped"));
         server.request("after", Json::Null);
+    }
+
+    #[test]
+    fn dropping_shuts_the_server_down() {
+        let (server, mut fake) = connected();
+        drop(server);
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("shutdown"));
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("exit"));
+        assert_eq!(fake.recv(), None, "and its input closes");
     }
 
     #[test]
