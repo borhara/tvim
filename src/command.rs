@@ -36,6 +36,7 @@ pub enum Motion {
     SearchNext(bool),
     Mark(char, bool),
     Hunk(bool),
+    Problem(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -385,6 +386,7 @@ pub fn motion(keys: &[Key]) -> MotionParse {
         Key::Char(c @ (']' | '[')) => match keys.get(1) {
             None => MotionParse::More,
             Some(Key::Char('c')) => MotionParse::Done(Hunk(c == ']'), 2),
+            Some(Key::Char('d')) => MotionParse::Done(Problem(c == ']'), 2),
             _ => MotionParse::Invalid,
         },
         Key::Char('\'') => with_char(&|c| Mark(c, false)),

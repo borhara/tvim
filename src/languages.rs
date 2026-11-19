@@ -121,6 +121,22 @@ impl Languages {
         self.synced.get(&id).map_or(&[], |s| &s.problems)
     }
 
+    // as if a server had found these, for testing what the editor does with them
+    #[cfg(test)]
+    pub(crate) fn found(&mut self, id: usize, problems: Vec<Problem>) {
+        let synced = Synced {
+            key: (Vec::new(), PathBuf::new()),
+            path: PathBuf::new(),
+            uri: String::new(),
+            version: 0,
+            saved: 0,
+            lines: Vec::new(),
+            sent: 0,
+            problems,
+        };
+        self.synced.insert(id, synced);
+    }
+
     pub fn state(&self, choice: &Choice) -> &'static str {
         let key = key(choice);
         match self.running.get(&key) {
