@@ -419,6 +419,15 @@ fn draw_status(
                 };
                 parts.push(paint(quiet(mode), &size));
             }
+            if let Some(b) = e.block_selection() {
+                let rows = b.bottom - b.top + 1;
+                let size = if b.to_end() {
+                    plural(rows as u64, "line")
+                } else {
+                    format!("{rows}×{}", b.right - b.left)
+                };
+                parts.push(paint(quiet(mode), &size));
+            }
         }
         let p = e.cursor();
         let col = crate::text::vcol(e.buffer().line(p.row), p.col, e.options.tab_stop) + 1;
@@ -696,7 +705,7 @@ fn star_chart(e: &Editor, frame: &mut Frame, row: Rect, map: Rect, c: &Colors, r
 
 // insert, replace and visual colour the labels row; normal leaves it quiet
 fn tone(mode: Mode) -> Option<Rgb> {
-    matches!(mode, Mode::Insert | Mode::Replace | Mode::Visual | Mode::VisualLine).then(|| super::mode_color(mode))
+    (matches!(mode, Mode::Insert | Mode::Replace) || mode.is_visual()).then(|| super::mode_color(mode))
 }
 
 fn quiet(mode: Mode) -> Rgb {

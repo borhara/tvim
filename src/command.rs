@@ -9,6 +9,8 @@ pub enum Motion {
     Right,
     Up,
     Down,
+    ScreenUp,
+    ScreenDown,
     LineStart,
     FirstNonBlank,
     LineEnd,
@@ -236,7 +238,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 
     let simple = if visual { VISUAL_KEYS } else { NORMAL_KEYS };
-    let ctrl = if visual { "acx" } else { "rglaxzcpoi" };
+    let ctrl = if visual { "acxvq" } else { "rglaxzcpoivq" };
     match key {
         Key::Char(c) if simple.contains(c) => done(Act::Key(key), i + 1, count1),
         Key::Ctrl(c) if "dufbey".contains(c) || ctrl.contains(c) => done(Act::Key(key), i + 1, count1),
@@ -248,6 +250,29 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
 
 const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&";
 const VISUAL_KEYS: &str = "xXsSDCYpPJ~uUoORvV:IA";
+
+/// Whether `keys` are no more than a register and a count, so a new command starts next.
+pub fn awaits_command(keys: &[Key]) -> bool {
+    let rest = match keys {
+        [Key::Char('"')] => return false,
+        [Key::Char('"'), Key::Char(c), rest @ ..] if is_register(*c) => rest,
+        rest => rest,
+    };
+    count(rest).1 == rest.len()
+}
+
+/// Whether `keys` are an operator waiting for its motion, as `d` or `"a2c3` are.
+pub fn awaits_motion(keys: &[Key]) -> bool {
+    let rest = match keys {
+        [Key::Char('"'), Key::Char(c), rest @ ..] if is_register(*c) => rest,
+        rest => rest,
+    };
+    let rest = &rest[count(rest).1..];
+    match operator(rest, false) {
+        Some(Ok((_, len))) => count(&rest[len..]).1 == rest.len() - len,
+        _ => false,
+    }
+}
 
 pub fn is_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
@@ -370,6 +395,8 @@ pub fn motion(keys: &[Key]) -> MotionParse {
             Some(Key::Char('e')) => MotionParse::Done(WordEndBack(false), 2),
             Some(Key::Char('E')) => MotionParse::Done(WordEndBack(true), 2),
             Some(Key::Char('_')) => MotionParse::Done(LastNonBlank, 2),
+            Some(Key::Char('j') | Key::Down) => MotionParse::Done(ScreenDown, 2),
+            Some(Key::Char('k') | Key::Up) => MotionParse::Done(ScreenUp, 2),
             Some(Key::Char('0') | Key::Home) => MotionParse::Done(LineStart, 2),
             Some(Key::Char('$') | Key::End) => MotionParse::Done(LineEnd, 2),
             _ => MotionParse::Invalid,
@@ -449,6 +476,25 @@ mod tests {
         assert_eq!(cmd("gv").act, Act::G('v'));
         assert_eq!(cmd("<C-r>").act, Act::Key(Key::Ctrl('r')));
         assert_eq!(state("Q"), Parse::Invalid);
+    }
+
+    #[test]
+    fn a_register_and_count_still_await_a_command() {
+        assert!(awaits_command(&[]));
+        assert!(awaits_command(&k("\"a12")));
+        assert!(awaits_command(&k("3")));
+        assert!(!awaits_command(&k("d")));
+        assert!(!awaits_command(&k("2g")));
+    }
+
+    #[test]
+    fn an_operator_awaits_its_motion() {
+        assert!(awaits_motion(&k("d")));
+        assert!(awaits_motion(&k("\"a2c3")));
+        assert!(awaits_motion(&k("gU")));
+        assert!(!awaits_motion(&k("g")));
+        assert!(!awaits_motion(&k("di")));
+        assert!(!awaits_motion(&k("")));
     }
 
     #[test]

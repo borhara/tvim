@@ -466,6 +466,7 @@ const G: &[(&str, &str)] = &[
     ("gt gT", "next, previous file"),
     ("ge", "back to a word's end"),
     ("g_", "last text on the line"),
+    ("gj gk", "down, up a screen row"),
     ("gv", "select again"),
     ("gu gU g~", "lower, upper, swap"),
     ("gc", "comment, uncomment"),

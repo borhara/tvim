@@ -42,9 +42,9 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 - **`Tab`** in normal mode moves between the file and the sidebar. Terminals send the same key for `Ctrl-i`, so straight after `Ctrl-o` it goes forward through jumps instead.
 - **Brackets and quotes** close themselves as you type. Turn this off with `:set noap`.
 - **Opening another file** never asks you to save first. Unsaved files stay open with a dot next to their name, and `:q` won't quit while any are left.
+- **`|`** runs one `:` command after another, as in `:w | bn`. `:s` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
-
-There is no line wrapping and no block visual mode (`Ctrl-v`) yet.
+- **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines.
 
 ## Extras
 
@@ -72,11 +72,13 @@ There is no line wrapping and no block visual mode (`Ctrl-v`) yet.
 
 ## Settings
 
-Put `:set` lines in `~/.config/tvim/config`, one per line:
+Put `:set` and `:map` lines in `~/.config/tvim/config`, one per line:
 
 ```
 set tabstop=2 noexpandtab
 set relativenumber
+inoremap jk <Esc>
+nnoremap <leader>w :w<CR>
 ```
 
 `:set` on its own lists every option with its current value. The ones you're most likely to want:
@@ -92,11 +94,22 @@ set relativenumber
 | `ignorecase` | `ic` | on | search ignores case |
 | `smartcase` | `scs` | on | unless the search has capitals |
 | `scrolloff` | `so` | 3 | lines kept above and below the cursor |
+| `timeoutlen` | `tm` | 1000 | milliseconds to wait for the rest of a mapping |
 | `autopairs` | `ap` | on | brackets and quotes close themselves |
 | `smooth` | `sm` | on | scroll smoothly on big jumps |
 | `gitlens` | `gl` | on | show who last changed the cursor's line |
 | `roomy` | `ro` | on | a little space above and below the text |
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
+| `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
+| `linebreak` | `lbr` | off | with `wrap`, break lines between words |
+
+### Key mappings
+
+Mappings work as in vim. `:nnoremap`, `:xnoremap`, `:inoremap` and `:cnoremap` map keys in normal, visual, insert and command-line mode, and `:onoremap` maps the keys typed after an operator such as `d`. `:noremap` covers normal, visual and after an operator, and `:noremap!` covers insert and the command line. The `map` forms (`:nmap`, `:imap` and so on) let the new keys run other mappings too. `<leader>` is `Space`, and `<Nop>` maps keys to nothing.
+
+`:nunmap` and its siblings remove a mapping, and `:mapclear` removes them all. `:map`, `:nmap` and the rest list mappings when given no keys to map to.
+
+When some keys could be the start of a longer mapping, tvim waits `timeoutlen` milliseconds for the rest before running them as they are.
 
 ## Contributing
 

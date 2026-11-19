@@ -183,9 +183,13 @@ impl Editor {
             if line.is_empty() || line.starts_with(['"', '#']) {
                 continue;
             }
-            let word = line.split_whitespace().next().unwrap_or("");
-            if word != "set" && word != "se" {
-                problems.push(format!("config line {}: only set lines are allowed: {line}", n + 1));
+            let name: String = line.chars().take_while(char::is_ascii_alphabetic).collect();
+            let bang = line[name.len()..].starts_with('!');
+            if name != "set" && name != "se" && crate::ex::map_command(&name, bang).is_none() {
+                problems.push(format!(
+                    "config line {}: only set and map lines are allowed: {line}",
+                    n + 1
+                ));
                 continue;
             }
             self.ex(line);

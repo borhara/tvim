@@ -247,3 +247,35 @@ fn the_command_line_edits_like_vims() {
     e.keys(&parse("<BS><BS>"));
     assert_eq!(e.mode(), tvim::Mode::Normal, "backspace on nothing leaves");
 }
+
+#[test]
+fn bars_run_one_command_after_another() {
+    assert_eq!(t("a\nb\nc", ":1d | $d<CR>"), "b");
+    let mut e = ed("abc");
+    e.keys(&parse(":set ts=2 | set sw=3<CR>"));
+    assert_eq!((e.options.tab_stop, e.options.shift_width), (2, 3));
+    e.keys(&parse(":bogus | set ts=5<CR>"));
+    assert_eq!(e.options.tab_stop, 2, "an error stops the rest");
+    assert!(e.message().is_some_and(|m| m.error));
+}
+
+#[test]
+fn some_commands_take_the_bar_as_it_is() {
+    assert_eq!(
+        t("cat dog", ":s/(cat|dog)/pet/g<CR>"),
+        "pet pet",
+        ":s patterns can have |"
+    );
+    assert_eq!(t("cat dog", ":%s/cat|dog/x/g<CR>"), "x x");
+    assert_eq!(t("ab", ":normal! Ax|y<CR>"), "abx|y", ":normal types it");
+    assert_eq!(
+        t("ab", r":nnoremap Q Ax\|y<lt>Esc><CR>Q"),
+        "abx|y",
+        r"\| is a | that doesn't split"
+    );
+    assert_eq!(
+        t("ab", ":nnoremap Q Ax<lt>Bar>y<lt>Esc><CR>Q"),
+        "abx|y",
+        "and so is <Bar>"
+    );
+}
