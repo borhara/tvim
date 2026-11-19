@@ -78,9 +78,33 @@ impl Languages {
                 Some((d, path, self.choice(d.id, path, servers)?))
             })
             .collect();
+        let wanted: HashMap<usize, (Key, &Path)> = chosen.iter().map(|(d, p, c)| (d.id, (key(c), *p))).collect();
+
+        // closed, renamed, or given another server: told it's closed, to be opened afresh
+        let stale: Vec<usize> = self
+            .synced
+            .iter()
+            .filter(|(id, s)| wanted.get(id).is_none_or(|(k, p)| *k != s.key || *p != s.path))
+            .map(|(id, _)| *id)
+            .collect();
+        for id in stale {
+            let s = self.synced.remove(&id).expect("listed above");
+            if let Some(server) = self.running.get_mut(&s.key).filter(|server| server.ready()) {
+                if sync_of(server.capabilities()).open_close {
+                    server.notify(
+                        "textDocument/didClose",
+                        Json::object([("textDocument", document(&s.uri))]),
+                    );
+                }
+            }
+        }
+
         for (doc, path, choice) in &chosen {
             self.sync(doc, path, choice);
         }
+        let needed: HashSet<&Key> = wanted.values().map(|(k, _)| k).collect();
+        self.running.retain(|k, _| needed.contains(k));
+        self.choices.retain(|id, _| docs.iter().any(|d| d.id == *id));
     }
 
     fn choice(&mut self, id: usize, path: &Path, servers: &Servers) -> Option<Choice> {
@@ -149,6 +173,10 @@ impl Languages {
 
 fn key(choice: &Choice) -> Key {
     (choice.command.clone(), choice.root.clone())
+}
+
+fn document(uri: &str) -> Json {
+    Json::object([("uri", uri.into())])
 }
 
 // the text a line each, as the file on disk would have it
@@ -279,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_is_opened() {
+    fn a_file_is_opened_and_closed() {
         let mut r = rig();
         let v1 = lines("fn main() {\n}");
         let mut fake = r.start(&[doc("/work/a.rs", 1, 1, &v1)], EDITS);
@@ -292,6 +320,43 @@ mod tests {
             item["text"].as_str(),
             Some("fn main() {\n}\n"),
             "with its final newline"
+        );
+
+        r.update(&[]);
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
+        assert_eq!(
+            fake.recv().unwrap()["method"].as_str(),
+            Some("shutdown"),
+            "nothing needs it now"
+        );
+    }
+
+    #[test]
+    fn a_server_that_wants_no_files_is_told_of_none() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let mut fake = r.start(&[doc("/work/a.rs", 1, 1, &v1)], "{}");
+        r.update(&[doc("/work/a.rs", 2, 2, &v1)]);
+        r.update(&[]);
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("shutdown"));
+    }
+
+    #[test]
+    fn a_renamed_file_is_opened_afresh() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let mut fake = r.start(&[doc("/work/a.rs", 1, 1, &v1)], EDITS);
+        fake.recv().unwrap();
+        r.update(&[doc("/work/b.rs", 1, 1, &v1)]);
+        let close = fake.recv().unwrap();
+        assert_eq!(
+            close["params"]["textDocument"]["uri"].as_str(),
+            Some(uri("/work/a.rs").as_str())
+        );
+        let open = fake.recv().unwrap();
+        assert_eq!(
+            open["params"]["textDocument"]["uri"].as_str(),
+            Some(uri("/work/b.rs").as_str())
         );
     }
 
@@ -317,5 +382,26 @@ mod tests {
         languages.sort();
         assert_eq!(languages, ["javascriptreact", "typescript"]);
         assert!(r.started.try_recv().is_err(), "only the one");
+    }
+
+    #[test]
+    fn another_command_means_another_server() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut first = r.start(&docs, EDITS);
+        first.recv().unwrap();
+        r.servers.set("rust", "my-server --fast").unwrap();
+        r.update(&docs);
+        assert_eq!(first.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
+        assert_eq!(first.recv().unwrap()["method"].as_str(), Some("shutdown"));
+        let (command, root, _) = r.started.try_recv().unwrap();
+        assert_eq!(
+            (command, root),
+            (
+                vec!["my-server".into(), "--fast".into()],
+                paths::absolute(Path::new("/work"))
+            )
+        );
     }
 }
