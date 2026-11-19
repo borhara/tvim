@@ -77,6 +77,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("tabpreview", "", "tab moves into the markdown preview"),
     ("dim", "", "fade whichever of text and sidebar is not in use"),
     ("gitlens", "", "who last changed the cursor's line, and when"),
+    ("lsp", "", "language servers check the code as you type"),
     (
         "roomy",
         "",
