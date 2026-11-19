@@ -185,9 +185,9 @@ impl Editor {
             }
             let name: String = line.chars().take_while(char::is_ascii_alphabetic).collect();
             let bang = line[name.len()..].starts_with('!');
-            if name != "set" && name != "se" && crate::ex::map_command(&name, bang).is_none() {
+            if !["set", "se", "lsp"].contains(&name.as_str()) && crate::ex::map_command(&name, bang).is_none() {
                 problems.push(format!(
-                    "config line {}: only set and map lines are allowed: {line}",
+                    "config line {}: only set, map and lsp lines are allowed: {line}",
                     n + 1
                 ));
                 continue;

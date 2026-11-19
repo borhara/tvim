@@ -21,6 +21,7 @@ use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::preview::Preview;
 use crate::regex::Regex;
+use crate::servers::Servers;
 use crate::syntax::{self, State, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::{Node, Win};
@@ -481,6 +482,7 @@ pub struct Editor {
     last_macro: Option<char>,
     macro_depth: usize,
     pub(crate) maps: Maps,
+    pub(crate) servers: Servers,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -576,6 +578,7 @@ impl Editor {
             last_macro: None,
             macro_depth: 0,
             maps: Maps::default(),
+            servers: Servers::default(),
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
