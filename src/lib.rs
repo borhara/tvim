@@ -12,6 +12,7 @@ pub mod finder;
 pub mod git;
 pub mod gitmenu;
 pub mod grep;
+pub mod json;
 pub mod jumps;
 pub mod keys;
 pub mod mapping;
