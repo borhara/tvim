@@ -22,6 +22,7 @@ pub mod object;
 pub mod paths;
 mod preview;
 pub mod regex;
+pub mod servers;
 pub mod session;
 pub mod suggest;
 mod sync;
