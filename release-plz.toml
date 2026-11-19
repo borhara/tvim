@@ -1,3 +1,6 @@
 [workspace]
 # feat commits bump the minor version even before 1.0
 features_always_increment_minor = true
+# the lib only exists for main.rs and the tests, so its API changing isn't a breaking release;
+# bump from the commit messages alone
+semver_check = false
