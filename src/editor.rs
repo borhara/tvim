@@ -16,7 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
-use crate::languages::{Languages, OpenDoc};
+use crate::languages::{Languages, OpenDoc, Problem};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -1481,6 +1481,10 @@ impl Editor {
         }
     }
 
+    pub(crate) fn problems(&self, buffer: usize) -> &[Problem] {
+        self.languages.problems(buffer)
+    }
+
     pub fn wait_for_grep(&mut self) {
         if let Some(g) = self.grep.as_mut() {
             g.wait();
@@ -2381,6 +2385,7 @@ impl Editor {
                 | Motion::ParagraphForward
                 | Motion::ParagraphBack
                 | Motion::Hunk(_)
+                | Motion::Problem(_)
         )
     }
 
@@ -2658,6 +2663,23 @@ impl Editor {
                     rows.iter().rev().filter(|&&r| r < p.row).take(n).last()
                 };
                 (fnb((*row?).min(b.last_row())), Linewise)
+            }
+            Motion::Problem(forward) => {
+                let starts = self.problems(self.buffer_id).iter().map(|p| p.start);
+                // a server may still be on older text, so its places are kept inside this one
+                let mut starts: Vec<Pos> = starts
+                    .map(|s| {
+                        let row = s.row.min(b.last_row());
+                        Pos::new(row, s.col.min(b.line_len(row).saturating_sub(1)))
+                    })
+                    .collect();
+                starts.dedup();
+                let at = if forward {
+                    starts.iter().filter(|&&s| s > p).take(n).last()
+                } else {
+                    starts.iter().rev().filter(|&&s| s < p).take(n).last()
+                };
+                (*at?, Exclusive)
             }
             Motion::Mark(c, exact) => {
                 let c = if c == '`' { '\'' } else { c };
@@ -4635,7 +4657,47 @@ pub(crate) fn expand_home(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::slashed;
+    use super::{Editor, Pos, slashed};
+    use crate::keys::parse;
+    use crate::languages::{Problem, Severity};
+
+    fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
+        Problem {
+            start: Pos::new(start.0, start.1),
+            end: Pos::new(end.0, end.1),
+            severity,
+            message: message.into(),
+        }
+    }
+
+    fn with_problems(text: &str, problems: Vec<Problem>) -> Editor {
+        let mut e = Editor::with_text(text);
+        e.languages.found(e.buffer_id, problems);
+        e
+    }
+
+    #[test]
+    fn brackets_and_d_go_from_problem_to_problem() {
+        let found = vec![
+            problem((1, 4), (1, 5), Severity::Warning, "a"),
+            problem((1, 4), (1, 9), Severity::Error, "the same place"),
+            problem((3, 2), (3, 3), Severity::Error, "b"),
+            problem((9, 9), (9, 9), Severity::Hint, "past the end, from older text"),
+        ];
+        let mut e = with_problems("zero\none two\ntwo\nthree four\nfive", found);
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(1, 4));
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(3, 2));
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(4, 3), "kept inside the text");
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(4, 3), "no wrapping round");
+        e.keys(&parse("2[d"));
+        assert_eq!(e.cursor(), Pos::new(1, 4));
+        e.keys(&parse("``"));
+        assert_eq!(e.cursor(), Pos::new(4, 3), "a jump, so `` goes back");
+    }
 
     #[test]
     fn windows_paths_are_listed_with_slashes_and_without_their_prefix() {
