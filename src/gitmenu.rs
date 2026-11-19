@@ -45,6 +45,9 @@ pub struct Entry {
     pub id: String,
     pub title: String,
     pub detail: String,
+    pub author: String,
+    pub date: String,
+    pub branch: String,
     pub current: bool,
 }
 
@@ -53,6 +56,7 @@ pub enum Tab {
     Files,
     Log,
     Branches,
+    Graph,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +91,7 @@ struct Done {
     status: Option<Result<Status, String>>,
     log: Option<Vec<Entry>>,
     branches: Option<Vec<Entry>>,
+    graph: Option<Vec<Entry>>,
     note: Option<Note>,
     output: Option<Output>,
     changed: bool,
@@ -113,6 +118,7 @@ pub struct GitMenu {
     selected: usize,
     log: Vec<Entry>,
     branches: Vec<Entry>,
+    graph: Vec<Entry>,
     peeks: HashMap<String, Vec<String>>,
     peek_scroll: usize,
     typing: Option<(Typing, TextInput)>,
@@ -140,6 +146,7 @@ impl GitMenu {
             selected: 0,
             log: Vec::new(),
             branches: Vec::new(),
+            graph: Vec::new(),
             peeks: HashMap::new(),
             peek_scroll: 0,
             typing: None,
@@ -201,6 +208,7 @@ impl GitMenu {
     pub fn entries(&self) -> &[Entry] {
         match self.tab {
             Tab::Log => &self.log,
+            Tab::Graph => &self.graph,
             _ => &self.branches,
         }
     }
@@ -244,6 +252,7 @@ impl GitMenu {
             Tab::Files => self.changes().len(),
             Tab::Log => self.log.len(),
             Tab::Branches => self.branches.len(),
+            Tab::Graph => self.graph.len(),
         }
     }
 
@@ -258,6 +267,7 @@ impl GitMenu {
             Tab::Files => self.current().map(|c| format!("{:?}:{}", c.group, c.path)),
             Tab::Log => self.log.get(self.selected).map(|e| format!("commit:{}", e.id)),
             Tab::Branches => self.branches.get(self.selected).map(|e| format!("branch:{}", e.id)),
+            Tab::Graph => None,
         }
     }
 
@@ -299,6 +309,9 @@ impl GitMenu {
             if let Some(o) = done.output {
                 self.output = Some(o);
             }
+            if let Some(g) = done.graph {
+                self.graph = g;
+            }
             self.selected = self.selected.min(self.len().saturating_sub(1));
             if let Some(cmd) = self.queued.take().filter(|_| self.status.is_some()) {
                 self.command(&cmd);
@@ -327,6 +340,7 @@ impl GitMenu {
             },
             Tab::Log => Peeking::Commit(self.log[self.selected].id.clone()),
             Tab::Branches => Peeking::Branch(self.branches[self.selected].id.clone()),
+            Tab::Graph => return,
         };
         self.peeking = Some(key.clone());
         self.peek = Some(Job::spawn(move || (key, peek(&root, what))));
@@ -351,6 +365,7 @@ impl GitMenu {
             match tab {
                 Tab::Log if done.log.is_none() => done.log = Some(read_log(&root)),
                 Tab::Branches if done.branches.is_none() => done.branches = Some(read_branches(&root)),
+                Tab::Graph if done.graph.is_none() => done.graph = Some(read_graph(&root)),
                 _ => {}
             }
             done
@@ -449,6 +464,7 @@ impl GitMenu {
                     self.note = Some(error("nothing staged: s stages a file, a stages them all"));
                 }
             }
+            Key::Char('t') => self.switch_tab(if self.tab == Tab::Graph { Tab::Files } else { Tab::Graph }),
             Key::Enter => match self.tab {
                 Tab::Files => {
                     if let (Some(root), Some(c)) = (self.root(), self.current()) {
@@ -461,6 +477,7 @@ impl GitMenu {
                 }
                 Tab::Branches => self.switch_branch(unsaved),
                 Tab::Log => {}
+                Tab::Graph => {}
             },
             _ => {}
         }
@@ -491,6 +508,12 @@ impl GitMenu {
             Tab::Branches => {
                 self.start("reading branches", |root| Done {
                     branches: Some(read_branches(root)),
+                    ..Done::default()
+                });
+            }
+            Tab::Graph => {
+                self.start("reading graph", |root| Done {
+                    graph: Some(read_graph(root)),
                     ..Done::default()
                 });
             }
@@ -869,6 +892,9 @@ fn read_log(root: &Path) -> Vec<Entry> {
                 id: id.to_string(),
                 title: subject.to_string(),
                 detail: format!("{who}, {when}"),
+                author: who.to_string(),
+                date: when.to_string(),
+                branch: String::new(),
                 current: false,
             })
         })
@@ -893,10 +919,237 @@ fn read_branches(root: &Path) -> Vec<Entry> {
                 id: name.to_string(),
                 title: subject.to_string(),
                 detail: when.to_string(),
+                author: String::new(),
+                date: when.to_string(),
+                branch: name.to_string(),
                 current: head == "*",
             })
         })
         .collect()
+}
+
+const UP: u8 = 1;
+const RIGHT: u8 = 2;
+const DOWN: u8 = 4;
+const LEFT: u8 = 8;
+
+struct GraphBuilder {
+    lanes: Vec<Option<String>>,
+}
+
+impl GraphBuilder {
+    fn new() -> Self {
+        Self { lanes: Vec::new() }
+    }
+
+    fn build_row(&mut self, cid: &str, parents: &[&str]) -> String {
+        let in_lanes = self.lanes.clone();
+
+        let mut commit_lane = None;
+        let mut merging_lanes = Vec::new();
+        for (i, expected) in self.lanes.iter().enumerate() {
+            if expected.as_deref() == Some(cid) {
+                if commit_lane.is_none() {
+                    commit_lane = Some(i);
+                } else {
+                    merging_lanes.push(i);
+                }
+            }
+        }
+
+        let commit_lane = match commit_lane {
+            Some(l) => l,
+            None => match self.lanes.iter().position(|l| l.is_none()) {
+                Some(slot) => {
+                    self.lanes[slot] = Some(cid.to_string());
+                    slot
+                }
+                None => {
+                    let slot = self.lanes.len();
+                    self.lanes.push(Some(cid.to_string()));
+                    slot
+                }
+            },
+        };
+
+        let mut fork_lanes = Vec::new();
+        if parents.is_empty() {
+            self.lanes[commit_lane] = None;
+        } else {
+            self.lanes[commit_lane] = Some(parents[0].to_string());
+            for &p in &parents[1..] {
+                let p_lane = match self.lanes.iter().position(|l| l.as_deref() == Some(p)) {
+                    Some(pos) => pos,
+                    None => match self.lanes.iter().position(|l| l.is_none()) {
+                        Some(slot) => {
+                            self.lanes[slot] = Some(p.to_string());
+                            slot
+                        }
+                        None => {
+                            let slot = self.lanes.len();
+                            self.lanes.push(Some(p.to_string()));
+                            slot
+                        }
+                    },
+                };
+                fork_lanes.push(p_lane);
+            }
+        }
+
+        for &ml in &merging_lanes {
+            self.lanes[ml] = None;
+        }
+
+        let out_lanes = self.lanes.clone();
+        while self.lanes.last().is_some_and(|l| l.is_none()) {
+            self.lanes.pop();
+        }
+
+        let mut num_lanes = in_lanes.len().max(out_lanes.len()).max(commit_lane + 1);
+        if let Some(&max_fork) = fork_lanes.iter().max() {
+            num_lanes = num_lanes.max(max_fork + 1);
+        }
+        if let Some(&max_merge) = merging_lanes.iter().max() {
+            num_lanes = num_lanes.max(max_merge + 1);
+        }
+
+        let col_count = num_lanes * 2;
+        let mut masks = vec![0u8; col_count];
+
+        for (l, in_l) in in_lanes.iter().enumerate().take(num_lanes) {
+            if in_l.is_some() {
+                masks[2 * l] |= UP;
+            }
+        }
+
+        for (l, out_l) in out_lanes.iter().enumerate().take(num_lanes) {
+            if out_l.is_some() {
+                masks[2 * l] |= DOWN;
+            }
+        }
+
+        for &fl in &fork_lanes {
+            let start = commit_lane.min(fl);
+            let end = commit_lane.max(fl);
+            for (col, mask) in masks.iter_mut().enumerate().take(2 * end + 1).skip(2 * start) {
+                if col > 2 * start {
+                    *mask |= LEFT;
+                }
+                if col < 2 * end {
+                    *mask |= RIGHT;
+                }
+            }
+        }
+
+        for &ml in &merging_lanes {
+            let start = commit_lane.min(ml);
+            let end = commit_lane.max(ml);
+            for (col, mask) in masks.iter_mut().enumerate().take(2 * end + 1).skip(2 * start) {
+                if col > 2 * start {
+                    *mask |= LEFT;
+                }
+                if col < 2 * end {
+                    *mask |= RIGHT;
+                }
+            }
+        }
+
+        let mut row_chars: Vec<char> = masks
+            .iter()
+            .enumerate()
+            .map(|(col, &m)| glyph(m, col % 2 == 0))
+            .collect();
+
+        row_chars[2 * commit_lane] = '●';
+
+        let s: String = row_chars.into_iter().collect();
+        s.trim_end().to_string()
+    }
+}
+
+fn glyph(mask: u8, is_lane_col: bool) -> char {
+    match mask {
+        0 => ' ',
+        m if m == (DOWN | RIGHT) => '╭',
+        m if m == (DOWN | LEFT) => '╮',
+        m if m == (UP | RIGHT) => '╰',
+        m if m == (UP | LEFT) => '╯',
+        m if m == (UP | DOWN | RIGHT) => '├',
+        m if m == (UP | DOWN | LEFT) => '┤',
+        m if m == (DOWN | LEFT | RIGHT) => '┬',
+        m if m == (UP | LEFT | RIGHT) => '┴',
+        m if m == (UP | DOWN | LEFT | RIGHT) => '┼',
+        m if m == (UP | DOWN) => '│',
+        m if m == (LEFT | RIGHT) => '─',
+        m if is_lane_col && (m & (UP | DOWN) != 0) => '│',
+        m if m & (LEFT | RIGHT) != 0 => '─',
+        _ => ' ',
+    }
+}
+
+fn read_graph(root: &Path) -> Vec<Entry> {
+    let n = format!("-n{LOG_LENGTH}");
+    let (_, out, _) = git(
+        root,
+        &[
+            "log",
+            &n,
+            "--all",
+            "--topo-order",
+            "--format=%h%x1f%p%x1f%an%x1f%ar%x1f%s%x1f%D",
+        ],
+    );
+    let mut builder = GraphBuilder::new();
+    out.lines()
+        .filter_map(|l| {
+            let mut f = l.split('\x1f');
+            let (id, parents_str, who, when, subject) =
+                (f.next()?, f.next()?, f.next()?, f.next()?, f.next().unwrap_or(""));
+            let refs_str = f.next().unwrap_or("");
+            let (is_head, branch) = parse_refs(refs_str);
+            let parents: Vec<&str> = parents_str.split_whitespace().collect();
+            let graph_str = builder.build_row(id, &parents);
+            Some(Entry {
+                id: id.to_string(),
+                title: subject.to_string(),
+                detail: graph_str,
+                author: who.to_string(),
+                date: when.to_string(),
+                branch,
+                current: is_head,
+            })
+        })
+        .collect()
+}
+
+fn parse_refs(refs_str: &str) -> (bool, String) {
+    if refs_str.is_empty() {
+        return (false, String::new());
+    }
+    let mut is_head = false;
+    let mut branches = Vec::new();
+    for ref_part in refs_str.split(',') {
+        let r = ref_part.trim();
+        if r == "origin/HEAD" {
+            continue;
+        }
+        if r == "HEAD" {
+            is_head = true;
+        } else if let Some(b) = r.strip_prefix("HEAD -> ") {
+            is_head = true;
+            let b = b.trim();
+            if !b.is_empty() {
+                branches.push(b);
+            }
+        } else if !r.starts_with("tag: ") {
+            branches.push(r);
+        }
+    }
+    if branches.is_empty() && is_head {
+        (true, "HEAD".to_string())
+    } else {
+        (is_head, branches.join(", "))
+    }
 }
 
 enum Peeking {

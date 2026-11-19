@@ -203,7 +203,7 @@ fn moving_filtering_and_opening_recent_files() {
     e.keys(&parse("<Space>rgk"));
     let f = e.finder().unwrap();
     assert_eq!(f.query(), "gk", "once typing, j and k are letters");
-    e.keys(&parse("<BS><BS>bt"));
+    e.keys(&parse("<BS><BS>md"));
     assert_eq!(e.finder().unwrap().match_count(), 1);
     e.keys(&parse("<CR>"));
     assert!(e.finder().is_none());

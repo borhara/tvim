@@ -1450,7 +1450,7 @@ impl Editor {
     }
 
     pub fn grep(&mut self, query: Option<&str>) {
-        let root = cwd();
+        let root = self.working_dir();
         self.grep_in(&root, query.unwrap_or(""));
     }
 
@@ -1487,7 +1487,7 @@ impl Editor {
     }
 
     pub fn pick_buffer_list(&mut self) {
-        let root = cwd();
+        let root = self.working_dir();
         let names: Vec<String> = self
             .buffers()
             .into_iter()
@@ -1503,7 +1503,7 @@ impl Editor {
     }
 
     pub fn find_files(&mut self, query: Option<&str>) {
-        let root = cwd();
+        let root = self.working_dir();
         self.find_files_in(&root, query.unwrap_or(""));
     }
 
@@ -1554,6 +1554,13 @@ impl Editor {
                 self.explorer_focused = false;
             }
         }
+    }
+
+    pub(crate) fn working_dir(&self) -> PathBuf {
+        self.explorer
+            .as_ref()
+            .map(|x| x.root().to_path_buf())
+            .unwrap_or_else(cwd)
     }
 
     pub(crate) fn file_dir(&self) -> PathBuf {
@@ -2058,7 +2065,7 @@ impl Editor {
         self.reset_for_picker();
         let start = match &self.file.path {
             Some(_) => self.file_dir(),
-            None => cwd(),
+            None => self.working_dir(),
         };
         let history = std::mem::take(&mut self.git_history);
         self.git_menu = Some(GitMenu::open(&start, history, command.map(str::to_string)));

@@ -321,6 +321,33 @@ fn log_and_branches() {
 }
 
 #[test]
+fn graph_tab() {
+    let Some(dir) = repo("graph", "a\n") else { return };
+    git(&dir, &["checkout", "-b", "side"]).unwrap();
+    std::fs::write(dir.join("b.txt"), "branch\n").unwrap();
+    git(&dir, &["add", "b.txt"]).unwrap();
+    git(&dir, &["commit", "-q", "-m", "side commit"]).unwrap();
+    git(&dir, &["checkout", "trunk"]).unwrap();
+    std::fs::write(dir.join("a.txt"), "main commit\n").unwrap();
+    git(&dir, &["commit", "-q", "-am", "main commit"]).unwrap();
+    git(&dir, &["merge", "--no-ff", "-m", "merge side", "side"]).unwrap();
+
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>Gt");
+    let m = e.git_menu().unwrap();
+    assert_eq!(m.tab(), Tab::Graph);
+    assert_eq!(m.entries().len(), 4); // exactly 4 commits, 0 blank spacer lines!
+    let screen = shown(e, 110, 30);
+    assert!(screen.contains("●─╮"), "{screen}");
+    assert!(screen.contains("●─╯"), "{screen}");
+    assert!(screen.contains("merge side"), "{screen}");
+    assert!(screen.contains("✦"), "{screen}");
+    assert!(screen.contains("⎇"), "{screen}");
+    assert!(screen.contains("trunk"), "{screen}");
+    assert!(screen.contains("side"), "{screen}");
+}
+
+#[test]
 fn outside_a_repo_there_is_only_a_message() {
     let dir = temp("menu-outside");
     let _ = std::fs::remove_dir_all(&dir);
@@ -369,4 +396,18 @@ fn a_staged_rename_unstages_and_discards_as_a_whole() {
     );
     assert!(!dir.join("b.txt").exists());
     assert_eq!(git(&dir, &["status", "--porcelain"]).unwrap(), "");
+}
+
+#[test]
+fn opening_git_menu_from_directory_explorer() {
+    let Some(dir) = repo("gitmenu-explorer", "initial\n") else {
+        return;
+    };
+    let mut e = Editor::new();
+    e.explore(&dir);
+    e.keys(&parse("<Esc><Space>G"));
+    e.wait_for_git_menu();
+    assert!(e.git_menu().is_some());
+    let m = e.git_menu().unwrap();
+    assert_eq!(m.repo_name(), dir.file_name().unwrap().to_str().unwrap());
 }

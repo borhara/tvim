@@ -2,7 +2,7 @@ use tinsel::app::{Frame, Modal, Panel, Rect};
 use tinsel::{Rgb, Spinner, bold, italic, mix, paint, palette};
 
 use super::{Colors, LILAC, icon, input};
-use crate::gitmenu::{GitMenu, Group, Tab, Typing};
+use crate::gitmenu::{Entry, GitMenu, Group, Tab, Typing};
 
 fn group_color(g: Group) -> Rgb {
     match g {
@@ -48,6 +48,7 @@ pub(super) fn draw(m: &GitMenu, frame: &mut Frame, c: &Colors) -> Option<(usize,
         Tab::Files => format!("{} changed", changes.len()),
         Tab::Log => "recent commits".to_string(),
         Tab::Branches => "branches".to_string(),
+        Tab::Graph => "graph".to_string(),
     };
     let panel = Panel::new(m.repo_name()).status(status).focused(true);
     let mut modal = Modal::new(panel).at(rect).background(c.bar);
@@ -61,7 +62,13 @@ pub(super) fn draw(m: &GitMenu, frame: &mut Frame, c: &Colors) -> Option<(usize,
     }
 
     header(m, frame, Rect::new(inner.x, inner.y, inner.width, 1), t);
-    let list_width = (inner.width * 2 / 5).clamp(20, 48).min(inner.width);
+    let is_graph = m.tab() == Tab::Graph;
+    let graph_col_width = (inner.width * 3 / 10).clamp(18, 30);
+    let list_width = if is_graph {
+        graph_col_width
+    } else {
+        (inner.width * 2 / 5).clamp(20, 48).min(inner.width)
+    };
     let split = inner.x + list_width;
     let body_height = inner.height - 5;
     let body_y = inner.y + 2;
@@ -77,10 +84,18 @@ pub(super) fn draw(m: &GitMenu, frame: &mut Frame, c: &Colors) -> Option<(usize,
         body_height,
     );
     match m.tab() {
-        Tab::Files => files(m, frame, list, c),
-        Tab::Log | Tab::Branches => entries(m, frame, list, c),
+        Tab::Files => {
+            files(m, frame, list, c);
+            right_pane(m, frame, pane, t);
+        }
+        Tab::Log | Tab::Branches => {
+            entries(m, frame, list, c);
+            right_pane(m, frame, pane, t);
+        }
+        Tab::Graph => {
+            graph_view(m, frame, list, pane, c);
+        }
     }
-    right_pane(m, frame, pane, t);
     let at = prompt(
         m,
         frame,
@@ -255,6 +270,139 @@ fn entries(m: &GitMenu, frame: &mut Frame, list: Rect, c: &Colors) {
     }
 }
 
+fn graph_view(m: &GitMenu, frame: &mut Frame, graph_pane: Rect, commits_pane: Rect, c: &Colors) {
+    let all = m.entries();
+    if all.is_empty() {
+        let note = if m.busy().is_some() {
+            "  reading…"
+        } else {
+            "  nothing here yet"
+        };
+        frame.print(graph_pane, 0, &paint(palette::MUTED, note));
+        return;
+    }
+    let top = (m.selected() + 1).saturating_sub(graph_pane.height);
+    for (i, en) in all.iter().enumerate().skip(top).take(graph_pane.height) {
+        let y = graph_pane.y + i - top;
+        let left_row = Rect::new(graph_pane.x, y, graph_pane.width, 1);
+        let right_row = Rect::new(commits_pane.x, y, commits_pane.width, 1);
+        if i == m.selected() {
+            mark_row(frame, left_row, c);
+            frame.tint(right_row, mix(c.bar, palette::ROSE, 0.22));
+        }
+
+        let col0 = if i == m.selected() {
+            paint(palette::ROSE, "▌")
+        } else {
+            " ".to_string()
+        };
+
+        let indicator = if en.current {
+            paint(palette::ROSE, "✦")
+        } else if !en.branch.is_empty() {
+            paint(palette::ROSE, "⎇")
+        } else {
+            " ".to_string()
+        };
+
+        let graph_text = style_graph_chars(&en.detail);
+        let mut left_text = format!("{col0}{indicator} {graph_text}");
+
+        if !en.branch.is_empty() {
+            let used = tinsel::text::width(&left_text) + 1;
+            if left_row.width > used {
+                let avail = left_row.width - used;
+                let branch_label = if tinsel::text::width(&en.branch) > avail {
+                    tinsel::text::truncate(&en.branch, avail)
+                } else {
+                    en.branch.clone()
+                };
+                left_text.push(' ');
+                left_text.push_str(&italic(&paint(LILAC, &branch_label)));
+            }
+        }
+
+        frame.print(left_row, 0, &left_text);
+
+        let commit_text = format_commit_entry(en, commits_pane.width);
+        frame.print(right_row, 0, &commit_text);
+    }
+}
+
+fn format_commit_entry(en: &Entry, max_width: usize) -> String {
+    let colored_id = bold(&paint(palette::AMBER, &en.id));
+    if en.title.is_empty() {
+        return colored_id;
+    }
+
+    let meta = if !en.author.is_empty() && !en.date.is_empty() {
+        format!("({}, {})", en.author, en.date)
+    } else if !en.author.is_empty() {
+        format!("({})", en.author)
+    } else if !en.date.is_empty() {
+        format!("({})", en.date)
+    } else {
+        String::new()
+    };
+
+    let id_w = tinsel::text::width(&en.id);
+    let meta_w = tinsel::text::width(&meta);
+
+    if max_width == 0 {
+        let colored_meta = if meta.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", paint(palette::MUTED, &meta))
+        };
+        return format!("{colored_id} {}{colored_meta}", paint(palette::TEXT, &en.title));
+    }
+
+    let rem = max_width.saturating_sub(id_w + 1);
+    if rem == 0 {
+        return colored_id;
+    }
+
+    let title_w = tinsel::text::width(&en.title);
+    if !meta.is_empty() && rem > meta_w + 6 {
+        let avail_for_title = rem.saturating_sub(meta_w + 1);
+        let truncated_title = if title_w > avail_for_title {
+            tinsel::text::truncate(&en.title, avail_for_title)
+        } else {
+            en.title.clone()
+        };
+        let colored_meta = paint(palette::MUTED, &meta);
+        format!("{colored_id} {} {colored_meta}", paint(palette::TEXT, &truncated_title))
+    } else {
+        let truncated_title = if title_w > rem {
+            tinsel::text::truncate(&en.title, rem)
+        } else {
+            en.title.clone()
+        };
+        format!("{colored_id} {}", paint(palette::TEXT, &truncated_title))
+    }
+}
+
+fn style_graph_chars(s: &str) -> String {
+    s.chars()
+        .map(|ch| match ch {
+            '●' => bold(&paint(palette::ROSE, "●")),
+            '│' => paint(palette::LINE, "│"),
+            '─' => paint(palette::LINE, "─"),
+            '╭' => paint(palette::LINE, "╭"),
+            '╮' => paint(palette::LINE, "╮"),
+            '╯' => paint(palette::LINE, "╯"),
+            '╰' => paint(palette::LINE, "╰"),
+            '├' => paint(palette::LINE, "├"),
+            '┤' => paint(palette::LINE, "┤"),
+            '┬' => paint(palette::LINE, "┬"),
+            '┴' => paint(palette::LINE, "┴"),
+            '┼' => paint(palette::LINE, "┼"),
+            ' ' => " ".to_string(),
+            _ => ch.to_string(),
+        })
+        .collect()
+}
+
 fn diff_line(l: &str) -> String {
     let head = [
         "diff ",
@@ -333,7 +481,7 @@ fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f64) {
                 italic(&paint(palette::MUTED, what))
             )
         }),
-        Tab::Log | Tab::Branches => m.entries().get(m.selected()).map(|en| {
+        Tab::Log | Tab::Branches | Tab::Graph => m.entries().get(m.selected()).map(|en| {
             let detail = if en.detail.is_empty() {
                 String::new()
             } else {
@@ -353,10 +501,11 @@ fn right_pane(m: &GitMenu, frame: &mut Frame, pane: Rect, t: f64) {
             frame.print(pane, 1, &paint(palette::MUTED, "no differences"));
         }
         Some(lines) => print_lines(frame, lines, m.peek_scroll(), &diff_line),
-        None => {
+        None if m.working() => {
             let wait = format!("{} {}", Spinner::Sparkle.frame(t), paint(palette::MUTED, "loading…"));
             frame.print(pane, 1, &wait);
         }
+        None => {}
     }
 }
 
@@ -431,6 +580,14 @@ fn hints(m: &GitMenu, frame: &mut Frame, row: Rect) {
                 ("⏎", "switch"),
                 ("b", "files"),
                 ("l", "log"),
+                (":", "git …"),
+                ("q", "close"),
+            ],
+            Tab::Graph => &[
+                ("j/k", "move"),
+                ("t", "files"),
+                ("l", "log"),
+                ("b", "branches"),
                 (":", "git …"),
                 ("q", "close"),
             ],

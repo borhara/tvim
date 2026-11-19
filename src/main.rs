@@ -56,9 +56,11 @@ fn main() -> ExitCode {
     let recent = state.as_deref().map(session::read_recent).unwrap_or_default();
     let mut editor = match &file {
         Some(path) if path.is_dir() => {
+            let canon = tvim::paths::canonical(path).unwrap_or_else(|_| path.clone());
+            let _ = std::env::set_current_dir(&canon);
             let mut e = Editor::new();
             e.set_recent(recent);
-            e.explore(path);
+            e.explore(&canon);
             if e.explorer().is_none() {
                 let why = e.message().map_or(String::new(), |m| m.text.clone());
                 tinsel::error(&format!("can't open {}: {why}", path.display()));
