@@ -30,6 +30,7 @@ struct Synced {
     path: PathBuf,
     uri: String,
     version: u64,
+    saved: u64,
     // the text as the server has it, a line each, with an empty last line for a final newline
     lines: Vec<String>,
     // the version number the server was last given
@@ -40,6 +41,8 @@ struct Synced {
 struct Sync {
     open_close: bool,
     change: Change,
+    // Some when saves are wanted, saying whether with the text
+    save: Option<bool>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -178,6 +181,7 @@ impl Languages {
                 path: path.to_path_buf(),
                 uri,
                 version: doc.version,
+                saved: doc.saved,
                 lines,
                 sent: 1,
             };
@@ -198,6 +202,17 @@ impl Languages {
             }
             s.lines = lines;
             s.version = doc.version;
+        }
+        if s.saved != doc.saved {
+            s.saved = doc.saved;
+            // the saved version moves on a write, and then the text is what was written
+            if let Some(with_text) = sync.save.filter(|_| sync.open_close && doc.saved == doc.version) {
+                let mut params = vec![("textDocument".to_string(), document(&s.uri))];
+                if with_text {
+                    params.push(("text".into(), s.lines.join("\n").into()));
+                }
+                server.notify("textDocument/didSave", Json::Object(params));
+            }
         }
     }
 }
@@ -226,16 +241,23 @@ fn sync_of(capabilities: &Json) -> Sync {
         Some(2) => Change::Edits,
         _ => Change::Never,
     };
-    // a bare number is the kind of change, with opens and closes too
+    // a bare number is the kind of change, with opens and closes but no saves
     if let Some(kind) = sync.as_i64() {
         return Sync {
             open_close: true,
             change: change(Some(kind)),
+            save: None,
         };
     }
+    let save = match &sync["save"] {
+        Json::Bool(true) => Some(false),
+        save @ Json::Object(_) => Some(save["includeText"].as_bool().unwrap_or(false)),
+        _ => None,
+    };
     Sync {
         open_close: sync["openClose"].as_bool().unwrap_or(false),
         change: change(sync["change"].as_i64()),
+        save,
     }
 }
 
@@ -381,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_is_opened_changed_and_closed() {
+    fn a_file_is_opened_changed_saved_and_closed() {
         let mut r = rig();
         let v1 = lines("fn main() {\n}");
         let mut fake = r.start(&[doc("/work/a.rs", 1, 1, &v1)], EDITS);
@@ -406,6 +428,11 @@ mod tests {
             r#"[{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":0}},"text":"    go();\n"}]"#
         );
 
+        r.update(&[doc("/work/a.rs", 2, 2, &v2)]);
+        let save = fake.recv().unwrap();
+        assert_eq!(save["method"].as_str(), Some("textDocument/didSave"));
+        assert_eq!(save["params"].get("text"), None, "not asked for");
+
         r.update(&[]);
         assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
         assert_eq!(
@@ -413,6 +440,28 @@ mod tests {
             Some("shutdown"),
             "nothing needs it now"
         );
+    }
+
+    #[test]
+    fn undo_back_to_the_saved_text_is_a_change_but_not_a_save() {
+        let mut r = rig();
+        let (v1, v2) = (lines("a"), lines("b"));
+        let mut fake = r.start(&[doc("/work/a.rs", 1, 1, &v1)], EDITS);
+        fake.recv().unwrap();
+        r.update(&[doc("/work/a.rs", 2, 1, &v2)]);
+        assert_eq!(
+            fake.recv().unwrap()["params"]["contentChanges"][0]["text"].as_str(),
+            Some("b\n")
+        );
+        r.update(&[doc("/work/a.rs", 1, 1, &v1)]);
+        let back = fake.recv().unwrap();
+        assert_eq!(
+            back["params"]["textDocument"]["version"].as_i64(),
+            Some(3),
+            "versions only go up"
+        );
+        r.update(&[]);
+        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
     }
 
     #[test]
@@ -428,7 +477,11 @@ mod tests {
         let change = fake.recv().unwrap();
         assert_eq!(change["params"]["contentChanges"].to_string(), r#"[{"text":"a\nb\n"}]"#);
         r.update(&[]);
-        assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("textDocument/didClose"));
+        assert_eq!(
+            fake.recv().unwrap()["method"].as_str(),
+            Some("textDocument/didClose"),
+            "a bare number asks for no saves"
+        );
     }
 
     #[test]
