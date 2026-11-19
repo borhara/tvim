@@ -64,6 +64,26 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 
 **Git.** The git menu lists staged, changed and untracked files with a diff beside them. `s` stages, `c` commits, `d` discards, `l` shows the log, `b` lists branches, and `p`/`P` pull and push. Lines you've changed since the last commit are marked in the gutter. The line under the cursor shows who last changed it and when, which `:set nogl` turns off.
 
+**Language servers.** When a language server is installed for the file you open, tvim starts it and keeps it up to date as you type. Lines with problems get a coloured line number, the problem itself is tinted, and the cursor's line says what's wrong. `]d` and `[d` go to the next and previous problem. tvim knows these servers, and runs whichever you have:
+
+| Files | Server |
+| --- | --- |
+| Rust | `rust-analyzer` |
+| Python | `pyright-langserver --stdio` |
+| Go | `gopls` |
+| TypeScript and JavaScript | `typescript-language-server --stdio` |
+| C and C++ | `clangd` |
+| Lua | `lua-language-server` |
+| Zig | `zls` |
+| Shell | `bash-language-server start` |
+
+`:lsp` says which server the file has and how it's doing, and `:lsp restart` starts them all again. To run something else, or nothing, put a line in your config:
+
+```
+lsp python pylsp
+lsp go off
+```
+
 **Several files.** Open files are listed along the top. Switch with `gt`/`gT`, `:b name` or `:bn`/`:bp`, and close one with `:bd`. `:wa` saves them all.
 
 **Splits.** `Ctrl-w s` and `Ctrl-w v` (or `:sp` and `:vs`) split the window. `Ctrl-w` with `h`/`j`/`k`/`l` moves between windows and `Ctrl-w q` closes one.
@@ -72,7 +92,7 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 
 ## Settings
 
-Put `:set` and `:map` lines in `~/.config/tvim/config`, one per line:
+Put `:set`, `:map` and `:lsp` lines in `~/.config/tvim/config`, one per line:
 
 ```
 set tabstop=2 noexpandtab
@@ -98,6 +118,7 @@ nnoremap <leader>w :w<CR>
 | `autopairs` | `ap` | on | brackets and quotes close themselves |
 | `smooth` | `sm` | on | scroll smoothly on big jumps |
 | `gitlens` | `gl` | on | show who last changed the cursor's line |
+| `lsp` | | on | run language servers |
 | `roomy` | `ro` | on | a little space above and below the text |
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
 | `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
