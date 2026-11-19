@@ -15,6 +15,7 @@ pub mod grep;
 pub mod json;
 pub mod jumps;
 pub mod keys;
+pub mod lsp;
 pub mod mapping;
 pub mod motion;
 pub mod object;
