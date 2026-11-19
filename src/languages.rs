@@ -43,11 +43,19 @@ pub struct Problem {
 pub struct Update {
     // problems came or went, so there's something new to show
     pub changed: bool,
+    pub errors: Vec<String>,
 }
 
 // a server is one command run for one project
 type Key = (Vec<String>, PathBuf);
 type Start = Box<dyn FnMut(&[String], &Path) -> io::Result<Server>>;
+
+struct Running {
+    name: &'static str,
+    server: Server,
+    // whether the user has been told it stopped
+    told: bool,
+}
 
 struct Synced {
     key: Key,
@@ -78,8 +86,8 @@ enum Change {
 }
 
 pub struct Languages {
-    running: HashMap<Key, Server>,
-    // servers that wouldn't start, left alone unless the command changes
+    running: HashMap<Key, Running>,
+    // servers that wouldn't start, left alone until a restart or another command
     refused: HashSet<Key>,
     synced: HashMap<usize, Synced>,
     // each file's server, worked out again only when its path or the choices change
@@ -113,6 +121,25 @@ impl Languages {
         self.synced.get(&id).map_or(&[], |s| &s.problems)
     }
 
+    pub fn state(&self, choice: &Choice) -> &'static str {
+        let key = key(choice);
+        match self.running.get(&key) {
+            Some(r) if r.server.ready() => "running",
+            Some(r) if r.server.failure().is_some() => "stopped",
+            Some(_) => "starting",
+            None if self.refused.contains(&key) => "couldn't start",
+            None => "not running",
+        }
+    }
+
+    // stops every server, to start afresh with the next update
+    pub fn restart(&mut self) {
+        self.running.clear();
+        self.refused.clear();
+        self.synced.clear();
+        self.choices.clear();
+    }
+
     // takes in what the servers have said, then tells them what changed in `docs`
     pub fn update(&mut self, docs: &[OpenDoc], servers: &Servers) -> Update {
         let mut update = Update::default();
@@ -136,9 +163,9 @@ impl Languages {
         for id in stale {
             let s = self.synced.remove(&id).expect("listed above");
             update.changed |= !s.problems.is_empty();
-            if let Some(server) = self.running.get_mut(&s.key).filter(|server| server.ready()) {
-                if sync_of(server.capabilities()).open_close {
-                    server.notify(
+            if let Some(r) = self.running.get_mut(&s.key).filter(|r| r.server.ready()) {
+                if sync_of(r.server.capabilities()).open_close {
+                    r.server.notify(
                         "textDocument/didClose",
                         Json::object([("textDocument", document(&s.uri))]),
                     );
@@ -147,7 +174,7 @@ impl Languages {
         }
 
         for (doc, path, choice) in &chosen {
-            self.sync(doc, path, choice);
+            self.sync(doc, path, choice, &mut update);
         }
         let needed: HashSet<&Key> = wanted.values().map(|(k, _)| k).collect();
         self.running.retain(|k, _| needed.contains(k));
@@ -169,8 +196,8 @@ impl Languages {
 
     fn receive(&mut self, update: &mut Update) {
         let Languages { running, synced, .. } = self;
-        for (key, server) in running.iter_mut() {
-            while let Some(incoming) = server.poll() {
+        for (key, r) in running.iter_mut() {
+            while let Some(incoming) = r.server.poll() {
                 let Incoming::Notice { method, params } = incoming else {
                     continue;
                 };
@@ -182,14 +209,22 @@ impl Languages {
                     .values_mut()
                     .find(|s| s.key == *key && Some(s.uri.as_str()) == uri)
                 {
-                    s.problems = problems(&params["diagnostics"], &s.lines, server.encoding());
+                    s.problems = problems(&params["diagnostics"], &s.lines, r.server.encoding());
                     update.changed = true;
+                }
+            }
+            if let Some(why) = r.server.failure().filter(|_| !r.told) {
+                r.told = true;
+                update.errors.push(format!("{}: {why}", r.name));
+                for s in synced.values_mut().filter(|s| s.key == *key) {
+                    update.changed |= !s.problems.is_empty();
+                    s.problems.clear();
                 }
             }
         }
     }
 
-    fn sync(&mut self, doc: &OpenDoc, path: &Path, choice: &Choice) {
+    fn sync(&mut self, doc: &OpenDoc, path: &Path, choice: &Choice, update: &mut Update) {
         let key = key(choice);
         if !self.running.contains_key(&key) {
             if self.refused.contains(&key) {
@@ -197,15 +232,24 @@ impl Languages {
             }
             match (self.start)(&choice.command, &choice.root) {
                 Ok(server) => {
-                    self.running.insert(key.clone(), server);
+                    let running = Running {
+                        name: choice.name,
+                        server,
+                        told: false,
+                    };
+                    self.running.insert(key.clone(), running);
                 }
-                Err(_) => {
+                Err(e) => {
+                    let command = choice.command.join(" ");
+                    update
+                        .errors
+                        .push(format!("{}: couldn't start {command}: {e}", choice.name));
                     self.refused.insert(key);
                     return;
                 }
             }
         }
-        let server = self.running.get_mut(&key).expect("started above");
+        let server = &mut self.running.get_mut(&key).expect("started above").server;
         // what a server wants to hear is only known once it has started
         if !server.ready() {
             return;
@@ -406,7 +450,7 @@ mod tests {
             self.update(docs);
             let (_, _, mut fake) = self.started.try_recv().expect("a server was started");
             fake.start(capabilities);
-            self.until(docs, |r| r.langs.running.values().all(Server::ready));
+            self.until(docs, |r| r.langs.running.values().all(|x| x.server.ready()));
             assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("initialized"));
             fake
         }
@@ -415,7 +459,7 @@ mod tests {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 let update = self.update(docs);
-                if done(self) || update.changed {
+                if done(self) || update.changed || !update.errors.is_empty() {
                     return update;
                 }
                 assert!(Instant::now() < deadline, "nothing happened");
@@ -665,6 +709,44 @@ mod tests {
                 paths::absolute(Path::new("/work"))
             )
         );
+    }
+
+    #[test]
+    fn a_server_that_wont_start_is_mentioned_once() {
+        let mut r = rig();
+        r.langs.start = Box::new(|_, _| Err(io::ErrorKind::NotFound.into()));
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let first = r.update(&docs);
+        assert_eq!(first.errors.len(), 1);
+        assert!(
+            first.errors[0].starts_with("rust: couldn't start rust-analyzer: "),
+            "{first:?}"
+        );
+        assert_eq!(r.update(&docs), Update::default());
+        let choice = r.servers.for_file(Path::new("/work/a.rs")).unwrap();
+        assert_eq!(r.langs.state(&choice), "couldn't start");
+        r.langs.restart();
+        assert_eq!(r.update(&docs).errors.len(), 1, "tried again after a restart");
+    }
+
+    #[test]
+    fn a_server_that_stops_is_mentioned_once_and_its_problems_go() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, EDITS);
+        fake.recv().unwrap();
+        fake.send(&diagnostics(
+            r#"{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"message":"no"}"#,
+        ));
+        r.until(&docs, |_| false);
+        assert_eq!(r.langs.problems(1).len(), 1);
+        drop(fake);
+        let update = r.until(&docs, |_| false);
+        assert_eq!(update.errors, ["rust: the server stopped"]);
+        assert!(r.langs.problems(1).is_empty());
+        assert_eq!(r.update(&docs), Update::default(), "and not again");
     }
 
     fn edited(old: &str, new: &str) -> String {
