@@ -267,7 +267,9 @@ impl Parser<'_> {
     fn value(&mut self) -> Result<Json, String> {
         self.space();
         match self.bytes.get(self.i) {
+            Some(b'{') => self.nested(Parser::object),
             Some(b'[') => self.nested(Parser::array),
+            Some(b'"') => self.string().map(Json::String),
             Some(b't') => self.word("true", Json::Bool(true)),
             Some(b'f') => self.word("false", Json::Bool(false)),
             Some(b'n') => self.word("null", Json::Null),
@@ -302,6 +304,75 @@ impl Parser<'_> {
                 return Err(self.error(", or ]"));
             }
         }
+    }
+
+    fn object(&mut self) -> Result<Json, String> {
+        let mut fields = Vec::new();
+        if self.eat(b'}') {
+            return Ok(Json::Object(fields));
+        }
+        loop {
+            self.space();
+            if self.bytes.get(self.i) != Some(&b'"') {
+                return Err(self.error("a key"));
+            }
+            let key = self.string()?;
+            if !self.eat(b':') {
+                return Err(self.error(":"));
+            }
+            fields.push((key, self.value()?));
+            if self.eat(b'}') {
+                return Ok(Json::Object(fields));
+            }
+            if !self.eat(b',') {
+                return Err(self.error(", or }"));
+            }
+        }
+    }
+
+    // from the opening quote
+    fn string(&mut self) -> Result<String, String> {
+        self.i += 1;
+        let mut out = String::new();
+        loop {
+            // plain text up to the next quote, backslash or control character
+            let rest = &self.bytes[self.i..];
+            let plain = rest
+                .iter()
+                .position(|&b| matches!(b, b'"' | b'\\' | 0..=0x1f))
+                .unwrap_or(rest.len());
+            out.push_str(&self.text[self.i..self.i + plain]);
+            self.i += plain;
+            match self.bytes.get(self.i) {
+                Some(b'"') => {
+                    self.i += 1;
+                    return Ok(out);
+                }
+                Some(b'\\') => {
+                    self.i += 1;
+                    out.push(self.escape()?);
+                }
+                Some(_) => return Err(format!("control character in a string at byte {}", self.i)),
+                None => return Err("unterminated string".into()),
+            }
+        }
+    }
+
+    // just after the backslash
+    fn escape(&mut self) -> Result<char, String> {
+        let c = match self.bytes.get(self.i) {
+            Some(b'"') => '"',
+            Some(b'\\') => '\\',
+            Some(b'/') => '/',
+            Some(b'b') => '\u{8}',
+            Some(b'f') => '\u{c}',
+            Some(b'n') => '\n',
+            Some(b'r') => '\r',
+            Some(b't') => '\t',
+            _ => return Err(self.error("an escape")),
+        };
+        self.i += 1;
+        Ok(c)
     }
 
     fn number(&mut self) -> Result<Json, String> {
@@ -341,6 +412,32 @@ mod tests {
 
     fn round_trip(text: &str) -> String {
         Json::parse(text).unwrap_or_else(|e| panic!("{text}: {e}")).to_string()
+    }
+
+    #[test]
+    fn values_read_back_as_they_were_written() {
+        for text in [
+            "null",
+            "true",
+            "false",
+            "0",
+            "-12",
+            "3.25",
+            "1e-7",
+            r#""""#,
+            r#""tab\tquote\"slash\\""#,
+            "[]",
+            "{}",
+            r#"[1,[2,[3]],{"a":null}]"#,
+            r#"{"id":1,"method":"initialize","params":{"rootUri":"file:///a%20b"}}"#,
+        ] {
+            assert_eq!(round_trip(text), text);
+        }
+    }
+
+    #[test]
+    fn space_between_tokens_is_dropped() {
+        assert_eq!(round_trip(" {\n\t\"a\" : [ 1 , 2 ] \r\n} "), r#"{"a":[1,2]}"#);
     }
 
     #[test]
@@ -396,6 +493,7 @@ mod tests {
     #[test]
     fn errors_say_what_was_expected_and_where() {
         assert_eq!(Json::parse("[1 2]").unwrap_err(), "expected , or ] at byte 3");
+        assert_eq!(Json::parse("{\"a\":").unwrap_err(), "expected a value before the end");
     }
 
     #[test]
@@ -405,6 +503,23 @@ mod tests {
         let deep = format!("{}{}", "[".repeat(257), "]".repeat(257));
         assert!(Json::parse(&deep).unwrap_err().starts_with("nested more than 256 deep"));
         assert!(Json::parse(&"[".repeat(100_000)).is_err());
+    }
+
+    #[test]
+    fn lookups_chain_through_missing_parts() {
+        let msg = Json::parse(r#"{"result":{"items":[{"label":"one"}]},"id":7}"#).unwrap();
+        assert_eq!(msg["result"]["items"][0]["label"].as_str(), Some("one"));
+        assert_eq!(msg["id"].as_u64(), Some(7));
+        assert!(msg["error"]["code"].is_null());
+        assert!(msg["result"]["items"][5].is_null());
+        assert!(msg["id"]["x"].is_null(), "a number has no keys");
+        assert_eq!(msg.get("error"), None);
+    }
+
+    #[test]
+    fn a_repeated_key_reads_as_its_last_value() {
+        let obj = Json::parse(r#"{"a":1,"a":2}"#).unwrap();
+        assert_eq!(obj["a"].as_i64(), Some(2));
     }
 
     #[test]
