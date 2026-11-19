@@ -111,6 +111,7 @@ impl App for Tvim {
         for effect in self.editor.take_effects() {
             run_effect(&mut self.editor, effect);
         }
+        self.editor.sync_languages();
         self.settle();
         if self.editor.should_quit() {
             Flow::Quit

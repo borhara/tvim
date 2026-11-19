@@ -16,6 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
+use crate::languages::{Languages, OpenDoc};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -107,6 +108,7 @@ pub struct Options {
     pub tab_preview: bool,
     pub dim: bool,
     pub gitlens: bool,
+    pub lsp: bool,
     pub roomy: bool,
     pub zero_pad: bool,
     pub wrap: bool,
@@ -136,6 +138,7 @@ impl Default for Options {
             tab_preview: false,
             dim: true,
             gitlens: true,
+            lsp: true,
             roomy: true,
             zero_pad: false,
             wrap: false,
@@ -167,6 +170,7 @@ impl Options {
             "tabpreview" | "tp" => ("tabpreview", &mut self.tab_preview),
             "dim" => ("dim", &mut self.dim),
             "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
+            "lsp" => ("lsp", &mut self.lsp),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
@@ -483,6 +487,7 @@ pub struct Editor {
     macro_depth: usize,
     pub(crate) maps: Maps,
     pub(crate) servers: Servers,
+    pub(crate) languages: Languages,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -579,6 +584,7 @@ impl Editor {
             macro_depth: 0,
             maps: Maps::default(),
             servers: Servers::default(),
+            languages: Languages::default(),
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
@@ -1444,6 +1450,35 @@ impl Editor {
             g.refresh();
         }
         self.git_menu_tick();
+        self.sync_languages();
+    }
+
+    // tells the language servers what changed in the open files, and takes in what they found
+    pub fn sync_languages(&mut self) {
+        let mut docs = Vec::new();
+        if self.options.lsp {
+            docs.push(OpenDoc {
+                id: self.buffer_id,
+                path: self.file.path.as_deref(),
+                version: self.version,
+                saved: self.saved,
+                lines: self.buf.lines(),
+                final_newline: self.file.final_newline,
+            });
+            let others = self.docs.iter().enumerate().filter(|&(i, _)| i != self.current);
+            docs.extend(others.map(|(_, d)| OpenDoc {
+                id: d.id,
+                path: d.file.path.as_deref(),
+                version: d.version,
+                saved: d.saved,
+                lines: d.buf.lines(),
+                final_newline: d.file.final_newline,
+            }));
+        }
+        let update = self.languages.update(&docs, &self.servers);
+        if !update.errors.is_empty() {
+            self.error(update.errors.join("; "));
+        }
     }
 
     pub fn wait_for_grep(&mut self) {
