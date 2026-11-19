@@ -16,6 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
+use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::preview::Preview;
@@ -24,6 +25,9 @@ use crate::syntax::{self, State, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::{Node, Win};
 
+mod block;
+pub use block::Block;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Normal,
@@ -31,6 +35,7 @@ pub enum Mode {
     Replace,
     Visual,
     VisualLine,
+    VisualBlock,
     Command,
     Search,
 }
@@ -43,11 +48,12 @@ impl Mode {
             Mode::Replace => "REPLACE",
             Mode::Visual => "VISUAL",
             Mode::VisualLine => "V-LINE",
+            Mode::VisualBlock => "V-BLOCK",
         }
     }
 
     pub fn is_visual(self) -> bool {
-        matches!(self, Mode::Visual | Mode::VisualLine)
+        matches!(self, Mode::Visual | Mode::VisualLine | Mode::VisualBlock)
     }
 }
 
@@ -61,6 +67,8 @@ pub enum Input {
 pub struct Register {
     pub text: String,
     pub linewise: bool,
+    // a block from block visual mode, one line of it per row
+    pub block: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +96,8 @@ pub struct Options {
     pub incremental_search: bool,
     pub auto_indent: bool,
     pub scroll_off: usize,
+    // milliseconds to wait for the rest of a mapping
+    pub timeout_len: usize,
     pub syntax: bool,
     pub cursor_line: bool,
     pub indent_guides: bool,
@@ -98,6 +108,8 @@ pub struct Options {
     pub gitlens: bool,
     pub roomy: bool,
     pub zero_pad: bool,
+    pub wrap: bool,
+    pub linebreak: bool,
 }
 
 impl Default for Options {
@@ -114,6 +126,7 @@ impl Default for Options {
             incremental_search: true,
             auto_indent: true,
             scroll_off: 3,
+            timeout_len: 1000,
             syntax: true,
             cursor_line: true,
             indent_guides: true,
@@ -124,6 +137,8 @@ impl Default for Options {
             gitlens: true,
             roomy: true,
             zero_pad: false,
+            wrap: false,
+            linebreak: false,
         }
     }
 }
@@ -153,6 +168,8 @@ impl Options {
             "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
+            "wrap" => ("wrap", &mut self.wrap),
+            "linebreak" | "lbr" => ("linebreak", &mut self.linebreak),
             _ => return None,
         })
     }
@@ -178,6 +195,18 @@ struct Dot {
     count: Option<usize>,
     register: Option<char>,
     inputs: Vec<Input>,
+    // a change made in visual mode repeats on as much text from the cursor
+    visual: Option<VisualSize>,
+}
+
+/// How much a visual selection held, to select as much again: lines, and either characters
+/// on a single line, the column it ended at on its last line, or a block's width.
+#[derive(Clone, Copy, Debug)]
+struct VisualSize {
+    mode: Mode,
+    lines: usize,
+    cols: usize,
+    to_end: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -188,6 +217,7 @@ struct InsertSession {
     replaced: Vec<Option<char>>,
     auto_indent: Option<usize>,
     register_next: bool,
+    block: Option<block::BlockInsert>,
 }
 
 #[derive(Clone, Debug)]
@@ -384,6 +414,18 @@ impl Text<'_> {
     }
 }
 
+/// What one screen row of a window shows: part of line `row`, from character `col`, which
+/// sits at screen column `left`, for `width` columns. Rows past the end have `row` past it too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Slice {
+    pub row: usize,
+    pub col: usize,
+    pub left: usize,
+    pub width: usize,
+    pub first: bool,
+    pub last: bool,
+}
+
 pub(crate) struct View<'a> {
     pub id: usize,
     pub rect: tinsel::app::Rect,
@@ -438,6 +480,14 @@ pub struct Editor {
     macros: HashMap<char, Vec<Input>>,
     last_macro: Option<char>,
     macro_depth: usize,
+    pub(crate) maps: Maps,
+    // typed keys that may yet be the start of a mapping
+    map_typed: Vec<Key>,
+    map_depth: usize,
+    // above zero while a mapping's keys are fed, which a macro doesn't record
+    from_map: usize,
+    // above zero while keys are fed as they are, past any mapping
+    pub(crate) noremap: usize,
     pub(crate) file: FileInfo,
     pub options: Options,
     pub(crate) top: Cell<usize>,
@@ -525,6 +575,11 @@ impl Editor {
             macros: HashMap::new(),
             last_macro: None,
             macro_depth: 0,
+            maps: Maps::default(),
+            map_typed: Vec::new(),
+            map_depth: 0,
+            from_map: 0,
+            noremap: 0,
             file: FileInfo {
                 final_newline: true,
                 ..FileInfo::default()
@@ -739,7 +794,7 @@ impl Editor {
     }
 
     pub fn selection(&self) -> Option<Range> {
-        self.mode.is_visual().then(|| self.visual_range())
+        (self.mode.is_visual() && self.mode != Mode::VisualBlock).then(|| self.visual_range())
     }
 
     pub fn search_pattern(&self) -> Option<&str> {
@@ -816,6 +871,58 @@ impl Editor {
         self.screen.get().0.saturating_sub(self.gutter() + 1).max(1)
     }
 
+    /// Where a line breaks into screen rows `width` wide: one row unless wrap is on.
+    pub(crate) fn wrapped(&self, line: &str, width: usize) -> Vec<(usize, usize)> {
+        if self.options.wrap {
+            crate::text::wrap_rows(line, width, self.options.tab_stop, self.options.linebreak)
+        } else {
+            vec![(0, 0)]
+        }
+    }
+
+    /// The screen rows of a window `height` high showing `buf` from line `top`.
+    pub(crate) fn slices(&self, buf: &Buffer, top: usize, left: usize, width: usize, height: usize) -> Vec<Slice> {
+        let mut out = Vec::with_capacity(height);
+        let mut row = top;
+        while out.len() < height {
+            if row >= buf.len() {
+                out.push(Slice {
+                    row,
+                    col: 0,
+                    left: 0,
+                    width,
+                    first: true,
+                    last: true,
+                });
+            } else if !self.options.wrap {
+                out.push(Slice {
+                    row,
+                    col: 0,
+                    left,
+                    width,
+                    first: true,
+                    last: true,
+                });
+            } else {
+                let rows = self.wrapped(buf.line(row), width);
+                for (k, &(col, at)) in rows.iter().enumerate() {
+                    let end = rows.get(k + 1).map_or(at + width, |r| r.1);
+                    out.push(Slice {
+                        row,
+                        col,
+                        left: at,
+                        width: (end - at).min(width),
+                        first: k == 0,
+                        last: k + 1 == rows.len(),
+                    });
+                }
+            }
+            row += 1;
+        }
+        out.truncate(height);
+        out
+    }
+
     pub fn top(&self) -> usize {
         self.top.get()
     }
@@ -836,13 +943,27 @@ impl Editor {
         if row < top + so {
             top = row.saturating_sub(so);
         }
-        let below = (row + so).min(self.buf.last_row());
-        if below >= top + rows {
-            top = below + 1 - rows;
+        if self.options.wrap {
+            // the screen rows the cursor's line takes down to the cursor, and the lines below
+            let line = self.buf.line(row);
+            let upto = crate::text::row_holding(&self.wrapped(line, self.text_cols()), self.cursor.col) + 1;
+            let below: usize = (row + 1..=(row + so).min(self.buf.last_row()))
+                .map(|r| self.line_height(r))
+                .sum();
+            top = top.max(self.top_with_above(row, rows.saturating_sub(upto + below)));
+        } else {
+            let below = (row + so).min(self.buf.last_row());
+            if below >= top + rows {
+                top = below + 1 - rows;
+            }
         }
         self.top.set(top);
 
         let cols = self.text_cols();
+        if self.options.wrap {
+            self.left.set(0);
+            return;
+        }
         let line = self.buf.line(row);
         let start = vcol(line, self.cursor.col, self.options.tab_stop);
         let end = vcol(line, self.cursor.col + 1, self.options.tab_stop).max(start + 1);
@@ -856,10 +977,49 @@ impl Editor {
         self.left.set(left);
     }
 
+    /// How many screen rows line `row` takes.
+    pub(crate) fn line_height(&self, row: usize) -> usize {
+        if self.options.wrap {
+            self.wrapped(self.buf.line(row), self.text_cols()).len()
+        } else {
+            1
+        }
+    }
+
+    /// The highest line that can be at the top with no more than `above` screen rows between
+    /// it and line `row`.
+    pub(crate) fn top_with_above(&self, row: usize, above: usize) -> usize {
+        let (mut top, mut used) = (row, 0);
+        while top > 0 && used + self.line_height(top - 1) <= above {
+            top -= 1;
+            used += self.line_height(top);
+        }
+        top
+    }
+
+    /// The last line shown in full with `top` at the top.
+    pub(crate) fn last_shown(&self, top: usize) -> usize {
+        let rows = self.text_rows();
+        let top = top.min(self.buf.last_row());
+        let (mut row, mut used) = (top, self.line_height(top));
+        while row < self.buf.last_row() && used + self.line_height(row + 1) <= rows {
+            row += 1;
+            used += self.line_height(row);
+        }
+        row
+    }
+
     pub fn keys(&mut self, keys: &[Key]) {
         for &k in keys {
             self.key(k);
         }
+    }
+
+    /// Types keys as they are, leaving mappings out.
+    pub fn keys_noremap(&mut self, keys: &[Key]) {
+        self.noremap += 1;
+        self.keys(keys);
+        self.noremap -= 1;
     }
 
     pub fn key(&mut self, key: Key) {
@@ -871,6 +1031,108 @@ impl Editor {
     }
 
     fn input(&mut self, input: Input) {
+        let Input::Key(key) = input else {
+            self.resolve_mappings(true);
+            return self.feed(input);
+        };
+        if self.noremap > 0 || self.replaying || self.maps.is_empty() {
+            return self.feed(Input::Key(key));
+        }
+        self.map_typed.push(key);
+        self.resolve_mappings(false);
+    }
+
+    /// Whether typed keys are being held back in case they start a mapping.
+    pub fn mapping_pending(&self) -> bool {
+        !self.map_typed.is_empty()
+    }
+
+    /// Stops waiting for a longer mapping and runs what the held keys come to.
+    pub fn flush_mapping(&mut self) {
+        self.resolve_mappings(true);
+    }
+
+    fn map_mode(&self) -> Option<MapMode> {
+        let overlay = self.git_menu.is_some() || self.finder.is_some() || self.grep.is_some();
+        if overlay || self.explorer_focused() && self.mode != Mode::Command {
+            return None;
+        }
+        let fresh = crate::command::awaits_command(&self.pending);
+        match self.mode {
+            Mode::Normal if self.previews.contains_key(&self.focus) => None,
+            Mode::Normal if fresh => Some(MapMode::Normal),
+            Mode::Normal if crate::command::awaits_motion(&self.pending) => Some(MapMode::Operator),
+            m if m.is_visual() && fresh => Some(MapMode::Visual),
+            Mode::Insert | Mode::Replace => Some(MapMode::Insert),
+            Mode::Command | Mode::Search => Some(MapMode::Command),
+            _ => None,
+        }
+    }
+
+    // vim's rules, see :h map-typeahead: wait while a longer mapping could match, else take the
+    // longest one that does, else let the first key through as it is
+    fn resolve_mappings(&mut self, timed_out: bool) {
+        while !self.map_typed.is_empty() {
+            let Some(mode) = self.map_mode().filter(|m| self.maps.has_mode(*m)) else {
+                let k = self.map_typed.remove(0);
+                self.feed(Input::Key(k));
+                continue;
+            };
+            let found =
+                match self.maps.lookup(mode, &self.map_typed) {
+                    Lookup::Prefix { .. } if !timed_out => return,
+                    Lookup::Exact(m) | Lookup::Prefix { exact: Some(m) } => Some((self.map_typed.len(), m)),
+                    Lookup::None | Lookup::Prefix { exact: None } => (1..self.map_typed.len()).rev().find_map(|i| {
+                        match self.maps.lookup(mode, &self.map_typed[..i]) {
+                            Lookup::Exact(m) | Lookup::Prefix { exact: Some(m) } => Some((i, m)),
+                            _ => None,
+                        }
+                    }),
+                };
+            match found {
+                Some((used, m)) => {
+                    let rest: Vec<Key> = self.map_typed.drain(used..).collect();
+                    self.map_typed.clear();
+                    self.run_mapping(m);
+                    self.map_typed.extend(rest);
+                }
+                None => {
+                    let k = self.map_typed.remove(0);
+                    self.feed(Input::Key(k));
+                }
+            }
+        }
+    }
+
+    fn run_mapping(&mut self, m: Mapping) {
+        if self.map_depth >= 100 {
+            self.map_typed.clear();
+            return self.error("E223: Recursive mapping");
+        }
+        if self.from_map == 0 && self.macro_depth == 0 && !self.insert_replay {
+            if let Some((_, keys)) = &mut self.recording {
+                keys.extend(m.lhs.iter().map(|&k| Input::Key(k)));
+            }
+        }
+        self.map_depth += 1;
+        self.from_map += 1;
+        // nmap x xp doesn't map its own x again, see :h recursive_mapping
+        let own = if m.rhs.starts_with(&m.lhs) { m.lhs.len() } else { 0 };
+        for (i, &k) in m.rhs.iter().enumerate() {
+            if m.noremap || i < own {
+                self.resolve_mappings(true);
+                self.noremap += 1;
+                self.feed(Input::Key(k));
+                self.noremap -= 1;
+            } else {
+                self.input(Input::Key(k));
+            }
+        }
+        self.from_map -= 1;
+        self.map_depth -= 1;
+    }
+
+    fn feed(&mut self, input: Input) {
         if self.git_menu.is_some() {
             return self.git_menu_input(input);
         }
@@ -894,16 +1156,16 @@ impl Editor {
             return;
         }
         if let Some((_, keys)) = &mut self.recording {
-            if !self.replaying && self.macro_depth == 0 && !self.insert_replay {
+            if !self.replaying && self.macro_depth == 0 && !self.insert_replay && self.from_map == 0 {
                 keys.push(input.clone());
             }
         }
         match self.mode {
-            Mode::Normal | Mode::Visual | Mode::VisualLine => self.normal(input),
+            Mode::Normal | Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.normal(input),
             Mode::Insert | Mode::Replace => self.insert_input(input),
             Mode::Command | Mode::Search => self.cmdline_input(input),
         }
-        if matches!(self.mode, Mode::Normal | Mode::Visual | Mode::VisualLine) && self.pending.is_empty() {
+        if (self.mode == Mode::Normal || self.mode.is_visual()) && self.pending.is_empty() {
             self.end_change();
         }
         self.clamp();
@@ -1484,7 +1746,11 @@ impl Editor {
     }
 
     fn store(&mut self, register: Option<char>, text: String, linewise: bool, yank: bool) {
-        let r = Register { text, linewise };
+        let r = Register {
+            text,
+            linewise,
+            block: false,
+        };
         // @ plays the new text, not an older recording
         if let Some(c) = register.filter(char::is_ascii_alphabetic) {
             self.macros.remove(&c.to_ascii_lowercase());
@@ -1534,9 +1800,13 @@ impl Editor {
                 Some(Register {
                     text: text.strip_suffix('\n').unwrap_or(&text).to_string(),
                     linewise,
+                    block: false,
                 })
             }
-            '/' => self.last_search.clone().map(|text| Register { text, linewise: false }),
+            '/' => self.last_search.clone().map(|text| Register {
+                text,
+                ..Register::default()
+            }),
             c => {
                 let r = self.registers.get(&c.to_ascii_lowercase()).cloned();
                 if r.is_none() {
@@ -1582,7 +1852,19 @@ impl Editor {
             Parse::Done(cmd) => {
                 self.pending.clear();
                 if self.mode.is_visual() {
+                    let change = Self::is_visual_change(&cmd) && !self.replaying;
+                    if change {
+                        self.building = Some(Dot {
+                            count: cmd.count,
+                            register: cmd.register,
+                            inputs: cmd.keys.iter().map(|&k| Input::Key(k)).collect(),
+                            visual: Some(self.visual_size()),
+                        });
+                    }
                     self.run_visual(cmd);
+                    if change && !matches!(self.mode, Mode::Insert | Mode::Replace) {
+                        self.dot = self.building.take();
+                    }
                 } else {
                     self.run(cmd);
                 }
@@ -1600,6 +1882,62 @@ impl Editor {
         }
     }
 
+    // gc repeats as gcc, and so isn't here
+    fn is_visual_change(cmd: &Cmd) -> bool {
+        match cmd.act {
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment),
+            Act::Key(Key::Char(c)) => "xXDsSCRJpPIA".contains(c),
+            Act::Key(Key::Ctrl('a' | 'x')) | Act::With('r', _) => true,
+            _ => false,
+        }
+    }
+
+    fn visual_size(&self) -> VisualSize {
+        let (a, b) = if self.cursor < self.anchor {
+            (self.cursor, self.anchor)
+        } else {
+            (self.anchor, self.cursor)
+        };
+        let lines = b.row - a.row + 1;
+        let (cols, to_end) = match self.mode {
+            Mode::VisualBlock => {
+                let blk = self.block();
+                (blk.right.saturating_sub(blk.left), blk.to_end())
+            }
+            Mode::Visual if lines == 1 => (b.col - a.col + 1, false),
+            Mode::Visual => (b.col, false),
+            _ => (0, false),
+        };
+        VisualSize {
+            mode: self.mode,
+            lines,
+            cols,
+            to_end,
+        }
+    }
+
+    // selects as much as v held, from the cursor
+    fn select_again(&mut self, v: VisualSize) {
+        let ts = self.options.tab_stop;
+        self.anchor = self.cursor;
+        let row = (self.cursor.row + v.lines - 1).min(self.buf.last_row());
+        let last = |e: &Self, row: usize| e.buf.line_len(row).saturating_sub(1);
+        self.cursor = match v.mode {
+            Mode::Visual if v.lines == 1 => Pos::new(row, (self.cursor.col + v.cols - 1).min(last(self, row))),
+            Mode::Visual => Pos::new(row, v.cols.min(last(self, row))),
+            Mode::VisualBlock => {
+                let left = vcol(self.buf.line(self.anchor.row), self.anchor.col, ts);
+                Pos::new(row, col_at(self.buf.line(row), left + v.cols.max(1) - 1, ts))
+            }
+            _ => Pos::new(row, self.cursor.col),
+        };
+        self.mode = v.mode;
+        self.set_want();
+        if v.to_end {
+            self.want = usize::MAX;
+        }
+    }
+
     fn run(&mut self, cmd: Cmd) {
         let change = Self::is_change(&cmd) && !self.replaying;
         if change {
@@ -1607,6 +1945,7 @@ impl Editor {
                 count: cmd.count,
                 register: cmd.register,
                 inputs: cmd.keys.iter().map(|&k| Input::Key(k)).collect(),
+                visual: None,
             });
         }
         let n = cmd.n();
@@ -1881,6 +2220,8 @@ impl Editor {
             Key::Tab if self.jumps.has_newer() => self.jump_newer(n),
             Key::Tab => self.tab_focus(),
             Key::Ctrl('p') => self.find_files(None),
+            // terminals often keep Ctrl-q for themselves
+            Key::Ctrl('v' | 'q') => self.enter_visual(Mode::VisualBlock),
             _ => {}
         }
     }
@@ -1943,10 +2284,22 @@ impl Editor {
         let rows = self.text_rows();
         let so = self.scroll_off();
         let row = self.cursor.row;
-        let top = match key {
-            Key::Char('z' | '.') => row.saturating_sub(rows / 2),
-            Key::Char('t') | Key::Enter => row.saturating_sub(so),
-            _ => (row + so + 1).saturating_sub(rows),
+        let top = if self.options.wrap {
+            let below: usize = (row + 1..=(row + so).min(self.buf.last_row()))
+                .map(|r| self.line_height(r))
+                .sum();
+            let room = rows.saturating_sub(self.line_height(row));
+            match key {
+                Key::Char('z' | '.') => self.top_with_above(row, room / 2),
+                Key::Char('t') | Key::Enter => row.saturating_sub(so),
+                _ => self.top_with_above(row, room.saturating_sub(below)),
+            }
+        } else {
+            match key {
+                Key::Char('z' | '.') => row.saturating_sub(rows / 2),
+                Key::Char('t') | Key::Enter => row.saturating_sub(so),
+                _ => (row + so + 1).saturating_sub(rows),
+            }
         };
         self.top.set(top);
         if matches!(key, Key::Enter | Key::Char('.' | '-')) {
@@ -2004,6 +2357,7 @@ impl Editor {
         self.cursor = to;
         match m {
             Motion::Up | Motion::Down => {}
+            Motion::ScreenUp | Motion::ScreenDown if !self.options.wrap => {}
             Motion::LineEnd => self.want = usize::MAX,
             _ => self.set_want(),
         }
@@ -2015,10 +2369,45 @@ impl Editor {
         }
     }
 
+    // gj and gk on wrapped lines: down or up n screen rows, keeping the place along the row
+    fn screen_row_move(&self, p: Pos, n: usize, down: bool) -> Option<Pos> {
+        let (ts, width) = (self.options.tab_stop, self.text_cols());
+        let rows_of = |row: usize| self.wrapped(self.buf.line(row), width);
+        let mut rows = rows_of(p.row);
+        let mut seg = crate::text::row_holding(&rows, p.col);
+        let along = vcol(self.buf.line(p.row), p.col, ts) - rows[seg].1;
+        let (mut row, start) = (p.row, (p.row, seg));
+        for _ in 0..n {
+            if down && seg + 1 < rows.len() {
+                seg += 1;
+            } else if down && row < self.buf.last_row() {
+                row += 1;
+                rows = rows_of(row);
+                seg = 0;
+            } else if !down && seg > 0 {
+                seg -= 1;
+            } else if !down && row > 0 {
+                row -= 1;
+                rows = rows_of(row);
+                seg = rows.len() - 1;
+            }
+        }
+        if (row, seg) == start {
+            return None;
+        }
+        let line = self.buf.line(row);
+        let col = col_at(line, rows[seg].1 + along, ts);
+        // short of the next row's first character, and of the end in normal mode
+        let end = rows
+            .get(seg + 1)
+            .map_or(self.max_col(char_count(line)), |r| r.0.saturating_sub(1));
+        Some(Pos::new(row, col.min(end).max(rows[seg].0)))
+    }
+
     // searches always glow; other jumps only when they leave the screen
     pub(crate) fn land(&self, search: bool) {
         let top = self.top.get();
-        if search || !(top..top + self.text_rows()).contains(&self.cursor.row) {
+        if search || !(top..=self.last_shown(top)).contains(&self.cursor.row) {
             self.anim.land();
         }
     }
@@ -2065,6 +2454,15 @@ impl Editor {
                 let row = p.row.saturating_sub(n);
                 (Pos::new(row, self.col_for_want(row)), Linewise)
             }
+            Motion::ScreenUp | Motion::ScreenDown if !self.options.wrap => {
+                let line_wise = if m == Motion::ScreenUp {
+                    Motion::Up
+                } else {
+                    Motion::Down
+                };
+                return self.target(line_wise, count, for_op);
+            }
+            Motion::ScreenUp | Motion::ScreenDown => (self.screen_row_move(p, n, m == Motion::ScreenDown)?, Exclusive),
             Motion::Down => {
                 if p.row >= b.last_row() {
                     return None;
@@ -2185,8 +2583,7 @@ impl Editor {
             }
             Motion::ScreenTop | Motion::ScreenMiddle | Motion::ScreenBottom => {
                 let top = self.top.get();
-                let rows = self.text_rows();
-                let bottom = (top + rows - 1).min(b.last_row());
+                let bottom = self.last_shown(top);
                 let so = self.scroll_off();
                 let row = match m {
                     Motion::ScreenTop => {
@@ -2500,13 +2897,16 @@ impl Editor {
     fn put(&mut self, register: Option<char>, count: usize, before: bool) {
         let Some(r) = self.fetch(register) else { return };
         let end = self.put_register(&r, count, before);
-        if !r.linewise && !r.text.contains('\n') {
+        if !r.linewise && !r.block && !r.text.contains('\n') {
             self.cursor = Pos::new(end.row, end.col.saturating_sub(1));
         }
         self.set_want();
     }
 
     fn put_register(&mut self, r: &Register, count: usize, before: bool) -> Pos {
+        if r.block {
+            return self.put_block(r, count, before);
+        }
         self.touch();
         if r.linewise {
             let mut lines = Vec::new();
@@ -2647,6 +3047,9 @@ impl Editor {
         inputs.extend(dot.inputs.iter().cloned());
         self.replaying = true;
         self.end_change();
+        if let Some(v) = dot.visual {
+            self.select_again(v);
+        }
         for i in inputs {
             self.input(i);
         }
@@ -2731,7 +3134,13 @@ impl Editor {
             }
             let name = name.to_ascii_lowercase();
             if name.is_ascii_alphabetic() {
-                self.registers.insert(name, Register { text, linewise: false });
+                self.registers.insert(
+                    name,
+                    Register {
+                        text,
+                        ..Register::default()
+                    },
+                );
             }
             self.macros.insert(name, keys);
         }
@@ -3189,6 +3598,7 @@ impl Editor {
 
     fn leave_insert(&mut self) {
         self.completion = None;
+        self.finish_block_insert();
         let count = self.insert.count;
         if count > 1 && !self.insert_replay {
             let typed = std::mem::take(&mut self.insert.typed);
@@ -3251,6 +3661,16 @@ impl Editor {
         if self.mode == Mode::VisualLine {
             return Range::lines(a.row, b.row);
         }
+        if self.mode == Mode::VisualBlock {
+            let blk = self.block();
+            let (from, _) = self.block_cols(blk.top, &blk);
+            let (_, to) = self.block_cols(blk.bottom, &blk);
+            return Range {
+                start: Pos::new(blk.top, from),
+                end: Pos::new(blk.bottom, to),
+                linewise: false,
+            };
+        }
         let len = self.buf.line_len(b.row);
         let end = if len == 0 && b.row < self.buf.last_row() {
             Pos::new(b.row + 1, 0)
@@ -3266,6 +3686,9 @@ impl Editor {
 
     fn run_visual(&mut self, cmd: Cmd) {
         let n = cmd.n();
+        if self.mode == Mode::VisualBlock && self.run_block(&cmd) {
+            return;
+        }
         match cmd.act {
             Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::Select { kind, inner } => {
@@ -3298,10 +3721,12 @@ impl Editor {
                         count: Some(r.last_row() - r.start.row + 1),
                         register: None,
                         inputs: crate::keys::parse("gcc").into_iter().map(Input::Key).collect(),
+                        visual: None,
                     });
                 }
             }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
+            Act::Key(Key::Ctrl('v' | 'q')) => self.switch_visual(Mode::VisualBlock),
             Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {
                 let r = self.visual_range();
                 self.leave_visual();
@@ -3336,18 +3761,21 @@ impl Editor {
         }
     }
 
+    // v in visual mode leaves it, V switches to lines, and so on
+    fn switch_visual(&mut self, want: Mode) {
+        if self.mode == want {
+            self.leave_visual();
+        } else {
+            self.mode = want;
+        }
+    }
+
     fn visual_key(&mut self, c: char, register: Option<char>, n: usize) {
         let r = self.visual_range();
         let lines = Range::lines(r.start.row, r.last_row());
         match c {
-            'v' | 'V' => {
-                let want = if c == 'v' { Mode::Visual } else { Mode::VisualLine };
-                if self.mode == want {
-                    self.leave_visual();
-                } else {
-                    self.mode = want;
-                }
-            }
+            'v' => self.switch_visual(Mode::Visual),
+            'V' => self.switch_visual(Mode::VisualLine),
             'o' | 'O' => std::mem::swap(&mut self.anchor, &mut self.cursor),
             'x' => {
                 self.leave_visual();
