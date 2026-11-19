@@ -279,3 +279,28 @@ fn some_commands_take_the_bar_as_it_is() {
         "and so is <Bar>"
     );
 }
+
+#[test]
+fn choosing_language_servers() {
+    let mut e = ed("");
+    let said = |e: &tvim::Editor| e.message().map(|m| m.text.clone());
+    e.ex("lsp");
+    assert_eq!(said(&e).as_deref(), Some("no language server for this file"));
+    e.ex("lsp rust");
+    assert_eq!(said(&e).as_deref(), Some("rust: rust-analyzer"));
+    e.ex("lsp rust my-server --stdio");
+    assert_eq!(said(&e), None, "set quietly, as :set is");
+    e.ex("lsp rust");
+    assert_eq!(said(&e).as_deref(), Some("rust: my-server --stdio"));
+    e.ex("lsp cobol x");
+    assert!(e.message().unwrap().error);
+
+    let dir = temp("lsp-project");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("Cargo.toml"), "").unwrap();
+    e.ex(&format!("e {}", dir.join("src/main.rs").display()));
+    e.ex("lsp");
+    let text = said(&e).unwrap();
+    assert!(text.starts_with("rust: my-server --stdio in "), "{text}");
+    assert!(text.ends_with("lsp-project"), "the folder with Cargo.toml: {text}");
+}
