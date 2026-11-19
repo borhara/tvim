@@ -1,19 +1,40 @@
 //! Talking to a language server: a child process exchanging JSON-RPC messages over its
 //! stdin and stdout, each one a Content-Length header and a JSON body.
 
-use std::io::{self, BufRead, BufWriter, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
+
+use tinsel::app::Waker;
 
 use crate::json::Json;
 
 // bigger than any real message, small enough that a garbled header can't exhaust memory
 const MAX_MESSAGE: usize = 64 << 20;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResponseError {
+    pub code: i64,
+    pub message: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Incoming {
+    Reply {
+        id: i64,
+        result: Result<Json, ResponseError>,
+    },
+    Notice {
+        method: String,
+        params: Json,
+    },
+}
+
 pub struct Server {
     child: Option<Child>,
     outgoing: Sender<Json>,
+    incoming: Receiver<Json>,
     next_id: i64,
 }
 
@@ -23,22 +44,26 @@ impl Server {
             .args(args)
             .current_dir(root)
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()?;
         let input = child.stdin.take().expect("stdin is piped");
-        let mut server = Server::connect(input);
+        let output = child.stdout.take().expect("stdout is piped");
+        let mut server = Server::connect(output, input);
         server.child = Some(child);
         Ok(server)
     }
 
-    fn connect(to: impl Write + Send + 'static) -> Server {
+    fn connect(from: impl Read + Send + 'static, to: impl Write + Send + 'static) -> Server {
         let (outgoing, to_server) = mpsc::channel();
-        // writing has a thread of its own, so a server slow to read never stalls the editor
+        let (from_server, incoming) = mpsc::channel();
+        // writing gets its own thread too, so a server slow to read never stalls the editor
         std::thread::spawn(move || write_all(to, to_server));
+        std::thread::spawn(move || read_all(from, from_server, Waker::new()));
         Server {
             child: None,
             outgoing,
+            incoming,
             next_id: 1,
         }
     }
@@ -55,9 +80,46 @@ impl Server {
         self.write(message(None, method, params));
     }
 
+    // what has arrived since last time, one at a time; None once there's nothing waiting
+    pub fn poll(&mut self) -> Option<Incoming> {
+        loop {
+            match self.incoming.try_recv() {
+                Ok(msg) => {
+                    if let Some(incoming) = self.receive(msg) {
+                        return Some(incoming);
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+
     fn write(&self, msg: Json) {
         // a closed channel means the server has gone, and there's nothing to do about it here
         let _ = self.outgoing.send(msg);
+    }
+
+    fn receive(&mut self, msg: Json) -> Option<Incoming> {
+        match (msg["method"].as_str(), msg.get("id")) {
+            // requests from the server aren't handled yet
+            (Some(_), Some(_)) => None,
+            (Some(method), None) => Some(Incoming::Notice {
+                method: method.to_string(),
+                params: msg["params"].clone(),
+            }),
+            (None, Some(id)) => {
+                let id = id.as_i64()?;
+                let result = match msg.get("error") {
+                    Some(e) => Err(ResponseError {
+                        code: e["code"].as_i64().unwrap_or(0),
+                        message: e["message"].as_str().unwrap_or("").to_string(),
+                    }),
+                    None => Ok(msg["result"].clone()),
+                };
+                Some(Incoming::Reply { id, result })
+            }
+            (None, None) => None,
+        }
     }
 }
 
@@ -80,6 +142,20 @@ fn write_all(to: impl Write, outgoing: Receiver<Json>) {
         if write_message(&mut to, &msg).is_err() {
             return;
         }
+    }
+}
+
+fn read_all(from: impl Read, incoming: Sender<Json>, waker: Waker) {
+    let mut from = BufReader::new(from);
+    // a body that isn't JSON is skipped, but a broken frame loses our place, so it ends things
+    while let Ok(Some(body)) = read_message(&mut from) {
+        let Some(msg) = std::str::from_utf8(&body).ok().and_then(|s| Json::parse(s).ok()) else {
+            continue;
+        };
+        if incoming.send(msg).is_err() {
+            return;
+        }
+        waker.wake();
     }
 }
 
@@ -193,7 +269,7 @@ fn decode(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufReader, Read};
+    use std::time::{Duration, Instant};
 
     // one end of an in-memory pipe each way, standing in for a server process
     struct PipeIn {
@@ -243,6 +319,7 @@ mod tests {
     // the server's side of the conversation
     struct Fake {
         from: BufReader<PipeIn>,
+        to: PipeOut,
     }
 
     impl Fake {
@@ -250,15 +327,36 @@ mod tests {
             let body = read_message(&mut self.from).unwrap()?;
             Some(Json::parse(std::str::from_utf8(&body).unwrap()).unwrap())
         }
+
+        fn send(&mut self, text: &str) {
+            write_message(&mut self.to, &Json::parse(text).unwrap()).unwrap();
+        }
     }
 
     fn connected() -> (Server, Fake) {
         let (to_server, server_in) = pipe();
-        let server = Server::connect(to_server);
+        let (server_out, from_server) = pipe();
+        let server = Server::connect(from_server, to_server);
         let fake = Fake {
             from: BufReader::new(server_in),
+            to: server_out,
         };
         (server, fake)
+    }
+
+    fn next(server: &mut Server) -> Incoming {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(incoming) = server.poll() {
+                return incoming;
+            }
+            assert!(Instant::now() < deadline, "nothing arrived");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    fn framed(body: &str) -> String {
+        format!("Content-Length: {}\r\n\r\n{body}", body.len())
     }
 
     #[test]
@@ -308,6 +406,61 @@ mod tests {
         let sent = fake.recv().unwrap().to_string();
         assert_eq!(sent, r#"{"jsonrpc":"2.0","method":"n"}"#, "no params rather than null");
         assert_eq!(fake.recv().unwrap()["id"].as_i64(), Some(b));
+    }
+
+    #[test]
+    fn replies_and_notices_arrive_in_order() {
+        let (mut server, mut fake) = connected();
+        let a = server.request("a", Json::Null);
+        let b = server.request("b", Json::Null);
+        fake.recv().unwrap();
+        fake.recv().unwrap();
+
+        fake.send(r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"hi"}}"#);
+        fake.send(&format!(r#"{{"jsonrpc":"2.0","id":{a},"result":null}}"#));
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":{b},"error":{{"code":-32800,"message":"cancelled"}}}}"#
+        ));
+        let params = Json::object([("message", "hi".into())]);
+        assert_eq!(
+            next(&mut server),
+            Incoming::Notice {
+                method: "window/logMessage".into(),
+                params
+            }
+        );
+        assert_eq!(
+            next(&mut server),
+            Incoming::Reply {
+                id: a,
+                result: Ok(Json::Null)
+            }
+        );
+        let error = ResponseError {
+            code: -32800,
+            message: "cancelled".into(),
+        };
+        assert_eq!(
+            next(&mut server),
+            Incoming::Reply {
+                id: b,
+                result: Err(error)
+            }
+        );
+    }
+
+    #[test]
+    fn garbage_between_messages_is_skipped() {
+        let (mut server, mut fake) = connected();
+        fake.to.write_all(framed("not json").as_bytes()).unwrap();
+        fake.send(r#"{"jsonrpc":"2.0","method":"ping"}"#);
+        assert_eq!(
+            next(&mut server),
+            Incoming::Notice {
+                method: "ping".into(),
+                params: Json::Null
+            }
+        );
     }
 
     #[test]
