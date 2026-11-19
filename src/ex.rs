@@ -1,6 +1,6 @@
 use crate::buffer::Pos;
 use crate::command::Op;
-use crate::editor::{Editor, Effect, Range, expand_home};
+use crate::editor::{Editor, Effect, Range, expand_home, listed};
 use crate::mapping::{self, MapMode, Mapping};
 use crate::regex::{Regex, Span};
 
@@ -171,6 +171,8 @@ impl Editor {
             self.toggle_preview();
         } else if is("git", 3) || is("Git", 3) {
             self.open_git_menu(non_empty(arg));
+        } else if is("lsp", 3) {
+            self.lsp_ex(arg);
         } else if is("recent", 3) {
             self.pick_recent();
         } else if is("zen", 3) {
@@ -595,6 +597,29 @@ impl Editor {
         let (_, flag) = self.options.flag_mut(name).ok_or_else(unknown)?;
         *flag = how.unwrap_or(!*flag);
         Ok(())
+    }
+
+    // :lsp says which server this file gets, :lsp rust which command runs, and
+    // :lsp rust {command} or :lsp rust off changes it
+    fn lsp_ex(&mut self, arg: &str) {
+        let (name, command) = arg.split_once(char::is_whitespace).unwrap_or((arg, ""));
+        let shown = match (name, command.trim()) {
+            ("", _) => Ok(Some(self.server_for_file())),
+            (name, "") => self.servers.describe(name).map(Some),
+            (name, command) => self.servers.set(name, command).map(|()| None),
+        };
+        match shown {
+            Ok(Some(text)) => self.info(text),
+            Ok(None) => {}
+            Err(e) => self.error(e),
+        }
+    }
+
+    fn server_for_file(&self) -> String {
+        match self.file.path.as_deref().and_then(|p| self.servers.for_file(p)) {
+            Some(c) => format!("{}: {} in {}", c.name, c.command.join(" "), listed(&c.root)),
+            None => "no language server for this file".to_string(),
+        }
     }
 
     fn map_ex(&mut self, modes: &[MapMode], kind: MapKind, arg: &str) {
