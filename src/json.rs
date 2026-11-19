@@ -361,6 +361,10 @@ impl Parser<'_> {
     // just after the backslash
     fn escape(&mut self) -> Result<char, String> {
         let c = match self.bytes.get(self.i) {
+            Some(b'u') => {
+                self.i += 1;
+                return self.unicode();
+            }
             Some(b'"') => '"',
             Some(b'\\') => '\\',
             Some(b'/') => '/',
@@ -373,6 +377,38 @@ impl Parser<'_> {
         };
         self.i += 1;
         Ok(c)
+    }
+
+    // the hex after \u, joining a surrogate pair into the character it stands for;
+    // a String can't hold half a pair, so an unpaired one becomes U+FFFD
+    fn unicode(&mut self) -> Result<char, String> {
+        let high = self.hex4()?;
+        if !(0xd800..0xdc00).contains(&high) {
+            return Ok(char::from_u32(high).unwrap_or(char::REPLACEMENT_CHARACTER));
+        }
+        if self.bytes[self.i..].starts_with(b"\\u") {
+            let back = self.i;
+            self.i += 2;
+            let low = self.hex4()?;
+            if (0xdc00..0xe000).contains(&low) {
+                let c = 0x10000 + ((high - 0xd800) << 10) + (low - 0xdc00);
+                return Ok(char::from_u32(c).unwrap_or(char::REPLACEMENT_CHARACTER));
+            }
+            // not the other half, so leave it to be read as an escape of its own
+            self.i = back;
+        }
+        Ok(char::REPLACEMENT_CHARACTER)
+    }
+
+    fn hex4(&mut self) -> Result<u32, String> {
+        let n = self
+            .text
+            .get(self.i..self.i + 4)
+            .filter(|d| d.bytes().all(|b| b.is_ascii_hexdigit()))
+            .and_then(|d| u32::from_str_radix(d, 16).ok())
+            .ok_or_else(|| self.error("four hex digits"))?;
+        self.i += 4;
+        Ok(n)
     }
 
     fn number(&mut self) -> Result<Json, String> {
@@ -455,9 +491,32 @@ mod tests {
     }
 
     #[test]
+    fn escapes_and_unicode() {
+        let s = Json::parse(r#""\/\b\f\n\r\u00e9\u20AC""#).unwrap();
+        assert_eq!(s.as_str(), Some("/\u{8}\u{c}\n\ré€"));
+        let pair = Json::parse(r#""\ud83d\ude00""#).unwrap();
+        assert_eq!(pair.as_str(), Some("😀"));
+        assert_eq!(
+            Json::parse(r#""é😀""#).unwrap().as_str(),
+            Some("é😀"),
+            "raw UTF-8 passes through"
+        );
+    }
+
+    #[test]
+    fn an_unpaired_surrogate_becomes_a_replacement_character() {
+        let s = |text| Json::parse(text).unwrap().as_str().unwrap().to_string();
+        assert_eq!(s(r#""\ud83dx""#), "\u{fffd}x");
+        assert_eq!(s(r#""\ude00""#), "\u{fffd}");
+        assert_eq!(s(r#""\ud83d\n""#), "\u{fffd}\n", "the next escape is still read");
+        assert_eq!(s(r#""\ud83d\ud83d\ude00""#), "\u{fffd}😀");
+    }
+
+    #[test]
     fn control_characters_are_escaped_when_written() {
         let s = Json::String("a\u{1}b\u{1f}\"\n".into());
         assert_eq!(s.to_string(), r#""a\u0001b\u001f\"\n""#);
+        assert_eq!(Json::parse(&s.to_string()).unwrap(), s);
     }
 
     #[test]
