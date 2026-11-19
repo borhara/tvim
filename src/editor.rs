@@ -329,6 +329,7 @@ fn line_hash(line: &str) -> u64 {
 }
 
 pub(crate) struct Text<'a> {
+    pub id: usize,
     pub buf: &'a Buffer,
     pub path: Option<&'a Path>,
     pub modified: bool,
@@ -721,6 +722,7 @@ impl Editor {
 
     pub(crate) fn shown_text(&self) -> Text<'_> {
         Text {
+            id: self.buffer_id,
             buf: &self.buf,
             path: self.file.path.as_deref(),
             modified: self.is_modified(),
@@ -735,6 +737,7 @@ impl Editor {
     pub(crate) fn text_of(&self, id: usize) -> Text<'_> {
         match self.buffer_at(id).map(|i| &self.docs[i]) {
             Some(d) if id != self.buffer_id => Text {
+                id: d.id,
                 buf: &d.buf,
                 path: d.file.path.as_deref(),
                 modified: d.modified(),
@@ -1483,6 +1486,15 @@ impl Editor {
 
     pub(crate) fn problems(&self, buffer: usize) -> &[Problem] {
         self.languages.problems(buffer)
+    }
+
+    // the worst problem on the cursor's line
+    pub fn problem_here(&self) -> Option<&Problem> {
+        let row = self.cursor.row;
+        self.problems(self.buffer_id)
+            .iter()
+            .filter(|p| (p.start.row..=p.end.row).contains(&row))
+            .min_by_key(|p| p.severity)
     }
 
     pub fn wait_for_grep(&mut self) {
@@ -4697,6 +4709,20 @@ mod tests {
         assert_eq!(e.cursor(), Pos::new(1, 4));
         e.keys(&parse("``"));
         assert_eq!(e.cursor(), Pos::new(4, 3), "a jump, so `` goes back");
+    }
+
+    #[test]
+    fn the_worst_problem_on_the_line_is_the_one_shown() {
+        let found = vec![
+            problem((0, 0), (0, 1), Severity::Hint, "hint"),
+            problem((0, 2), (1, 1), Severity::Warning, "spans two lines"),
+        ];
+        let mut e = with_problems("ab cd\nef\ngh", found);
+        assert_eq!(e.problem_here().unwrap().message, "spans two lines");
+        e.keys(&parse("j"));
+        assert_eq!(e.problem_here().unwrap().message, "spans two lines");
+        e.keys(&parse("j"));
+        assert_eq!(e.problem_here(), None);
     }
 
     #[test]
