@@ -115,3 +115,29 @@ fn at_at_repeats_at_colon() {
     e.keys(&parse(":s/a/b/<CR>j@:j@@"));
     assert_eq!(e.text(), "\nb\nb\na");
 }
+
+#[test]
+fn visual_changes_repeat_on_as_much_text() {
+    assert_eq!(t("abcdef", "vld."), "ef", "two characters, then two more");
+    assert_eq!(t("a\nb\nc\nd\ne", "Vjdj."), "c", "two lines, then two more");
+    assert_eq!(t("a\nb\nc\nd", "Vj>jj."), "    a\n    b\n    c\n    d");
+    assert_eq!(t("abcd efgh", "vlUw."), "ABcd EFgh");
+    assert_eq!(t("one two", "vecX<Esc>w."), "X X", "a change repeats what was typed");
+    assert_eq!(t("abc abc", "vlrxw."), "xxc xxc");
+    assert_eq!(
+        t("abcd\nefgh\nijkl\nmnop", "<C-v>jldjj."),
+        "cd\ngh\nkl\nop",
+        "a block of the same size"
+    );
+    assert_eq!(t("ab\ncd\nef", "<C-v>jI-<Esc>jj0."), "-ab\n-cd\n-ef");
+    assert_eq!(
+        t("abc\ndef\nghi", "vjd."),
+        "hi",
+        "down to the same column on the last line"
+    );
+}
+
+#[test]
+fn yanking_in_visual_mode_leaves_dot_alone() {
+    assert_eq!(t("a b c", "dwvy."), "c");
+}

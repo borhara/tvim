@@ -39,6 +39,12 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("registers", "reg", "show registers"),
     ("marks", "", "show marks"),
     ("normal", "norm", "run keys on each line"),
+    ("nnoremap", "nn", "map keys in normal mode"),
+    ("xnoremap", "xn", "map keys in visual mode"),
+    ("inoremap", "ino", "map keys in insert mode"),
+    ("onoremap", "ono", "map keys after an operator"),
+    ("map", "", "map keys, or list mappings"),
+    ("unmap", "unm", "remove a mapping"),
     ("undo", "u", "undo"),
     ("redo", "red", "redo"),
     ("shell", "sh", "open a shell"),
@@ -65,6 +71,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("autoindent", "", "new lines keep the indent"),
     ("autopairs", "", "brackets and quotes close themselves"),
     ("scrolloff", "=", "lines kept around the cursor"),
+    ("timeoutlen", "=", "milliseconds to wait for the rest of a mapping"),
     ("smooth", "", "glide when the view jumps"),
     ("tabpreview", "", "tab moves into the markdown preview"),
     ("dim", "", "fade whichever of text and sidebar is not in use"),
@@ -75,6 +82,8 @@ const OPTIONS: &[(&str, &str, &str)] = &[
         "a twinkling row under the top line and a blank one above the stars",
     ),
     ("zeropad", "", "line numbers start with zeros, as in 01"),
+    ("wrap", "", "long lines carry on below"),
+    ("linebreak", "", "wrap between words"),
 ];
 
 fn option_value(name: &str, o: &Options) -> String {
@@ -82,6 +91,7 @@ fn option_value(name: &str, o: &Options) -> String {
         "tabstop" => o.tab_stop.to_string(),
         "shiftwidth" => o.shift_width.to_string(),
         "scrolloff" => o.scroll_off.to_string(),
+        "timeoutlen" => o.timeout_len.to_string(),
         _ => o
             .flag(name)
             .map_or_else(String::new, |on| if on { "on" } else { "off" }.to_string()),

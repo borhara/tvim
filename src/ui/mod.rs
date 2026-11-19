@@ -28,6 +28,8 @@ pub struct Tvim {
     pub editor: Editor,
     toasts: Toasts,
     pending_since: Option<f64>,
+    // when keys started waiting for the rest of a mapping
+    map_since: Option<f64>,
 }
 
 impl Tvim {
@@ -36,6 +38,7 @@ impl Tvim {
             editor,
             toasts: Toasts::new().life(3.0),
             pending_since: None,
+            map_since: None,
         }
     }
 
@@ -44,6 +47,11 @@ impl Tvim {
             (true, _) => None,
             (false, None) => Some(app::time()),
             (false, since) => since,
+        };
+        self.map_since = match (self.editor.mapping_pending(), self.map_since) {
+            (false, _) => None,
+            (true, None) => Some(app::time()),
+            (true, since) => since,
         };
         let written = self
             .editor
@@ -57,8 +65,18 @@ impl Tvim {
     }
 }
 
+impl Tvim {
+    fn map_due(&self) -> Option<f64> {
+        self.map_since
+            .map(|since| since + self.editor.options.timeout_len as f64 / 1000.0)
+    }
+}
+
 impl App for Tvim {
     fn view(&self, frame: &mut Frame) {
+        if let Some(due) = self.map_due() {
+            frame.redraw_at(due);
+        }
         let hints = self.pending_since.is_some_and(|t| frame.time() - t >= HINT_DELAY);
         if let Some(t) = self.pending_since.filter(|_| !hints) {
             frame.redraw_at(t + HINT_DELAY);
@@ -81,6 +99,9 @@ impl App for Tvim {
                 self.editor.key(k);
             }
             Event::Paste(text) => self.editor.paste(text),
+            Event::Wake | Event::Tick if self.map_due().is_some_and(|due| app::time() >= due) => {
+                self.editor.flush_mapping();
+            }
             Event::Wake | Event::Tick => {
                 self.editor.tick();
                 return Flow::Continue;
@@ -293,7 +314,7 @@ fn mode_color(mode: Mode) -> Rgb {
         Mode::Command | Mode::Search => palette::BLUSH,
         Mode::Insert => palette::SAGE,
         Mode::Replace => palette::RED,
-        Mode::Visual | Mode::VisualLine => palette::AMBER,
+        Mode::Visual | Mode::VisualLine | Mode::VisualBlock => palette::AMBER,
     }
 }
 
@@ -546,9 +567,14 @@ fn text_cursor(e: &Editor, mode: Mode, body: Rect) -> Option<(usize, usize, Curs
         Mode::Replace => CursorShape::Underline,
         _ => CursorShape::Block,
     };
-    let row = p.row.checked_sub(e.anim.shown()).filter(|r| *r < body.height)?;
-    let x = col.checked_sub(e.left()).filter(|x| *x < body.width)?;
-    Some((body.x + x, body.y + row, shape))
+    let slices = e.slices(e.buffer(), e.anim.shown(), e.left(), body.width, body.height);
+    let mut row = slices.iter().rposition(|s| s.row == p.row && s.col <= p.col)?;
+    let mut x = col.checked_sub(slices[row].left)?;
+    // the end of a full wrapped row is the start of the one under it
+    if e.options.wrap && x >= body.width {
+        (row, x) = (row + 1, 0);
+    }
+    (row < body.height && x < body.width).then_some((body.x + x, body.y + row, shape))
 }
 
 fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: bool, scrollbar: bool) -> Rect {
@@ -866,6 +892,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let time = frame.time();
     let mode = if active { e.mode() } else { Mode::Normal };
     let selection = e.selection().filter(|_| active);
+    let block = e.block_selection().filter(|_| active);
     let pattern = e.search_pattern();
     let marks = v.text.change_marks();
     let word = (mode == Mode::Normal && focused)
@@ -891,8 +918,12 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     }
 
     let mut sky_from = None;
-    for i in 0..body.height {
-        let row = top + i;
+    for (i, slice) in e
+        .slices(buf, top, left, body.width, body.height)
+        .into_iter()
+        .enumerate()
+    {
+        let row = slice.row;
         let y = body.y + i;
         if row >= buf.len() {
             // sky starts a row past the end
@@ -901,6 +932,8 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             }
             continue;
         }
+        // a wrapped line's later rows show it from further along
+        let (left, width) = (slice.left, slice.width);
         let line = buf.line(row);
         let on_cursor = row == cursor.row;
 
@@ -917,7 +950,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
                 mix(c.app, accent, glow + band),
             );
         }
-        if gutter.width > 4 {
+        if gutter.width > 4 && slice.first {
             let width = gutter.width - 4;
             let n = if e.options.relative_number && !on_cursor {
                 row.abs_diff(cursor.row)
@@ -956,13 +989,21 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         let tint = |frame: &mut Frame, from: usize, to: usize, color: Rgb| {
             let a = vcol(line, from, ts);
             let b = vcol(line, to, ts).max(a + 1);
-            let (a, b) = (a.max(left) - left, b.saturating_sub(left).min(body.width));
+            let (a, b) = (a.max(left) - left, b.saturating_sub(left).min(width));
             if a < b {
                 frame.tint(Rect::new(body.x + a, y, b - a, 1), color);
             }
         };
         if let Some((from, to)) = selection.and_then(|sel| selected_cols(&sel, row, char_count(line))) {
             tint(frame, from, to, c.selection);
+        }
+        if let Some(b) = block.filter(|b| (b.top..=b.bottom).contains(&row)) {
+            // the block's columns, as far as the line reaches
+            let end = b.right.min(vcol(line, char_count(line), ts));
+            let (a, z) = (b.left.max(left) - left, end.saturating_sub(left).min(width));
+            if a < z {
+                frame.tint(Rect::new(body.x + a, y, z - a, 1), c.selection);
+            }
         }
         if let Some(pat) = pattern {
             for (from, to) in e.matches_in(line, pat) {
@@ -990,17 +1031,17 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
 
         let kinds = v.text.highlight(row, e.options.syntax);
         let shown = styled_line(line, kinds.as_deref(), ts, c);
-        frame.print_from(Rect::new(body.x, y, body.width, 1), 0, &shown, left);
+        frame.print_from(Rect::new(body.x, y, width, 1), 0, &shown, left);
 
         if colored {
-            tab_arrows(frame, Rect::new(body.x, y, body.width, 1), line, left, ts, c.guide);
+            tab_arrows(frame, Rect::new(body.x, y, width, 1), line, left, ts, c.guide);
         }
 
-        if guides {
+        if guides && slice.first {
             let width = resolved_indent(buf, ts, row);
             let mut col = 0;
             while col < width {
-                if col >= left && col - left < body.width {
+                if col >= left && col - left < width {
                     let in_scope = scope.is_some_and(|(sc, t, b)| sc == col && row >= t && row <= b);
                     let color = if in_scope { mix(c.app, accent, 0.45) } else { c.guide };
                     let shown = if on_cursor && bar == Some(col) {
@@ -1014,7 +1055,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             }
         }
 
-        if let Some(text) = lens.as_deref().filter(|_| on_cursor) {
+        if let Some(text) = lens.as_deref().filter(|_| on_cursor && slice.last) {
             draw_lens(e, frame, Rect::new(body.x, y, body.width, 1), line, left, text, c);
         }
     }

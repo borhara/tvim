@@ -1,12 +1,54 @@
 use crate::buffer::Pos;
 use crate::command::Op;
 use crate::editor::{Editor, Effect, Range, expand_home};
+use crate::mapping::{self, MapMode, Mapping};
 use crate::regex::{Regex, Span};
 
 type Lines = (usize, usize);
 
 impl Editor {
     pub fn ex(&mut self, line: &str) {
+        let line = line.trim_start_matches([' ', ':']);
+        let Some((first, rest)) = self.split_bar(line) else {
+            return self.ex_one(line);
+        };
+        self.ex_one(&first);
+        // an error stops the commands after it
+        let stop = self.message.as_ref().is_some_and(|m| m.error) || self.should_quit();
+        if !stop && !rest.trim().is_empty() {
+            self.ex(rest);
+        }
+    }
+
+    /// Splits `a | b` at its first `|`, unless the command takes the rest of the line as it
+    /// is, as :s does for patterns such as (a|b). `\|` is a `|` that doesn't split.
+    fn split_bar<'a>(&self, line: &'a str) -> Option<(String, &'a str)> {
+        let after = self.parse_range(line).map_or(line, |(_, rest)| rest).trim_start();
+        let name = &after[..after.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(after.len())];
+        let whole = after.starts_with('!')
+            || name == "s"
+            || name.len() >= 2 && "substitute".starts_with(name)
+            || name.len() >= 4 && "normal".starts_with(name);
+        if whole {
+            return None;
+        }
+        let mut first = String::new();
+        let mut chars = line.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '\\' if chars.peek().is_some_and(|&(_, n)| n == '|') => {
+                    first.push('|');
+                    chars.next();
+                }
+                '|' => return Some((first, &line[i + 1..])),
+                c => first.push(c),
+            }
+        }
+        // no | to split at, but a \| to take as it is
+        (first != line).then_some((first, ""))
+    }
+
+    fn ex_one(&mut self, line: &str) {
         let line = line.trim_start_matches([' ', ':']).trim_end();
         self.message = None;
         if line.is_empty() {
@@ -62,6 +104,9 @@ impl Editor {
         let current = (self.cursor.row, self.cursor.row);
         let is = |full: &str, min: usize| name.len() >= min && full.starts_with(name);
 
+        if let Some((modes, kind)) = map_command(name, force) {
+            return self.map_ex(&modes, kind, arg);
+        }
         if is("write", 1) {
             self.write(non_empty(arg), force, range);
         } else if is("update", 2) {
@@ -165,18 +210,22 @@ impl Editor {
             let (a, b) = range.unwrap_or(current);
             let n = if b > a { b - a + 1 } else { 2 };
             self.set_cursor(Pos::new(a, 0));
-            self.keys(&crate::keys::parse(&format!("{n}J")));
+            self.keys_noremap(&crate::keys::parse(&format!("{n}J")));
         } else if is("normal", 4) {
             let (a, b) = range.unwrap_or(current);
             let keys = crate::keys::parse(arg);
+            // :normal! leaves mappings out
+            self.noremap += usize::from(force);
             for row in a..=b.min(self.buf.last_row()) {
                 self.set_cursor(Pos::new(row, 0));
                 self.keys(&keys);
+                self.flush_mapping();
                 if matches!(self.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
                     self.key(tinsel::app::Key::Esc);
                 }
                 self.leave_visual_if_any();
             }
+            self.noremap -= usize::from(force);
         } else if is("set", 2) {
             self.set(arg);
         } else if is("nohlsearch", 3) {
@@ -193,9 +242,9 @@ impl Editor {
         } else if is("stop", 2) || is("suspend", 3) {
             self.push_effect(Effect::Suspend);
         } else if is("undo", 1) {
-            self.key(tinsel::app::Key::Char('u'));
+            self.keys_noremap(&[tinsel::app::Key::Char('u')]);
         } else if is("redo", 3) {
-            self.key(tinsel::app::Key::Ctrl('r'));
+            self.keys_noremap(&[tinsel::app::Key::Ctrl('r')]);
         } else if is("version", 2) {
             self.info(format!("tvim {}", env!("CARGO_PKG_VERSION")));
         } else {
@@ -470,6 +519,7 @@ impl Editor {
                 flag(o.incremental_search, "incsearch"),
                 flag(o.auto_indent, "autoindent"),
                 format!("scrolloff={}", o.scroll_off),
+                format!("timeoutlen={}", o.timeout_len),
                 flag(o.syntax, "syntax"),
                 flag(o.cursor_line, "cursorline"),
                 flag(o.indent_guides, "indentguides"),
@@ -480,6 +530,8 @@ impl Editor {
                 flag(o.gitlens, "gitlens"),
                 flag(o.roomy, "roomy"),
                 flag(o.zero_pad, "zeropad"),
+                flag(o.wrap, "wrap"),
+                flag(o.linebreak, "linebreak"),
             ];
             return self.info(all.join("  "));
         }
@@ -505,6 +557,7 @@ impl Editor {
                 "tabstop" | "ts" if n > 0 => o.tab_stop = n.min(32),
                 "shiftwidth" | "sw" if n > 0 => o.shift_width = n.min(32),
                 "scrolloff" | "so" => o.scroll_off = n,
+                "timeoutlen" | "tm" => o.timeout_len = n,
                 "tabstop" | "ts" | "shiftwidth" | "sw" => {
                     return Err(format!("E487: Argument must be positive: {word}"));
                 }
@@ -517,6 +570,7 @@ impl Editor {
                 "tabstop" | "ts" => format!("tabstop={}", self.options.tab_stop),
                 "shiftwidth" | "sw" => format!("shiftwidth={}", self.options.shift_width),
                 "scrolloff" | "so" => format!("scrolloff={}", self.options.scroll_off),
+                "timeoutlen" | "tm" => format!("timeoutlen={}", self.options.timeout_len),
                 other => {
                     let (name, on) = self.options.flag_mut(other).ok_or_else(unknown)?;
                     if *on { name.to_string() } else { format!("no{name}") }
@@ -541,6 +595,52 @@ impl Editor {
         let (_, flag) = self.options.flag_mut(name).ok_or_else(unknown)?;
         *flag = how.unwrap_or(!*flag);
         Ok(())
+    }
+
+    fn map_ex(&mut self, modes: &[MapMode], kind: MapKind, arg: &str) {
+        let mut arg = arg;
+        // these change nothing here, but a vimrc line may well have them
+        while let Some(rest) = ["<silent>", "<nowait>", "<unique>", "<buffer>"].iter().find_map(|m| {
+            arg.get(..m.len())
+                .filter(|a| a.eq_ignore_ascii_case(m))
+                .map(|_| &arg[m.len()..])
+        }) {
+            arg = rest.trim_start();
+        }
+        let (lhs, rhs) = arg.split_once(char::is_whitespace).unwrap_or((arg, ""));
+        let lhs = mapping::parse_keys(lhs);
+        match kind {
+            MapKind::Clear => modes.iter().for_each(|&m| self.maps.clear(m)),
+            MapKind::Unmap if lhs.is_empty() => self.error("E474: Invalid argument"),
+            MapKind::Unmap => {
+                let mut gone = false;
+                for &m in modes {
+                    gone |= self.maps.remove(m, &lhs);
+                }
+                if !gone {
+                    self.error("E31: No such mapping");
+                }
+            }
+            MapKind::Map { .. } if rhs.trim().is_empty() => {
+                let found: Vec<String> = self.maps.list(modes, &lhs).into_iter().map(mapping::describe).collect();
+                if found.is_empty() {
+                    self.info("No mapping found");
+                } else {
+                    self.info(found.join("  ·  "));
+                }
+            }
+            MapKind::Map { noremap } => {
+                let rhs = mapping::parse_keys(rhs.trim_start());
+                for &mode in modes {
+                    self.maps.add(Mapping {
+                        mode,
+                        lhs: lhs.clone(),
+                        rhs: rhs.clone(),
+                        noremap,
+                    });
+                }
+            }
+        }
     }
 
     fn show_registers(&mut self) {
@@ -570,6 +670,52 @@ impl Editor {
             .collect();
         self.info(shown.join("  "));
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MapKind {
+    Map { noremap: bool },
+    Unmap,
+    Clear,
+}
+
+// :map, :nnoremap, :iunmap, :mapclear and the rest, with vim's shortest names
+pub(crate) fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKind)> {
+    use MapMode::*;
+    let (modes, rest) = match name.chars().next()? {
+        'n' if !name.starts_with("no") => (vec![Normal], &name[1..]),
+        'v' | 'x' => (vec![Visual], &name[1..]),
+        'i' => (vec![Insert], &name[1..]),
+        'c' => (vec![Command], &name[1..]),
+        'o' => (vec![Operator], &name[1..]),
+        _ if bang => (vec![Insert, Command], name),
+        _ => (vec![Normal, Visual, Operator], name),
+    };
+    // map! and friends are only for the plain names
+    if bang && modes.len() == 1 {
+        return None;
+    }
+    let is = |full: &str, min: usize| rest.len() >= min && full.starts_with(rest);
+    // nn is :nnoremap but cn is :cnext, and nu is :number
+    let first = name.chars().next()?;
+    let (map_min, noremap_min, unmap_min) = match first {
+        _ if modes.len() > 1 => (3, 2, 3),
+        'n' => (1, 1, 2),
+        'v' | 'x' => (1, 1, 1),
+        _ => (1, 2, 1),
+    };
+    let kind = if is("mapclear", 4) {
+        MapKind::Clear
+    } else if is("map", map_min) {
+        MapKind::Map { noremap: false }
+    } else if is("noremap", noremap_min) {
+        MapKind::Map { noremap: true }
+    } else if is("unmap", unmap_min) {
+        MapKind::Unmap
+    } else {
+        return None;
+    };
+    Some((modes, kind))
 }
 
 fn is_known(word: &str) -> bool {
