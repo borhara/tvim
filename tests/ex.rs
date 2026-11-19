@@ -302,5 +302,10 @@ fn choosing_language_servers() {
     e.ex("lsp");
     let text = said(&e).unwrap();
     assert!(text.starts_with("rust: my-server --stdio in "), "{text}");
-    assert!(text.ends_with("lsp-project"), "the folder with Cargo.toml: {text}");
+    assert!(
+        text.ends_with("lsp-project, not running"),
+        "the folder with Cargo.toml: {text}"
+    );
+    e.ex("lsp restart");
+    assert_eq!(said(&e).as_deref(), Some("language servers restarting"));
 }
