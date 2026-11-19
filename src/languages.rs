@@ -1,11 +1,13 @@
-//! Keeps language servers told about the files open in the editor.
+//! Keeps language servers told about the files open in the editor, and holds the problems
+//! they find in them.
 
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::buffer::Pos;
 use crate::json::Json;
-use crate::lsp::{self, Encoding, Server};
+use crate::lsp::{self, Encoding, Incoming, Server};
 use crate::paths;
 use crate::servers::{Choice, Servers};
 
@@ -19,6 +21,28 @@ pub struct OpenDoc<'a> {
     pub saved: u64,
     pub lines: &'a [String],
     pub final_newline: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Problem {
+    pub start: Pos,
+    pub end: Pos,
+    pub severity: Severity,
+    pub message: String,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Update {
+    // problems came or went, so there's something new to show
+    pub changed: bool,
 }
 
 // a server is one command run for one project
@@ -35,6 +59,7 @@ struct Synced {
     lines: Vec<String>,
     // the version number the server was last given
     sent: i64,
+    problems: Vec<Problem>,
 }
 
 // how a server wants to hear about files, from its capabilities
@@ -84,9 +109,14 @@ impl Languages {
         }
     }
 
+    pub fn problems(&self, id: usize) -> &[Problem] {
+        self.synced.get(&id).map_or(&[], |s| &s.problems)
+    }
+
     // takes in what the servers have said, then tells them what changed in `docs`
-    pub fn update(&mut self, docs: &[OpenDoc], servers: &Servers) {
-        self.receive();
+    pub fn update(&mut self, docs: &[OpenDoc], servers: &Servers) -> Update {
+        let mut update = Update::default();
+        self.receive(&mut update);
         let chosen: Vec<(&OpenDoc, &Path, Choice)> = docs
             .iter()
             .filter_map(|d| {
@@ -105,6 +135,7 @@ impl Languages {
             .collect();
         for id in stale {
             let s = self.synced.remove(&id).expect("listed above");
+            update.changed |= !s.problems.is_empty();
             if let Some(server) = self.running.get_mut(&s.key).filter(|server| server.ready()) {
                 if sync_of(server.capabilities()).open_close {
                     server.notify(
@@ -121,6 +152,7 @@ impl Languages {
         let needed: HashSet<&Key> = wanted.values().map(|(k, _)| k).collect();
         self.running.retain(|k, _| needed.contains(k));
         self.choices.retain(|id, _| docs.iter().any(|d| d.id == *id));
+        update
     }
 
     fn choice(&mut self, id: usize, path: &Path, servers: &Servers) -> Option<Choice> {
@@ -135,10 +167,25 @@ impl Languages {
         }
     }
 
-    // what a server says is read as it comes, though nothing in it is used yet
-    fn receive(&mut self) {
-        for server in self.running.values_mut() {
-            while server.poll().is_some() {}
+    fn receive(&mut self, update: &mut Update) {
+        let Languages { running, synced, .. } = self;
+        for (key, server) in running.iter_mut() {
+            while let Some(incoming) = server.poll() {
+                let Incoming::Notice { method, params } = incoming else {
+                    continue;
+                };
+                if method != "textDocument/publishDiagnostics" {
+                    continue;
+                }
+                let uri = params["uri"].as_str();
+                if let Some(s) = synced
+                    .values_mut()
+                    .find(|s| s.key == *key && Some(s.uri.as_str()) == uri)
+                {
+                    s.problems = problems(&params["diagnostics"], &s.lines, server.encoding());
+                    update.changed = true;
+                }
+            }
         }
     }
 
@@ -184,6 +231,7 @@ impl Languages {
                 saved: doc.saved,
                 lines,
                 sent: 1,
+                problems: Vec::new(),
             };
             self.synced.insert(doc.id, synced);
             return;
@@ -292,6 +340,34 @@ fn edit(old: &[String], new: &[String], encoding: Encoding) -> Json {
     Json::object([("range", range), ("text", text.into())])
 }
 
+fn problems(diagnostics: &Json, lines: &[String], encoding: Encoding) -> Vec<Problem> {
+    let pos = |p: &Json| {
+        let row = p["line"].as_u64().unwrap_or(0) as usize;
+        let line = lines.get(row).map_or("", String::as_str);
+        let units = p["character"].as_u64().unwrap_or(0) as usize;
+        Pos::new(row, encoding.chars(line, units))
+    };
+    let mut out: Vec<Problem> = diagnostics
+        .as_array()
+        .unwrap_or(&[])
+        .iter()
+        .map(|d| Problem {
+            start: pos(&d["range"]["start"]),
+            end: pos(&d["range"]["end"]),
+            // one without a severity is taken as an error
+            severity: match d["severity"].as_i64() {
+                Some(2) => Severity::Warning,
+                Some(3) => Severity::Info,
+                Some(4) => Severity::Hint,
+                _ => Severity::Error,
+            },
+            message: d["message"].as_str().unwrap_or("").trim().to_string(),
+        })
+        .collect();
+    out.sort_by_key(|p| (p.start, p.severity));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,8 +397,8 @@ mod tests {
     }
 
     impl Rig {
-        fn update(&mut self, docs: &[OpenDoc]) {
-            self.langs.update(docs, &self.servers);
+        fn update(&mut self, docs: &[OpenDoc]) -> Update {
+            self.langs.update(docs, &self.servers)
         }
 
         // the next server started, once it has been told it's initialized
@@ -335,12 +411,12 @@ mod tests {
             fake
         }
 
-        fn until(&mut self, docs: &[OpenDoc], done: impl Fn(&Rig) -> bool) {
+        fn until(&mut self, docs: &[OpenDoc], done: impl Fn(&Rig) -> bool) -> Update {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
-                self.update(docs);
-                if done(self) {
-                    return;
+                let update = self.update(docs);
+                if done(self) || update.changed {
+                    return update;
                 }
                 assert!(Instant::now() < deadline, "nothing happened");
                 std::thread::sleep(Duration::from_millis(1));
@@ -351,6 +427,12 @@ mod tests {
     // as the editor's paths are sent, which on Windows means a drive in front
     fn uri(path: &str) -> String {
         lsp::file_uri(&paths::absolute(Path::new(path)))
+    }
+
+    // the problems a server reports for /work/a.rs
+    fn diagnostics(list: &str) -> String {
+        let params = format!(r#"{{"uri":{},"diagnostics":[{list}]}}"#, Json::from(uri("/work/a.rs")));
+        format!(r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{params}}}"#)
     }
 
     const EDITS: &str = r#"{"textDocumentSync":{"openClose":true,"change":2,"save":{"includeText":false}}}"#;
@@ -492,6 +574,33 @@ mod tests {
         r.update(&[doc("/work/a.rs", 2, 2, &v1)]);
         r.update(&[]);
         assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("shutdown"));
+    }
+
+    #[test]
+    fn problems_arrive_in_the_editors_columns() {
+        let mut r = rig();
+        let v1 = lines("let 😀 = é;\nok");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, EDITS);
+        fake.recv().unwrap();
+        fake.send(&diagnostics(
+            r#"{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":2}},"severity":2,"message":"unused\n"},
+               {"range":{"start":{"line":0,"character":9},"end":{"line":0,"character":10}},"message":"what's é?"}"#,
+        ));
+        assert!(r.until(&docs, |_| false).changed);
+        let found = r.langs.problems(1);
+        assert_eq!(found.len(), 2);
+        assert_eq!(
+            (found[0].start, found[0].end),
+            (Pos::new(0, 8), Pos::new(0, 9)),
+            "the emoji is two"
+        );
+        assert_eq!(found[0].severity, Severity::Error, "unless it says otherwise");
+        assert_eq!(found[1].severity, Severity::Warning);
+        assert_eq!(found[1].message, "unused");
+
+        r.update(&[]);
+        assert!(r.langs.problems(1).is_empty(), "gone with the file");
     }
 
     #[test]
