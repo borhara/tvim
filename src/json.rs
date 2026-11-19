@@ -3,6 +3,7 @@
 use std::fmt;
 use std::ops::Index;
 
+const MAX_DEPTH: usize = 256;
 // 2^53: past here an f64 can't hold every integer
 const MAX_EXACT: f64 = 9_007_199_254_740_992.0;
 
@@ -20,6 +21,21 @@ pub enum Json {
 static NULL: Json = Json::Null;
 
 impl Json {
+    pub fn parse(text: &str) -> Result<Json, String> {
+        let mut p = Parser {
+            text,
+            bytes: text.as_bytes(),
+            i: 0,
+            depth: 0,
+        };
+        let value = p.value()?;
+        p.space();
+        if p.i < p.bytes.len() {
+            return Err(p.error("the end"));
+        }
+        Ok(value)
+    }
+
     pub fn object<K: Into<String>>(fields: impl IntoIterator<Item = (K, Json)>) -> Json {
         Json::Object(fields.into_iter().map(|(k, v)| (k.into(), v)).collect())
     }
@@ -203,14 +219,192 @@ fn quoted(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
     f.write_str("\"")
 }
 
+struct Parser<'a> {
+    text: &'a str,
+    bytes: &'a [u8],
+    i: usize,
+    depth: usize,
+}
+
+impl Parser<'_> {
+    fn error(&self, expected: &str) -> String {
+        if self.i < self.bytes.len() {
+            format!("expected {expected} at byte {}", self.i)
+        } else {
+            format!("expected {expected} before the end")
+        }
+    }
+
+    fn space(&mut self) {
+        while matches!(self.bytes.get(self.i), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.i += 1;
+        }
+    }
+
+    // after any space, steps over `b` if it comes next
+    fn eat(&mut self, b: u8) -> bool {
+        self.space();
+        self.skip(&[b])
+    }
+
+    // steps over one byte if it's any of these
+    fn skip(&mut self, any: &[u8]) -> bool {
+        let found = self.bytes.get(self.i).is_some_and(|b| any.contains(b));
+        if found {
+            self.i += 1;
+        }
+        found
+    }
+
+    fn digits(&mut self) -> usize {
+        let start = self.i;
+        while self.bytes.get(self.i).is_some_and(u8::is_ascii_digit) {
+            self.i += 1;
+        }
+        self.i - start
+    }
+
+    fn value(&mut self) -> Result<Json, String> {
+        self.space();
+        match self.bytes.get(self.i) {
+            Some(b'[') => self.nested(Parser::array),
+            Some(b't') => self.word("true", Json::Bool(true)),
+            Some(b'f') => self.word("false", Json::Bool(false)),
+            Some(b'n') => self.word("null", Json::Null),
+            Some(b'-' | b'0'..=b'9') => self.number(),
+            _ => Err(self.error("a value")),
+        }
+    }
+
+    // bounded, so a hostile message can't overflow the stack
+    fn nested(&mut self, inside: fn(&mut Self) -> Result<Json, String>) -> Result<Json, String> {
+        if self.depth == MAX_DEPTH {
+            return Err(format!("nested more than {MAX_DEPTH} deep at byte {}", self.i));
+        }
+        self.depth += 1;
+        self.i += 1;
+        let value = inside(self);
+        self.depth -= 1;
+        value
+    }
+
+    fn array(&mut self) -> Result<Json, String> {
+        let mut items = Vec::new();
+        if self.eat(b']') {
+            return Ok(Json::Array(items));
+        }
+        loop {
+            items.push(self.value()?);
+            if self.eat(b']') {
+                return Ok(Json::Array(items));
+            }
+            if !self.eat(b',') {
+                return Err(self.error(", or ]"));
+            }
+        }
+    }
+
+    fn number(&mut self) -> Result<Json, String> {
+        let start = self.i;
+        self.skip(b"-");
+        // no leading zeros: 0 stands alone
+        if !self.skip(b"0") && self.digits() == 0 {
+            return Err(self.error("a digit"));
+        }
+        if self.skip(b".") && self.digits() == 0 {
+            return Err(self.error("a digit"));
+        }
+        if self.skip(b"eE") {
+            self.skip(b"+-");
+            if self.digits() == 0 {
+                return Err(self.error("a digit"));
+            }
+        }
+        self.text[start..self.i]
+            .parse()
+            .map(Json::Number)
+            .map_err(|_| format!("bad number at byte {start}"))
+    }
+
+    fn word(&mut self, word: &str, value: Json) -> Result<Json, String> {
+        if !self.bytes[self.i..].starts_with(word.as_bytes()) {
+            return Err(self.error(word));
+        }
+        self.i += word.len();
+        Ok(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Json;
+
+    fn round_trip(text: &str) -> String {
+        Json::parse(text).unwrap_or_else(|e| panic!("{text}: {e}")).to_string()
+    }
+
+    #[test]
+    fn numbers() {
+        assert_eq!(Json::parse("-0").unwrap().as_f64(), Some(0.0));
+        assert_eq!(Json::parse("1.5E+3").unwrap().as_i64(), Some(1500));
+        assert_eq!(Json::parse("2.5").unwrap().as_i64(), None, "not a whole number");
+        assert_eq!(Json::parse("-1").unwrap().as_u64(), None);
+        assert_eq!(Json::parse("1e300").unwrap().as_i64(), None, "too big to be exact");
+        assert_eq!(round_trip("1e300"), "1e300");
+        assert_eq!(round_trip("0.1"), "0.1");
+        assert_eq!(round_trip("100.0"), "100");
+        assert_eq!(Json::Number(f64::NAN).to_string(), "null");
+        assert_eq!(Json::Number(f64::INFINITY).to_string(), "null");
+    }
 
     #[test]
     fn control_characters_are_escaped_when_written() {
         let s = Json::String("a\u{1}b\u{1f}\"\n".into());
         assert_eq!(s.to_string(), r#""a\u0001b\u001f\"\n""#);
+    }
+
+    #[test]
+    fn malformed_text_is_refused() {
+        for text in [
+            "",
+            "   ",
+            "nul",
+            "truex",
+            "01",
+            "-",
+            "1.",
+            ".5",
+            "1e",
+            "+1",
+            "[1,]",
+            "[1 2]",
+            "{\"a\" 1}",
+            "{\"a\":1,}",
+            "{a:1}",
+            "{\"a\":1",
+            "\"open",
+            "\"bad \\x escape\"",
+            "\"\\u12\"",
+            "\"\\u+123\"",
+            "\"line\nbreak\"",
+            "[] []",
+        ] {
+            assert!(Json::parse(text).is_err(), "{text:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn errors_say_what_was_expected_and_where() {
+        assert_eq!(Json::parse("[1 2]").unwrap_err(), "expected , or ] at byte 3");
+    }
+
+    #[test]
+    fn nesting_is_bounded() {
+        let ok = format!("{}{}", "[".repeat(256), "]".repeat(256));
+        assert!(Json::parse(&ok).is_ok());
+        let deep = format!("{}{}", "[".repeat(257), "]".repeat(257));
+        assert!(Json::parse(&deep).unwrap_err().starts_with("nested more than 256 deep"));
+        assert!(Json::parse(&"[".repeat(100_000)).is_err());
     }
 
     #[test]
