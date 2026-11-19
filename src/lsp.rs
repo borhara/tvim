@@ -483,18 +483,18 @@ fn decode(s: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod testing {
     use super::*;
     use std::time::Instant;
 
     // one end of an in-memory pipe each way, standing in for a server process
-    struct PipeIn {
+    pub(crate) struct PipeIn {
         chunks: Receiver<Vec<u8>>,
         chunk: Vec<u8>,
         at: usize,
     }
 
-    struct PipeOut(Sender<Vec<u8>>);
+    pub(crate) struct PipeOut(Sender<Vec<u8>>);
 
     impl Read for PipeIn {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -533,32 +533,37 @@ mod tests {
     }
 
     // the server's side of the conversation
-    struct Fake {
-        from: BufReader<PipeIn>,
-        to: PipeOut,
+    pub(crate) struct Fake {
+        pub(crate) from: BufReader<PipeIn>,
+        pub(crate) to: PipeOut,
     }
 
     impl Fake {
-        fn recv(&mut self) -> Option<Json> {
+        pub(crate) fn recv(&mut self) -> Option<Json> {
             let body = read_message(&mut self.from).unwrap()?;
             Some(Json::parse(std::str::from_utf8(&body).unwrap()).unwrap())
         }
 
-        fn send(&mut self, text: &str) {
+        pub(crate) fn send(&mut self, text: &str) {
             write_message(&mut self.to, &Json::parse(text).unwrap()).unwrap();
+        }
+
+        // answers initialize with these capabilities; the initialized that follows comes
+        // once the server has been polled
+        pub(crate) fn start(&mut self, capabilities: &str) {
+            let id = self.recv().unwrap()["id"].as_i64().unwrap();
+            self.send(&format!(
+                r#"{{"jsonrpc":"2.0","id":{id},"result":{{"capabilities":{capabilities}}}}}"#
+            ));
         }
     }
 
-    fn connected() -> (Server, Fake) {
-        connected_saying("")
-    }
-
-    // with `errors` as what the server writes to stderr
-    fn connected_saying(errors: &'static str) -> (Server, Fake) {
+    // a server for the project at `root`, with `errors` as what it writes to stderr
+    pub(crate) fn fake(root: &Path, errors: &'static str) -> (Server, Fake) {
         let (to_server, server_in) = pipe();
         let (server_out, from_server) = pipe();
         let errors = io::Cursor::new(errors);
-        let server = Server::connect(from_server, to_server, errors, Path::new("/work/my project"));
+        let server = Server::connect(from_server, to_server, errors, root);
         let fake = Fake {
             from: BufReader::new(server_in),
             to: server_out,
@@ -566,7 +571,7 @@ mod tests {
         (server, fake)
     }
 
-    fn next(server: &mut Server) -> Incoming {
+    pub(crate) fn next(server: &mut Server) -> Incoming {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             if let Some(incoming) = server.poll() {
@@ -577,13 +582,27 @@ mod tests {
         }
     }
 
-    fn settle(server: &mut Server, until: impl Fn(&Server) -> bool) {
+    pub(crate) fn settle(server: &mut Server, until: impl Fn(&Server) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while !until(server) {
             assert_eq!(server.poll(), None);
             assert!(Instant::now() < deadline, "never settled");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testing::*;
+    use super::*;
+
+    fn connected() -> (Server, Fake) {
+        connected_saying("")
+    }
+
+    fn connected_saying(errors: &'static str) -> (Server, Fake) {
+        fake(Path::new("/work/my project"), errors)
     }
 
     // messages are handled in order, so once a ping sent after them is seen, they've been dealt with
@@ -677,10 +696,7 @@ mod tests {
 
     fn started() -> (Server, Fake) {
         let (mut server, mut fake) = connected();
-        let id = fake.recv().unwrap()["id"].as_i64().unwrap();
-        fake.send(&format!(
-            r#"{{"jsonrpc":"2.0","id":{id},"result":{{"capabilities":{{}}}}}}"#
-        ));
+        fake.start("{}");
         settle(&mut server, Server::ready);
         assert_eq!(fake.recv().unwrap()["method"].as_str(), Some("initialized"));
         (server, fake)
