@@ -1,13 +1,87 @@
 //! Talking to a language server: a child process exchanging JSON-RPC messages over its
 //! stdin and stdout, each one a Content-Length header and a JSON body.
 
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, Sender};
 
 use crate::json::Json;
 
 // bigger than any real message, small enough that a garbled header can't exhaust memory
 const MAX_MESSAGE: usize = 64 << 20;
+
+pub struct Server {
+    child: Option<Child>,
+    outgoing: Sender<Json>,
+    next_id: i64,
+}
+
+impl Server {
+    pub fn spawn(program: &str, args: &[String], root: &Path) -> io::Result<Server> {
+        let mut child = Command::new(program)
+            .args(args)
+            .current_dir(root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let input = child.stdin.take().expect("stdin is piped");
+        let mut server = Server::connect(input);
+        server.child = Some(child);
+        Ok(server)
+    }
+
+    fn connect(to: impl Write + Send + 'static) -> Server {
+        let (outgoing, to_server) = mpsc::channel();
+        // writing has a thread of its own, so a server slow to read never stalls the editor
+        std::thread::spawn(move || write_all(to, to_server));
+        Server {
+            child: None,
+            outgoing,
+            next_id: 1,
+        }
+    }
+
+    // the id comes back on the reply, to tell which request it answers
+    pub fn request(&mut self, method: &str, params: Json) -> i64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.write(message(Some(id.into()), method, params));
+        id
+    }
+
+    pub fn notify(&mut self, method: &str, params: Json) {
+        self.write(message(None, method, params));
+    }
+
+    fn write(&self, msg: Json) {
+        // a closed channel means the server has gone, and there's nothing to do about it here
+        let _ = self.outgoing.send(msg);
+    }
+}
+
+fn message(id: Option<Json>, method: &str, params: Json) -> Json {
+    let mut fields = vec![("jsonrpc".to_string(), Json::from("2.0"))];
+    if let Some(id) = id {
+        fields.push(("id".into(), id));
+    }
+    fields.push(("method".into(), method.into()));
+    // params, when given, must be an object or array, so none at all rather than null
+    if !params.is_null() {
+        fields.push(("params".into(), params));
+    }
+    Json::Object(fields)
+}
+
+fn write_all(to: impl Write, outgoing: Receiver<Json>) {
+    let mut to = BufWriter::new(to);
+    for msg in outgoing {
+        if write_message(&mut to, &msg).is_err() {
+            return;
+        }
+    }
+}
 
 fn write_message(to: &mut impl Write, msg: &Json) -> io::Result<()> {
     let body = msg.to_string();
@@ -119,6 +193,73 @@ fn decode(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufReader, Read};
+
+    // one end of an in-memory pipe each way, standing in for a server process
+    struct PipeIn {
+        chunks: Receiver<Vec<u8>>,
+        chunk: Vec<u8>,
+        at: usize,
+    }
+
+    struct PipeOut(Sender<Vec<u8>>);
+
+    impl Read for PipeIn {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.at == self.chunk.len() {
+                match self.chunks.recv() {
+                    Ok(chunk) => (self.chunk, self.at) = (chunk, 0),
+                    Err(_) => return Ok(0),
+                }
+            }
+            let n = buf.len().min(self.chunk.len() - self.at);
+            buf[..n].copy_from_slice(&self.chunk[self.at..self.at + n]);
+            self.at += n;
+            Ok(n)
+        }
+    }
+
+    impl Write for PipeOut {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.send(buf.to_vec()).map_err(|_| io::ErrorKind::BrokenPipe)?;
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn pipe() -> (PipeOut, PipeIn) {
+        let (tx, rx) = mpsc::channel();
+        let read = PipeIn {
+            chunks: rx,
+            chunk: Vec::new(),
+            at: 0,
+        };
+        (PipeOut(tx), read)
+    }
+
+    // the server's side of the conversation
+    struct Fake {
+        from: BufReader<PipeIn>,
+    }
+
+    impl Fake {
+        fn recv(&mut self) -> Option<Json> {
+            let body = read_message(&mut self.from).unwrap()?;
+            Some(Json::parse(std::str::from_utf8(&body).unwrap()).unwrap())
+        }
+    }
+
+    fn connected() -> (Server, Fake) {
+        let (to_server, server_in) = pipe();
+        let server = Server::connect(to_server);
+        let fake = Fake {
+            from: BufReader::new(server_in),
+        };
+        (server, fake)
+    }
 
     #[test]
     fn messages_are_framed_by_their_length_in_bytes() {
@@ -150,6 +291,31 @@ mod tests {
         ] {
             assert!(read_message(&mut io::Cursor::new(text)).is_err(), "{text:?}");
         }
+    }
+
+    #[test]
+    fn requests_are_numbered_and_sent_in_order() {
+        let (mut server, mut fake) = connected();
+        let a = server.request("a", Json::object([("x", 1.into())]));
+        server.notify("n", Json::Null);
+        let b = server.request("b", Json::Null);
+        assert_eq!(b, a + 1);
+        let sent = fake.recv().unwrap().to_string();
+        assert_eq!(
+            sent,
+            format!(r#"{{"jsonrpc":"2.0","id":{a},"method":"a","params":{{"x":1}}}}"#)
+        );
+        let sent = fake.recv().unwrap().to_string();
+        assert_eq!(sent, r#"{"jsonrpc":"2.0","method":"n"}"#, "no params rather than null");
+        assert_eq!(fake.recv().unwrap()["id"].as_i64(), Some(b));
+    }
+
+    #[test]
+    fn a_missing_program_is_an_error() {
+        let err = Server::spawn("tvim-no-such-server", &[], &std::env::temp_dir())
+            .err()
+            .unwrap();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]
