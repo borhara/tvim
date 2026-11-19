@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tinsel::app::{Edit, Event, History, Job, Key, TextInput};
 
+use crate::text::split_args;
+
 const MAX_LINES: usize = 3000;
 const LOG_LENGTH: usize = 30;
 
@@ -956,61 +958,9 @@ fn peek(root: &Path, what: Peeking) -> Vec<String> {
     }
 }
 
-fn split_args(line: &str) -> Result<Vec<String>, String> {
-    let mut out = Vec::new();
-    let mut word = String::new();
-    let mut in_word = false;
-    let mut quote: Option<char> = None;
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        match quote {
-            Some(q) if c == q => quote = None,
-            Some('"') if c == '\\' => word.extend(chars.next()),
-            Some(_) => word.push(c),
-            None => match c {
-                '\'' | '"' => {
-                    quote = Some(c);
-                    in_word = true;
-                }
-                '\\' => {
-                    word.extend(chars.next());
-                    in_word = true;
-                }
-                c if c.is_whitespace() => {
-                    if in_word {
-                        out.push(std::mem::take(&mut word));
-                        in_word = false;
-                    }
-                }
-                c => {
-                    word.push(c);
-                    in_word = true;
-                }
-            },
-        }
-    }
-    if quote.is_some() {
-        return Err("a quote isn't closed".into());
-    }
-    if in_word {
-        out.push(word);
-    }
-    Ok(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn args_split_on_spaces_and_respect_quotes() {
-        let s = |l: &str| split_args(l).unwrap();
-        assert_eq!(s("log --oneline -5"), ["log", "--oneline", "-5"]);
-        assert_eq!(s("commit -m 'two words'"), ["commit", "-m", "two words"]);
-        assert_eq!(s(r#"commit -m "say \"hi\"" "#), ["commit", "-m", "say \"hi\""]);
-        assert_eq!(s("a ''  b"), ["a", "", "b"]);
-        assert!(split_args("log 'oops").is_err());
-    }
 
     #[test]
     fn status_is_grouped() {
