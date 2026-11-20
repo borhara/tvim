@@ -221,10 +221,13 @@ impl Languages {
                 if method != "textDocument/publishDiagnostics" {
                     continue;
                 }
-                let uri = params["uri"].as_str();
+                // servers escape paths their own way, so a@b.rs may come back for a%40b.rs
+                let Some(path) = params["uri"].as_str().and_then(lsp::uri_path) else {
+                    continue;
+                };
                 if let Some(s) = synced
                     .values_mut()
-                    .find(|s| s.key == *key && Some(s.uri.as_str()) == uri)
+                    .find(|s| s.key == *key && lsp::uri_path(&s.uri).as_ref() == Some(&path))
                 {
                     s.problems = problems(&params["diagnostics"], &s.lines, r.server.encoding());
                     update.changed = true;
@@ -726,6 +729,28 @@ mod tests {
                 paths::absolute(Path::new("/work"))
             )
         );
+    }
+
+    #[test]
+    fn problems_find_their_file_however_the_server_escapes_it() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/@x+y.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, EDITS);
+        let open = fake.recv().unwrap();
+        assert!(
+            open["params"]["textDocument"]["uri"]
+                .as_str()
+                .unwrap()
+                .ends_with("/%40x%2By.rs")
+        );
+        let uri = uri("/work/@x+y.rs").replace("%40", "@").replace("%2B", "+");
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":{},"diagnostics":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"message":"no"}}]}}}}"#,
+            Json::from(uri)
+        ));
+        assert!(r.until(&docs, |_| false).changed);
+        assert_eq!(r.langs.problems(1).len(), 1);
     }
 
     #[test]
