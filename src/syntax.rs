@@ -62,7 +62,7 @@ impl Syntax {
         Some(match extension(name).as_str() {
             "rs" => Syntax::Rust,
             "py" | "pyi" => Syntax::Python,
-            "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" => Syntax::JavaScript,
+            "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" => Syntax::JavaScript,
             "go" => Syntax::Go,
             "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "hh" | "m" | "cs" | "swift" | "kt" | "zig" => Syntax::C,
             "java" | "scala" | "groovy" | "dart" => Syntax::Java,
