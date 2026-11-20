@@ -1003,6 +1003,17 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
                 frame.tint(Rect::new(body.x + a, y, b - a, 1), color);
             }
         };
+        // first, so a selection or search match drawn over a problem still shows
+        for p in &here {
+            let from = if p.start.row == row { p.start.col } else { 0 };
+            let to = if p.end.row == row { p.end.col } else { char_count(line) };
+            tint(
+                frame,
+                from,
+                to.max(from + 1),
+                mix(c.app, severity_color(p.severity), 0.22),
+            );
+        }
         if let Some((from, to)) = selection.and_then(|sel| selected_cols(&sel, row, char_count(line))) {
             tint(frame, from, to, c.selection);
         }
@@ -1023,16 +1034,6 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
                 };
                 tint(frame, from, to, color);
             }
-        }
-        for p in &here {
-            let from = if p.start.row == row { p.start.col } else { 0 };
-            let to = if p.end.row == row { p.end.col } else { char_count(line) };
-            tint(
-                frame,
-                from,
-                to.max(from + 1),
-                mix(c.app, severity_color(p.severity), 0.22),
-            );
         }
         if let Some(b) = bracket.filter(|b| b.row == row) {
             tint(frame, b.col, b.col + 1, c.bracket);
@@ -1826,6 +1827,27 @@ mod tests {
         assert!(line.contains("let x = y;    ● cannot find y"), "{screen}");
         assert!(!screen.contains("more detail"), "only the first line");
         assert!(!shown("j").contains("cannot find y"), "only on the cursor's line");
+    }
+
+    #[test]
+    fn a_selection_shows_over_a_problem() {
+        let line = |problems: Vec<Problem>| {
+            let mut e = Editor::with_text("let x = y;\nfine");
+            e.set_screen(60, 8);
+            e.languages.found(e.buffer_id, problems);
+            e.keys(&crate::keys::parse("Vj"));
+            let screen = tinsel::with_color_mode(ColorMode::TrueColor, || app::snapshot(&Tvim::new(e), 60, 8));
+            let row = screen.lines().iter().find(|l| l.contains("let")).unwrap().clone();
+            // past the line number, which is coloured for the problem
+            row[row.find("let").unwrap()..].to_string()
+        };
+        let problem = Problem {
+            start: Pos::new(0, 4),
+            end: Pos::new(0, 9),
+            severity: Severity::Error,
+            message: "no".into(),
+        };
+        assert_eq!(line(vec![problem]), line(Vec::new()));
     }
 
     #[test]
