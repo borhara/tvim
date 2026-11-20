@@ -66,18 +66,18 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 
 **Language servers.** When a language server is installed for the file you open, tvim starts it and keeps it up to date as you type. Lines with problems get a coloured line number, the problem itself is tinted, and the cursor's line says what's wrong. `]d` and `[d` go to the next and previous problem. tvim knows these servers, and runs whichever you have:
 
-| Files | Server |
-| --- | --- |
-| Rust | `rust-analyzer` |
-| Python | `pyright-langserver --stdio` |
-| Go | `gopls` |
-| TypeScript and JavaScript | `typescript-language-server --stdio` |
-| C and C++ | `clangd` |
-| Lua | `lua-language-server` |
-| Zig | `zls` |
-| Shell | `bash-language-server start` |
+| Files | Server | Install |
+| --- | --- | --- |
+| Rust | `rust-analyzer` | `rustup component add rust-analyzer` |
+| Python | `pyright-langserver --stdio` | `npm i -g pyright` |
+| Go | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+| TypeScript and JavaScript | `typescript-language-server --stdio` | `npm i -g typescript typescript-language-server` |
+| C and C++ | `clangd` | comes with Xcode, or `brew install llvm` |
+| Lua | `lua-language-server` | `brew install lua-language-server` |
+| Zig | `zls` | `brew install zls` |
+| Shell | `bash-language-server start` | `npm i -g bash-language-server` |
 
-`:lsp` says which server the file has and how it's doing, and `:lsp restart` starts them all again. To run something else, or nothing, put a line in your config:
+`:lsp` says which server the file has and how it's doing, or why it isn't running, and `:lsp restart` starts them all again. To run something else, or nothing, put a line in your config:
 
 ```
 lsp python pylsp
