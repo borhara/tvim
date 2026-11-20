@@ -50,6 +50,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("shell", "sh", "open a shell"),
     ("zen", "", "only the text, centred"),
     ("git", "", "the git menu: stage, commit, log, branches"),
+    ("lsp", "", "the language server for this file, or choose one"),
     ("preview", "prev", "show or hide a markdown preview"),
     ("help", "h", "a quick reminder"),
     ("version", "ve", "show the version"),
@@ -76,6 +77,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("tabpreview", "", "tab moves into the markdown preview"),
     ("dim", "", "fade whichever of text and sidebar is not in use"),
     ("gitlens", "", "who last changed the cursor's line, and when"),
+    ("lsp", "", "language servers check the code as you type"),
     (
         "roomy",
         "",
