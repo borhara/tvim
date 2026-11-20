@@ -87,8 +87,8 @@ enum Change {
 
 pub struct Languages {
     running: HashMap<Key, Running>,
-    // servers that wouldn't start, left alone until a restart or another command
-    refused: HashSet<Key>,
+    // servers that wouldn't start, and why, left alone until a restart or another command
+    refused: HashMap<Key, String>,
     synced: HashMap<usize, Synced>,
     // each file's server, worked out again only when its path or the choices change
     choices: HashMap<usize, (PathBuf, u64, Option<Choice>)>,
@@ -110,7 +110,7 @@ impl Languages {
     fn with_start(start: Start) -> Languages {
         Languages {
             running: HashMap::new(),
-            refused: HashSet::new(),
+            refused: HashMap::new(),
             synced: HashMap::new(),
             choices: HashMap::new(),
             start,
@@ -137,14 +137,15 @@ impl Languages {
         self.synced.insert(id, synced);
     }
 
-    pub fn state(&self, choice: &Choice) -> &'static str {
+    pub fn state(&self, choice: &Choice) -> String {
         let key = key(choice);
         match self.running.get(&key) {
-            Some(r) if r.server.ready() => "running",
-            Some(r) if r.server.failure().is_some() => "stopped",
-            Some(_) => "starting",
-            None if self.refused.contains(&key) => "couldn't start",
-            None => "not running",
+            Some(r) if r.server.ready() => "running".to_string(),
+            Some(r) => r.server.failure().unwrap_or("starting").to_string(),
+            None => match self.refused.get(&key) {
+                Some(why) => format!("couldn't start: {why}"),
+                None => "not running".to_string(),
+            },
         }
     }
 
@@ -243,7 +244,7 @@ impl Languages {
     fn sync(&mut self, doc: &OpenDoc, path: &Path, choice: &Choice, update: &mut Update) {
         let key = key(choice);
         if !self.running.contains_key(&key) {
-            if self.refused.contains(&key) {
+            if self.refused.contains_key(&key) {
                 return;
             }
             match (self.start)(&choice.command, &choice.root) {
@@ -260,7 +261,7 @@ impl Languages {
                     update
                         .errors
                         .push(format!("{}: couldn't start {command}: {e}", choice.name));
-                    self.refused.insert(key);
+                    self.refused.insert(key, e.to_string());
                     return;
                 }
             }
@@ -741,7 +742,10 @@ mod tests {
         );
         assert_eq!(r.update(&docs), Update::default());
         let choice = r.servers.for_file(Path::new("/work/a.rs")).unwrap();
-        assert_eq!(r.langs.state(&choice), "couldn't start");
+        assert_eq!(
+            r.langs.state(&choice),
+            format!("couldn't start: {}", io::Error::from(io::ErrorKind::NotFound))
+        );
         r.langs.restart();
         assert_eq!(r.update(&docs).errors.len(), 1, "tried again after a restart");
     }
@@ -761,6 +765,8 @@ mod tests {
         drop(fake);
         let update = r.until(&docs, |_| false);
         assert_eq!(update.errors, ["rust: the server stopped"]);
+        let choice = r.servers.for_file(Path::new("/work/a.rs")).unwrap();
+        assert_eq!(r.langs.state(&choice), "the server stopped", "and :lsp says why");
         assert!(r.langs.problems(1).is_empty());
         assert_eq!(r.update(&docs), Update::default(), "and not again");
     }
