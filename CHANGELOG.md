@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0](https://github.com/borhara/tvim/compare/v1.2.0...v1.3.0) - 2026-11-20
+
+### Added
+
+- :lsp says why a server isn't running
+- :lsp says how the server is doing, and :lsp restart starts afresh
+- show problems in the text, and what's wrong on the cursor's line
+- ]d and [d go to the next and previous problem
+- run language servers for the open files
+- *(languages)* say when a server won't start, or stops
+- *(languages)* hold the problems servers find
+- *(languages)* tell servers when a file is saved
+- *(languages)* send each edit as the one change that covers it
+- *(languages)* close files that are gone, renamed or given another server
+- *(languages)* open each file on its server, once the server is ready
+- *(languages)* start the language servers the open files need
+- *(lsp)* count columns the way the server does
+- choose language servers with :lsp, in the config file too
+- *(servers)* let a server be swapped for another command, or turned off
+- *(servers)* know which language server each kind of file gets
+- *(paths)* a path in full, whether or not it exists yet
+- *(lsp)* say why a server stopped, from what it wrote to stderr
+- *(lsp)* answer what the server asks of the editor
+- *(lsp)* initialize the server before sending it anything else
+- *(lsp)* shut the server down when done with it
+- *(lsp)* notice when the server has gone away
+- *(lsp)* hear replies and notices from the server
+- *(lsp)* start a server and send it requests and notifications
+- *(lsp)* turn paths into file URIs and back
+- *(lsp)* frame messages by their length in bytes
+- *(json)* read \u escapes, joining surrogate pairs
+- *(json)* parse strings and objects
+- *(json)* parse numbers, literals and arrays
+- *(json)* write values compactly
+- *(json)* build values from strings, numbers, options and lists
+- *(json)* a value type with lookups that chain through missing parts
+
+### Fixed
+
+- draw problems under the selection and search matches
+- keep problems in order after pulling them into shorter text
+- find problems' files however the server escapes their paths
+- highlight .cts files as typescript
+
+### Other
+
+- say how to install each language server
+- describe language servers
+- *(lsp)* share the fake server with the rest of the crate
+- split command lines into words in one place
+
 ## [1.2.0](https://github.com/borhara/tvim/compare/v1.1.0...v1.2.0) - 2026-11-19
 
 ### Added
