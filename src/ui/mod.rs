@@ -17,6 +17,7 @@ use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
 use crate::explorer::Explorer;
 use crate::git::FileState;
+use crate::languages::{Problem, Severity};
 use crate::syntax::{Kind, Syntax};
 use crate::text::{caret, cell_width, char_count, is_word, vcol};
 
@@ -111,6 +112,7 @@ impl App for Tvim {
         for effect in self.editor.take_effects() {
             run_effect(&mut self.editor, effect);
         }
+        self.editor.sync_languages();
         self.settle();
         if self.editor.should_quit() {
             Flow::Quit
@@ -913,6 +915,8 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let bar = if active && focused { bar_on_guide(e) } else { None };
     let lit = mix(accent, palette::BLUSH, 0.3);
     let lens = if active && focused { e.lens() } else { None };
+    let problems = e.problems(v.text.id);
+    let problem_here = e.problem_here().filter(|_| active && focused && mode == Mode::Normal);
     if active && focused && lens.is_none() {
         e.anim.lens_gone();
     }
@@ -936,6 +940,11 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         let (left, width) = (slice.left, slice.width);
         let line = buf.line(row);
         let on_cursor = row == cursor.row;
+        let here: Vec<&Problem> = problems
+            .iter()
+            .filter(|p| (p.start.row..=p.end.row).contains(&row))
+            .collect();
+        let worst = here.iter().map(|p| p.severity).min();
 
         let glow = if active { e.anim.glow(row, time) } else { 0.0 };
         let band = if on_cursor && active && e.options.cursor_line {
@@ -967,10 +976,10 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             } else {
                 format!("{:>width$}", format!("{n:0>digits$}"))
             };
-            let label = if on_cursor && active {
-                bold(&paint(lit, &label))
-            } else {
-                paint(c.faint, &label)
+            let label = match worst {
+                Some(s) => bold(&paint(severity_color(s), &label)),
+                None if on_cursor && active => bold(&paint(lit, &label)),
+                None => paint(c.faint, &label),
             };
             frame.print(Rect::new(gutter.x + 1, y, width, 1), 0, &label);
             if on_cursor && active && e.options.cursor_line {
@@ -994,6 +1003,17 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
                 frame.tint(Rect::new(body.x + a, y, b - a, 1), color);
             }
         };
+        // first, so a selection or search match drawn over a problem still shows
+        for p in &here {
+            let from = if p.start.row == row { p.start.col } else { 0 };
+            let to = if p.end.row == row { p.end.col } else { char_count(line) };
+            tint(
+                frame,
+                from,
+                to.max(from + 1),
+                mix(c.app, severity_color(p.severity), 0.22),
+            );
+        }
         if let Some((from, to)) = selection.and_then(|sel| selected_cols(&sel, row, char_count(line))) {
             tint(frame, from, to, c.selection);
         }
@@ -1055,8 +1075,11 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             }
         }
 
-        if let Some(text) = lens.as_deref().filter(|_| on_cursor && slice.last) {
-            draw_lens(e, frame, Rect::new(body.x, y, body.width, 1), line, left, text, c);
+        let rest = Rect::new(body.x, y, body.width, 1);
+        if let Some(p) = problem_here.filter(|_| on_cursor && slice.last) {
+            draw_problem(e, frame, rest, line, left, p);
+        } else if let Some(text) = lens.as_deref().filter(|_| on_cursor && slice.last) {
+            draw_lens(e, frame, rest, line, left, text, c);
         }
     }
     if let Some(y) = sky_from {
@@ -1108,10 +1131,14 @@ fn tab_arrows(frame: &mut Frame, row: Rect, line: &str, left: usize, ts: usize, 
     }
 }
 
+// between the end of the cursor's line and what's said about it
+const LENS_GAP: usize = 4;
+
 fn draw_lens(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, text: &str, c: &Colors) {
-    const GAP: usize = 4;
     let end = vcol(line, char_count(line), e.options.tab_stop);
-    let Some(x) = (end + GAP).checked_sub(left) else { return };
+    let Some(x) = (end + LENS_GAP).checked_sub(left) else {
+        return;
+    };
     let room = row.width.saturating_sub(x);
     let short = text.split(" · ").next().unwrap_or(text);
     let Some(shown) = [text, short].into_iter().find(|t| tinsel::text::width(t) <= room) else {
@@ -1125,6 +1152,31 @@ fn draw_lens(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, 
     let color = mix(c.app, mix(palette::MUTED, palette::BLUSH, 0.15), fade);
     let w = tinsel::text::width(shown);
     frame.print(Rect::new(row.x + x, row.y, w, 1), 0, &italic(&paint(color, shown)));
+}
+
+// the worst problem on the cursor's line, said where the lens would be
+fn draw_problem(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, problem: &Problem) {
+    let end = vcol(line, char_count(line), e.options.tab_stop);
+    let Some(x) = (end + LENS_GAP).checked_sub(left) else {
+        return;
+    };
+    let room = row.width.saturating_sub(x);
+    let first = problem.message.lines().next().unwrap_or("");
+    let text = tinsel::text::truncate(&format!("● {first}"), room);
+    if room < 4 || text.is_empty() {
+        return;
+    }
+    let shown = italic(&paint(severity_color(problem.severity), &text));
+    frame.print(Rect::new(row.x + x, row.y, tinsel::text::width(&text), 1), 0, &shown);
+}
+
+fn severity_color(s: Severity) -> Rgb {
+    match s {
+        Severity::Error => palette::RED,
+        Severity::Warning => palette::AMBER,
+        Severity::Info => BLUE,
+        Severity::Hint => LILAC,
+    }
 }
 
 fn word_at(line: &str, col: usize) -> Option<String> {
@@ -1754,6 +1806,49 @@ fn sparkles(frame: &mut Frame, area: Rect, clock: f64, density: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_problem_on_the_cursors_line_is_said_after_it() {
+        let shown = |keys: &str| {
+            let mut e = Editor::with_text("let x = y;\nfine");
+            e.set_screen(60, 8);
+            let problem = Problem {
+                start: Pos::new(0, 8),
+                end: Pos::new(0, 9),
+                severity: Severity::Error,
+                message: "cannot find y\nmore detail below".into(),
+            };
+            e.languages.found(e.buffer_id, vec![problem]);
+            e.keys(&crate::keys::parse(keys));
+            tinsel::with_color_mode(ColorMode::None, || app::snapshot(&Tvim::new(e), 60, 8).plain())
+        };
+        let screen = shown("");
+        let line = screen.lines().find(|l| l.contains("let x = y;")).unwrap();
+        assert!(line.contains("let x = y;    ● cannot find y"), "{screen}");
+        assert!(!screen.contains("more detail"), "only the first line");
+        assert!(!shown("j").contains("cannot find y"), "only on the cursor's line");
+    }
+
+    #[test]
+    fn a_selection_shows_over_a_problem() {
+        let line = |problems: Vec<Problem>| {
+            let mut e = Editor::with_text("let x = y;\nfine");
+            e.set_screen(60, 8);
+            e.languages.found(e.buffer_id, problems);
+            e.keys(&crate::keys::parse("Vj"));
+            let screen = tinsel::with_color_mode(ColorMode::TrueColor, || app::snapshot(&Tvim::new(e), 60, 8));
+            let row = screen.lines().iter().find(|l| l.contains("let")).unwrap().clone();
+            // past the line number, which is coloured for the problem
+            row[row.find("let").unwrap()..].to_string()
+        };
+        let problem = Problem {
+            start: Pos::new(0, 4),
+            end: Pos::new(0, 9),
+            severity: Severity::Error,
+            message: "no".into(),
+        };
+        assert_eq!(line(vec![problem]), line(Vec::new()));
+    }
 
     #[test]
     fn the_intro_squeezes_insel_away_into_the_logo() {

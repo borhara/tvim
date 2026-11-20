@@ -16,6 +16,13 @@ pub fn canonical(path: &Path) -> io::Result<PathBuf> {
     Ok(path)
 }
 
+/// The path in full: canonical if it exists, and otherwise joined to the working directory.
+pub fn absolute(path: &Path) -> PathBuf {
+    canonical(path)
+        .or_else(|_| std::path::absolute(path))
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// `\\?\C:\a` as `C:\a` and `\\?\UNC\server\share` as `\\server\share`, or `None` when the
 /// path has no such prefix or needs it: too long for the plain form, or with a part Windows
 /// would read differently without it.
