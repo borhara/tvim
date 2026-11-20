@@ -2685,6 +2685,8 @@ impl Editor {
                         Pos::new(row, s.col.min(b.line_len(row).saturating_sub(1)))
                     })
                     .collect();
+                // and kept in order, since those pulled in can land before the rest
+                starts.sort();
                 starts.dedup();
                 let at = if forward {
                     starts.iter().filter(|&&s| s > p).take(n).last()
@@ -4709,6 +4711,19 @@ mod tests {
         assert_eq!(e.cursor(), Pos::new(1, 4));
         e.keys(&parse("``"));
         assert_eq!(e.cursor(), Pos::new(4, 3), "a jump, so `` goes back");
+    }
+
+    #[test]
+    fn problems_pulled_into_shorter_text_are_visited_in_order() {
+        let found = vec![
+            problem((1, 1), (1, 2), Severity::Error, "a"),
+            problem((5, 0), (5, 1), Severity::Error, "from when there were more lines"),
+        ];
+        let mut e = with_problems("ab\ncd", found);
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(1, 0));
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(1, 1));
     }
 
     #[test]
