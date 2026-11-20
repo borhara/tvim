@@ -275,6 +275,16 @@ se rnu
 }
 
 #[test]
+fn config_lines_can_choose_language_servers() {
+    let mut e = Editor::new();
+    assert_eq!(e.apply_config("lsp python my-python-server\nlsp go off\n"), None);
+    e.ex("lsp python");
+    assert_eq!(e.message().unwrap().text, "python: my-python-server");
+    e.ex("lsp go");
+    assert_eq!(e.message().unwrap().text, "go: off");
+}
+
+#[test]
 fn config_lines_can_map_keys() {
     let mut e = common::ed("one two");
     let config = "nnoremap <leader>d dw\ninoremap jk <Esc>\nmap! QQ hi\n";
@@ -297,6 +307,6 @@ fn bad_config_lines_say_so() {
     let mut e = Editor::new();
     assert_eq!(
         e.apply_config("dd").as_deref(),
-        Some("config line 1: only set and map lines are allowed: dd")
+        Some("config line 1: only set, map and lsp lines are allowed: dd")
     );
 }

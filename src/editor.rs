@@ -16,11 +16,13 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
+use crate::languages::{Languages, OpenDoc, Problem};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
 use crate::preview::Preview;
 use crate::regex::Regex;
+use crate::servers::Servers;
 use crate::syntax::{self, State, Syntax};
 use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, vcol};
 use crate::window::{Node, Win};
@@ -106,6 +108,7 @@ pub struct Options {
     pub tab_preview: bool,
     pub dim: bool,
     pub gitlens: bool,
+    pub lsp: bool,
     pub roomy: bool,
     pub zero_pad: bool,
     pub wrap: bool,
@@ -135,6 +138,7 @@ impl Default for Options {
             tab_preview: false,
             dim: true,
             gitlens: true,
+            lsp: true,
             roomy: true,
             zero_pad: false,
             wrap: false,
@@ -166,6 +170,7 @@ impl Options {
             "tabpreview" | "tp" => ("tabpreview", &mut self.tab_preview),
             "dim" => ("dim", &mut self.dim),
             "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
+            "lsp" => ("lsp", &mut self.lsp),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
@@ -324,6 +329,7 @@ fn line_hash(line: &str) -> u64 {
 }
 
 pub(crate) struct Text<'a> {
+    pub id: usize,
     pub buf: &'a Buffer,
     pub path: Option<&'a Path>,
     pub modified: bool,
@@ -481,6 +487,8 @@ pub struct Editor {
     last_macro: Option<char>,
     macro_depth: usize,
     pub(crate) maps: Maps,
+    pub(crate) servers: Servers,
+    pub(crate) languages: Languages,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -576,6 +584,8 @@ impl Editor {
             last_macro: None,
             macro_depth: 0,
             maps: Maps::default(),
+            servers: Servers::default(),
+            languages: Languages::default(),
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
@@ -712,6 +722,7 @@ impl Editor {
 
     pub(crate) fn shown_text(&self) -> Text<'_> {
         Text {
+            id: self.buffer_id,
             buf: &self.buf,
             path: self.file.path.as_deref(),
             modified: self.is_modified(),
@@ -726,6 +737,7 @@ impl Editor {
     pub(crate) fn text_of(&self, id: usize) -> Text<'_> {
         match self.buffer_at(id).map(|i| &self.docs[i]) {
             Some(d) if id != self.buffer_id => Text {
+                id: d.id,
                 buf: &d.buf,
                 path: d.file.path.as_deref(),
                 modified: d.modified(),
@@ -1441,6 +1453,48 @@ impl Editor {
             g.refresh();
         }
         self.git_menu_tick();
+        self.sync_languages();
+    }
+
+    // tells the language servers what changed in the open files, and takes in what they found
+    pub fn sync_languages(&mut self) {
+        let mut docs = Vec::new();
+        if self.options.lsp {
+            docs.push(OpenDoc {
+                id: self.buffer_id,
+                path: self.file.path.as_deref(),
+                version: self.version,
+                saved: self.saved,
+                lines: self.buf.lines(),
+                final_newline: self.file.final_newline,
+            });
+            let others = self.docs.iter().enumerate().filter(|&(i, _)| i != self.current);
+            docs.extend(others.map(|(_, d)| OpenDoc {
+                id: d.id,
+                path: d.file.path.as_deref(),
+                version: d.version,
+                saved: d.saved,
+                lines: d.buf.lines(),
+                final_newline: d.file.final_newline,
+            }));
+        }
+        let update = self.languages.update(&docs, &self.servers);
+        if !update.errors.is_empty() {
+            self.error(update.errors.join("; "));
+        }
+    }
+
+    pub(crate) fn problems(&self, buffer: usize) -> &[Problem] {
+        self.languages.problems(buffer)
+    }
+
+    // the worst problem on the cursor's line
+    pub fn problem_here(&self) -> Option<&Problem> {
+        let row = self.cursor.row;
+        self.problems(self.buffer_id)
+            .iter()
+            .filter(|p| (p.start.row..=p.end.row).contains(&row))
+            .min_by_key(|p| p.severity)
     }
 
     pub fn wait_for_grep(&mut self) {
@@ -2343,6 +2397,7 @@ impl Editor {
                 | Motion::ParagraphForward
                 | Motion::ParagraphBack
                 | Motion::Hunk(_)
+                | Motion::Problem(_)
         )
     }
 
@@ -2620,6 +2675,25 @@ impl Editor {
                     rows.iter().rev().filter(|&&r| r < p.row).take(n).last()
                 };
                 (fnb((*row?).min(b.last_row())), Linewise)
+            }
+            Motion::Problem(forward) => {
+                let starts = self.problems(self.buffer_id).iter().map(|p| p.start);
+                // a server may still be on older text, so its places are kept inside this one
+                let mut starts: Vec<Pos> = starts
+                    .map(|s| {
+                        let row = s.row.min(b.last_row());
+                        Pos::new(row, s.col.min(b.line_len(row).saturating_sub(1)))
+                    })
+                    .collect();
+                // and kept in order, since those pulled in can land before the rest
+                starts.sort();
+                starts.dedup();
+                let at = if forward {
+                    starts.iter().filter(|&&s| s > p).take(n).last()
+                } else {
+                    starts.iter().rev().filter(|&&s| s < p).take(n).last()
+                };
+                (*at?, Exclusive)
             }
             Motion::Mark(c, exact) => {
                 let c = if c == '`' { '\'' } else { c };
@@ -4597,7 +4671,74 @@ pub(crate) fn expand_home(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::slashed;
+    use super::{Editor, Pos, slashed};
+    use crate::keys::parse;
+    use crate::languages::{Problem, Severity};
+
+    fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
+        Problem {
+            start: Pos::new(start.0, start.1),
+            end: Pos::new(end.0, end.1),
+            severity,
+            message: message.into(),
+        }
+    }
+
+    fn with_problems(text: &str, problems: Vec<Problem>) -> Editor {
+        let mut e = Editor::with_text(text);
+        e.languages.found(e.buffer_id, problems);
+        e
+    }
+
+    #[test]
+    fn brackets_and_d_go_from_problem_to_problem() {
+        let found = vec![
+            problem((1, 4), (1, 5), Severity::Warning, "a"),
+            problem((1, 4), (1, 9), Severity::Error, "the same place"),
+            problem((3, 2), (3, 3), Severity::Error, "b"),
+            problem((9, 9), (9, 9), Severity::Hint, "past the end, from older text"),
+        ];
+        let mut e = with_problems("zero\none two\ntwo\nthree four\nfive", found);
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(1, 4));
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(3, 2));
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(4, 3), "kept inside the text");
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(4, 3), "no wrapping round");
+        e.keys(&parse("2[d"));
+        assert_eq!(e.cursor(), Pos::new(1, 4));
+        e.keys(&parse("``"));
+        assert_eq!(e.cursor(), Pos::new(4, 3), "a jump, so `` goes back");
+    }
+
+    #[test]
+    fn problems_pulled_into_shorter_text_are_visited_in_order() {
+        let found = vec![
+            problem((1, 1), (1, 2), Severity::Error, "a"),
+            problem((5, 0), (5, 1), Severity::Error, "from when there were more lines"),
+        ];
+        let mut e = with_problems("ab\ncd", found);
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(1, 0));
+        e.keys(&parse("]d"));
+        assert_eq!(e.cursor(), Pos::new(1, 1));
+    }
+
+    #[test]
+    fn the_worst_problem_on_the_line_is_the_one_shown() {
+        let found = vec![
+            problem((0, 0), (0, 1), Severity::Hint, "hint"),
+            problem((0, 2), (1, 1), Severity::Warning, "spans two lines"),
+        ];
+        let mut e = with_problems("ab cd\nef\ngh", found);
+        assert_eq!(e.problem_here().unwrap().message, "spans two lines");
+        e.keys(&parse("j"));
+        assert_eq!(e.problem_here().unwrap().message, "spans two lines");
+        e.keys(&parse("j"));
+        assert_eq!(e.problem_here(), None);
+    }
 
     #[test]
     fn windows_paths_are_listed_with_slashes_and_without_their_prefix() {
