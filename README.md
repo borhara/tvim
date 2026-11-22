@@ -2,6 +2,10 @@
 
 tvim is a text editor for the terminal that uses vim's keys. If you already use vim, most of what your fingers do will just work. This page covers getting it running, what's different from vim, and the extra bits.
 
+![tvim's start screen: the project's files in a sidebar on the left, and the logo and its keys in a sky of twinkling stars](https://raw.githubusercontent.com/borhara/tvim/main/docs/tvim-home.png)
+
+![tvim editing Rust: the project tree with src open and motion.rs chosen, tabs for the open files, syntax colouring, indent guides, blame on the cursor's line and the function under the cursor named at the bottom](https://raw.githubusercontent.com/borhara/tvim/main/docs/tvim-code.jpg)
+
 ## Install
 
 On macOS or Linux:
