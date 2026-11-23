@@ -314,6 +314,7 @@ fn initialize_params(root: &Path) -> Json {
                         ("synchronization", Json::object([("didSave", true.into())])),
                         ("publishDiagnostics", Json::Object(Vec::new())),
                         ("definition", Json::object([("linkSupport", true.into())])),
+                        ("references", Json::Object(Vec::new())),
                         (
                             "hover",
                             Json::object([("contentFormat", vec!["markdown", "plaintext"].into())]),
