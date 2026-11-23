@@ -313,6 +313,7 @@ fn initialize_params(root: &Path) -> Json {
                     Json::object([
                         ("synchronization", Json::object([("didSave", true.into())])),
                         ("publishDiagnostics", Json::Object(Vec::new())),
+                        ("definition", Json::object([("linkSupport", true.into())])),
                     ]),
                 ),
             ]),
