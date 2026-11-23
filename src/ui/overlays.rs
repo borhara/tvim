@@ -141,6 +141,157 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum HoverLine {
+    Code(Option<Syntax>, String),
+    Prose(String),
+    Rule,
+}
+
+// a server's markdown as lines to show: code blocks kept as they are, prose wrapped to fit
+pub(super) fn hover_lines(text: &str, width: usize) -> Vec<HoverLine> {
+    let mut out = Vec::new();
+    let mut fence: Option<Option<Syntax>> = None;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(lang) = trimmed.strip_prefix("```") {
+            fence = match fence {
+                Some(_) => None,
+                None => Some(fence_syntax(lang.trim())),
+            };
+            continue;
+        }
+        match fence {
+            Some(syntax) => out.push(HoverLine::Code(syntax, line.trim_end().to_string())),
+            None if trimmed.len() >= 3 && trimmed.chars().all(|c| c == '-' || c == '*' || c == '_') => {
+                out.push(HoverLine::Rule)
+            }
+            None if trimmed.is_empty() => out.push(HoverLine::Prose(String::new())),
+            None => out.extend(wrap(line.trim_end(), width).into_iter().map(HoverLine::Prose)),
+        }
+    }
+    // a blank line either side of a rule says the same thing again
+    let blank = |l: &HoverLine| *l == HoverLine::Prose(String::new());
+    let mut kept: Vec<HoverLine> = Vec::new();
+    for line in out {
+        let after_gap = kept.last().is_none_or(|l| blank(l) || *l == HoverLine::Rule);
+        if blank(&line) && after_gap {
+            continue;
+        }
+        if line == HoverLine::Rule && kept.last().is_some_and(blank) {
+            kept.pop();
+        }
+        kept.push(line);
+    }
+    while kept.last().is_some_and(|l| blank(l) || *l == HoverLine::Rule) {
+        kept.pop();
+    }
+    kept
+}
+
+fn fence_syntax(lang: &str) -> Option<Syntax> {
+    let ext = match lang {
+        "rust" => "rs",
+        "python" => "py",
+        "javascript" | "typescript" | "typescriptreact" | "javascriptreact" => "js",
+        "golang" => "go",
+        "cpp" | "c++" | "objc" | "objective-c" => "c",
+        "bash" | "shell" | "console" => "sh",
+        other => other,
+    };
+    Syntax::detect(&format!("x.{ext}"))
+}
+
+// at spaces where it can, mid-word where a word is wider than the room
+fn wrap(line: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+    let mut out = Vec::new();
+    let mut row = indent.clone();
+    for word in line.split_whitespace() {
+        let room = width.saturating_sub(tinsel::text::width(&row));
+        if row.trim().is_empty() || tinsel::text::width(word) < room {
+            if !row.trim().is_empty() {
+                row.push(' ');
+            }
+            row.push_str(word);
+        } else {
+            out.push(std::mem::replace(&mut row, format!("{indent}{word}")));
+        }
+        while tinsel::text::width(&row) > width {
+            let cut: String = row.chars().take(width).collect();
+            row = row.chars().skip(width).collect();
+            out.push(cut);
+        }
+    }
+    if !row.trim().is_empty() {
+        out.push(row);
+    }
+    out
+}
+
+pub(super) fn hover(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
+    let Some(text) = e.hover() else { return };
+    if area.width < 20 || area.height < 5 {
+        return;
+    }
+    let max_width = area.width.saturating_sub(4).min(80);
+    let lines = hover_lines(text, max_width);
+    if lines.is_empty() {
+        return;
+    }
+    let (cx, cy) = at;
+    let below = (area.y + area.height).saturating_sub(cy + 1);
+    let above = cy.saturating_sub(area.y);
+    let room = if below >= 6 || below >= above { below } else { above };
+    let rows = lines.len().min(16).min(room.saturating_sub(2));
+    if rows == 0 {
+        return;
+    }
+    let widest = lines
+        .iter()
+        .map(|l| match l {
+            HoverLine::Code(_, s) | HoverLine::Prose(s) => tinsel::text::width(s),
+            HoverLine::Rule => 0,
+        })
+        .max()
+        .unwrap_or(0);
+    let width = (widest.clamp(16, max_width) + 4).min(area.width);
+    let height = rows + 2;
+    let x = cx.clamp(area.x, area.x + area.width - width);
+    let y = if room == below { cy + 1 } else { cy - height };
+    let mut panel = Panel::new("").background(c.bar);
+    if lines.len() > rows {
+        panel = panel.footer(format!("{} more", lines.len() - rows));
+    }
+    let rect = Rect::new(x, y, width, height);
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
+    let mut state = State::Normal;
+    let mut md = State::Normal;
+    for (i, line) in lines.iter().take(rows).enumerate() {
+        let shown = match line {
+            HoverLine::Code(Some(syntax), s) => {
+                let (kinds, next) = syntax::highlight(s, *syntax, state);
+                state = next;
+                styled_line(s, Some(&kinds), e.options.tab_stop, c)
+            }
+            HoverLine::Code(None, s) => paint(palette::SAGE, s),
+            HoverLine::Prose(s) => {
+                state = State::Normal;
+                let (kinds, next) = syntax::highlight(s, Syntax::Markdown, md);
+                md = next;
+                styled_line(s, Some(&kinds), e.options.tab_stop, c)
+            }
+            HoverLine::Rule => {
+                state = State::Normal;
+                paint(palette::LINE, &"─".repeat(inner.width))
+            }
+        };
+        frame.print(inner, i, &shown);
+    }
+}
+
 struct Picker {
     list: Rect,
     pane: Option<Rect>,
@@ -656,6 +807,34 @@ pub(super) fn hint_strip(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hovers_keep_code_and_wrap_prose() {
+        use super::HoverLine::*;
+        let text = "```rust\npub fn new(radius: f64) -> Circle\n```\n\n---\n\n\nMakes a circle of the given radius.\n\n```\n  raw\n```\n";
+        assert_eq!(
+            hover_lines(text, 14),
+            [
+                Code(Some(Syntax::Rust), "pub fn new(radius: f64) -> Circle".into()),
+                Rule,
+                Prose("Makes a circle".into()),
+                Prose("of the given".into()),
+                Prose("radius.".into()),
+                Prose(String::new()),
+                Code(None, "  raw".into()),
+            ]
+        );
+        assert_eq!(
+            hover_lines("abcdefgh ij", 3),
+            [
+                Prose("abc".into()),
+                Prose("def".into()),
+                Prose("gh".into()),
+                Prose("ij".into())
+            ]
+        );
+        assert!(hover_lines("\n---\n\n", 10).is_empty());
+    }
 
     #[test]
     fn hints_skip_the_register_and_count() {

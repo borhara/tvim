@@ -251,7 +251,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 }
 
-const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&";
+const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&K";
 const VISUAL_KEYS: &str = "xXsSDCYpPJ~uUoORvV:IA";
 
 /// Whether `keys` are no more than a register and a count, so a new command starts next.
