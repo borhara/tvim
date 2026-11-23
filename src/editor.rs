@@ -489,6 +489,8 @@ pub struct Editor {
     pub(crate) maps: Maps,
     pub(crate) servers: Servers,
     pub(crate) languages: Languages,
+    // what the server said about the cursor's place, shown until the next key
+    hover: Option<String>,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -586,6 +588,7 @@ impl Editor {
             maps: Maps::default(),
             servers: Servers::default(),
             languages: Languages::default(),
+            hover: None,
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
@@ -1145,6 +1148,7 @@ impl Editor {
     }
 
     fn feed(&mut self, input: Input) {
+        self.hover = None;
         if self.git_menu.is_some() {
             return self.git_menu_input(input);
         }
@@ -1510,6 +1514,8 @@ impl Editor {
                 Some(place) => self.jump_to_place(place),
                 None => self.error("no definition found"),
             },
+            (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
+            (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
             _ => {}
         }
     }
@@ -1527,6 +1533,10 @@ impl Editor {
             self.top.set(row.saturating_sub(self.text_rows() / 3));
         }
         self.land(true);
+    }
+
+    pub fn hover(&self) -> Option<&str> {
+        self.hover.as_deref()
     }
 
     pub(crate) fn problems(&self, buffer: usize) -> &[Problem] {
@@ -2249,6 +2259,7 @@ impl Editor {
         let n = count.unwrap_or(1);
         let op = |e: &mut Self, op: Op, m: Motion| e.operate(op, Target::Motion(m), count, register);
         match key {
+            Key::Char('K') => self.ask_server(Ask::Hover),
             Key::Char('x') | Key::Delete => {
                 if self.buf.line_len(self.cursor.row) > 0 {
                     op(self, Op::Delete, Motion::Right)

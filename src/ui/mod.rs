@@ -513,6 +513,9 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if let Some((x, y, _)) = text_cursor(e, e.mode(), d.body).filter(|_| e.completion().is_some()) {
         overlays::completion(e, frame, d.panes, (x, y), &c);
     }
+    if let Some((x, y, _)) = text_cursor(e, e.mode(), d.body).filter(|_| e.hover().is_some()) {
+        overlays::hover(e, frame, d.panes, (x, y), &c);
+    }
     if let Some(f) = e.finder() {
         typing_at = overlays::finder(f, frame, d.panes, &c);
     }
@@ -1827,6 +1830,33 @@ mod tests {
         assert!(line.contains("let x = y;    ● cannot find y"), "{screen}");
         assert!(!screen.contains("more detail"), "only the first line");
         assert!(!shown("j").contains("cannot find y"), "only on the cursor's line");
+    }
+
+    #[test]
+    fn a_hover_shows_by_the_cursor_until_the_next_key() {
+        let mut e = Editor::with_text("let c = Circle::new(2.0);\nfine\n\n\n\n\n\n\n\n");
+        e.set_screen(60, 14);
+        e.keys(&crate::keys::parse("fn"));
+        let text = "```rust\npub fn new(radius: f64) -> Circle\n```\n\n---\n\nMakes a circle.";
+        let answer = crate::languages::Answer {
+            id: e.buffer_id,
+            version: e.version(),
+            at: e.cursor(),
+            ask: crate::languages::Ask::Hover,
+            said: crate::languages::Said::Text(text.into()),
+        };
+        e.answered(answer);
+        let screen = tinsel::with_color_mode(ColorMode::None, || {
+            let mut frame = Frame::new(60, 14);
+            draw(&e, &mut frame);
+            frame.snapshot().plain()
+        });
+        let at = |s: &str| screen.lines().position(|l| l.contains(s));
+        let code = at("pub fn new(radius: f64) -> Circle").expect("the signature");
+        assert!(at("Makes a circle.").unwrap() > code + 1, "under a rule");
+        assert!(code > at("let c = Circle").unwrap(), "below the cursor");
+        e.keys(&crate::keys::parse("l"));
+        assert_eq!(e.hover(), None);
     }
 
     #[test]
