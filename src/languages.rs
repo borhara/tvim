@@ -43,6 +43,7 @@ pub struct Problem {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ask {
     Definition,
+    Hover,
 }
 
 // a stretch of a file, in the editor's columns
@@ -56,6 +57,8 @@ pub struct Place {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Said {
     Places(Vec<Place>),
+    // markdown, empty when there's nothing to say
+    Text(String),
     Refused(String),
 }
 
@@ -212,10 +215,11 @@ impl Languages {
             return Err("the language server has stopped".to_string());
         };
         let (method, provider, what) = match ask {
-            Ask::Definition => ("textDocument/definition", "definitionProvider", "definitions"),
+            Ask::Definition => ("textDocument/definition", "definitionProvider", "find definitions"),
+            Ask::Hover => ("textDocument/hover", "hoverProvider", "describe things"),
         };
         if !provides(&r.server.capabilities()[provider]) {
-            return Err(format!("{} can't find {what}", r.name));
+            return Err(format!("{} can't {what}", r.name));
         }
         let line = s.lines.get(at.row).map_or("", String::as_str);
         let character = r.server.encoding().units(line, at.col);
@@ -430,6 +434,26 @@ fn said(ask: &Ask, result: &Json, synced: &HashMap<usize, Synced>, encoding: Enc
     let mut lines = Lines::new(synced);
     match ask {
         Ask::Definition => Said::Places(places(result, &mut lines, encoding)),
+        Ask::Hover => Said::Text(hover_text(&result["contents"])),
+    }
+}
+
+// MarkupContent, a MarkedString, or a list of MarkedStrings
+fn hover_text(contents: &Json) -> String {
+    match contents {
+        Json::String(s) => s.trim().to_string(),
+        Json::Array(list) => {
+            let parts: Vec<String> = list.iter().map(hover_text).filter(|p| !p.is_empty()).collect();
+            parts.join("\n\n")
+        }
+        Json::Object(_) => {
+            let value = contents["value"].as_str().unwrap_or("").trim();
+            match contents["language"].as_str() {
+                Some(language) if !value.is_empty() => format!("```{language}\n{value}\n```"),
+                _ => value.to_string(),
+            }
+        }
+        _ => String::new(),
     }
 }
 
@@ -1052,6 +1076,37 @@ mod tests {
             r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32801,"message":"content modified"}}}}"#
         ));
         assert_eq!(answer(&mut r, &docs).said, Said::Refused("content modified".into()));
+    }
+
+    #[test]
+    fn hovers_come_back_as_markdown_however_theyre_sent() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, r#"{"textDocumentSync":1,"hoverProvider":{}}"#);
+        fake.recv().unwrap();
+        for (contents, text) in [
+            (
+                r#"{"kind":"markdown","value":"```rust\nfn a()\n```\n\nDoes a.\n"}"#,
+                "```rust\nfn a()\n```\n\nDoes a.",
+            ),
+            (r#""plain""#, "plain"),
+            (
+                r#"[{"language":"rust","value":"fn a()"},"","Does a."]"#,
+                "```rust\nfn a()\n```\n\nDoes a.",
+            ),
+        ] {
+            r.langs.ask(1, Pos::new(0, 0), Ask::Hover).unwrap();
+            reply(
+                &mut fake,
+                "textDocument/hover",
+                &format!(r#"{{"contents":{contents}}}"#),
+            );
+            assert_eq!(answer(&mut r, &docs).said, Said::Text(text.into()));
+        }
+        r.langs.ask(1, Pos::new(0, 0), Ask::Hover).unwrap();
+        reply(&mut fake, "textDocument/hover", "null");
+        assert_eq!(answer(&mut r, &docs).said, Said::Text(String::new()), "nothing to say");
     }
 
     #[test]
