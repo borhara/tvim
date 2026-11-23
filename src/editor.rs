@@ -16,7 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
-use crate::languages::{Languages, OpenDoc, Problem};
+use crate::languages::{Answer, Ask, Languages, OpenDoc, Place, Problem, Said};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -1482,6 +1482,50 @@ impl Editor {
         if !update.errors.is_empty() {
             self.error(update.errors.join("; "));
         }
+        for answer in update.answers {
+            self.answered(answer);
+        }
+    }
+
+    // asks the file's language server about the cursor's place
+    fn ask_server(&mut self, ask: Ask) {
+        if !self.options.lsp {
+            return self.error("language servers are off (:set lsp)");
+        }
+        // so the server has the text as it is now
+        self.sync_languages();
+        if let Err(why) = self.languages.ask(self.buffer_id, self.cursor, ask) {
+            self.error(why);
+        }
+    }
+
+    pub(crate) fn answered(&mut self, answer: Answer) {
+        // asked about somewhere the cursor has since left, or text that has since changed
+        if answer.id != self.buffer_id || answer.version != self.version || answer.at != self.cursor {
+            return;
+        }
+        match (answer.ask, answer.said) {
+            (_, Said::Refused(why)) => self.error(why),
+            (Ask::Definition, Said::Places(places)) => match places.first() {
+                Some(place) => self.jump_to_place(place),
+                None => self.error("no definition found"),
+            },
+        }
+    }
+
+    fn jump_to_place(&mut self, place: &Place) {
+        self.remember_jump();
+        if !self.open_or_report(&place.path) {
+            return;
+        }
+        let row = place.start.row.min(self.buf.last_row());
+        self.cursor = Pos::new(row, place.start.col);
+        self.clamp();
+        self.set_want();
+        if !(self.top.get()..=self.last_shown(self.top.get())).contains(&row) {
+            self.top.set(row.saturating_sub(self.text_rows() / 3));
+        }
+        self.land(true);
     }
 
     pub(crate) fn problems(&self, buffer: usize) -> &[Problem] {
@@ -2327,6 +2371,7 @@ impl Editor {
                 }
                 self.begin_insert(n, None);
             }
+            'd' => self.ask_server(Ask::Definition),
             _ => {}
         }
     }
@@ -4673,7 +4718,8 @@ pub(crate) fn expand_home(path: &str) -> String {
 mod tests {
     use super::{Editor, Pos, slashed};
     use crate::keys::parse;
-    use crate::languages::{Problem, Severity};
+    use crate::languages::{Answer, Ask, Place, Problem, Said, Severity};
+    use std::path::{Path, PathBuf};
 
     fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
         Problem {
@@ -4738,6 +4784,83 @@ mod tests {
         assert_eq!(e.problem_here().unwrap().message, "spans two lines");
         e.keys(&parse("j"));
         assert_eq!(e.problem_here(), None);
+    }
+
+    fn temp_file(name: &str, text: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tvim-editor-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap();
+        crate::paths::canonical(&path).unwrap()
+    }
+
+    // as the server would answer about where the cursor is now
+    fn answer(e: &Editor, ask: Ask, said: Said) -> Answer {
+        Answer {
+            id: e.buffer_id,
+            version: e.version,
+            at: e.cursor,
+            ask,
+            said,
+        }
+    }
+
+    fn place(path: &Path, row: usize, col: usize) -> Place {
+        Place {
+            path: path.to_path_buf(),
+            start: Pos::new(row, col),
+            end: Pos::new(row, col + 1),
+        }
+    }
+
+    #[test]
+    fn a_definition_is_gone_to_and_ctrl_o_comes_back() {
+        let a = temp_file("def-a.rs", "use b;\nfn main() {\n    helper();\n}\n");
+        let b = temp_file("def-b.rs", "\n\npub fn helper() {}\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("jj4l"));
+        let said = Said::Places(vec![place(&b, 2, 7)]);
+        e.answered(answer(&e, Ask::Definition, said));
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(b)
+        );
+        assert_eq!(e.cursor, Pos::new(2, 7));
+        e.keys(&parse("<C-o>"));
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(a.clone())
+        );
+        assert_eq!(e.cursor, Pos::new(2, 4));
+
+        let said = Said::Places(vec![place(&a, 1, 3)]);
+        e.answered(answer(&e, Ask::Definition, said));
+        assert_eq!(e.cursor, Pos::new(1, 3), "in the same file");
+        e.keys(&parse("<C-o>"));
+        assert_eq!(e.cursor, Pos::new(2, 4));
+    }
+
+    #[test]
+    fn answers_about_somewhere_since_left_are_dropped() {
+        let a = temp_file("def-left.rs", "one\ntwo\nthree\n");
+        let mut e = Editor::open(&a).unwrap();
+        let late = answer(&e, Ask::Definition, Said::Places(vec![place(&a, 2, 0)]));
+        e.keys(&parse("l"));
+        e.answered(late.clone());
+        assert_eq!(e.cursor, Pos::new(0, 1), "the cursor moved");
+        e.keys(&parse("h"));
+        e.keys(&parse("x"));
+        e.answered(late);
+        assert_eq!(e.cursor, Pos::new(0, 0), "the text changed");
+    }
+
+    #[test]
+    fn nothing_found_or_no_server_is_said() {
+        let mut e = Editor::with_text("a");
+        e.answered(answer(&e, Ask::Definition, Said::Places(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "no definition found");
+        e.keys(&parse("gd"));
+        assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
     }
 
     #[test]

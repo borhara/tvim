@@ -203,7 +203,9 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     match key {
         Key::Char('g') => match keys.get(i + 1) {
             None => return Parse::More,
-            Some(Key::Char(c @ ('v' | 'J' | 'i' | 'p' | 'P' | 't' | 'T'))) => return done(Act::G(*c), i + 2, count1),
+            Some(Key::Char(c @ ('v' | 'J' | 'i' | 'p' | 'P' | 't' | 'T' | 'd'))) => {
+                return done(Act::G(*c), i + 2, count1);
+            }
             _ => {}
         },
         Key::Char('z') => {
