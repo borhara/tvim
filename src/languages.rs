@@ -39,11 +39,42 @@ pub struct Problem {
     pub message: String,
 }
 
+// what the editor can ask a server about a place in a file
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ask {
+    Definition,
+}
+
+// a stretch of a file, in the editor's columns
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Place {
+    pub path: PathBuf,
+    pub start: Pos,
+    pub end: Pos,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Said {
+    Places(Vec<Place>),
+    Refused(String),
+}
+
+// a server's answer, with what was asked, of which file, and where it was then
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Answer {
+    pub id: usize,
+    pub version: u64,
+    pub at: Pos,
+    pub ask: Ask,
+    pub said: Said,
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Update {
     // problems came or went, so there's something new to show
     pub changed: bool,
     pub errors: Vec<String>,
+    pub answers: Vec<Answer>,
 }
 
 // a server is one command run for one project
@@ -55,6 +86,15 @@ struct Running {
     server: Server,
     // whether the user has been told it stopped
     told: bool,
+    // requests waiting on a reply, by their id
+    asked: HashMap<i64, Asked>,
+}
+
+struct Asked {
+    id: usize,
+    version: u64,
+    at: Pos,
+    ask: Ask,
 }
 
 struct Synced {
@@ -157,6 +197,41 @@ impl Languages {
         self.choices.clear();
     }
 
+    // asks the server for file `id` about the place `at`, the answer coming with a later update
+    pub fn ask(&mut self, id: usize, at: Pos, ask: Ask) -> Result<(), String> {
+        let Some(s) = self.synced.get(&id) else {
+            return Err(match self.choices.get(&id) {
+                Some((_, _, Some(choice))) => match self.refused.get(&key(choice)) {
+                    Some(why) => format!("{} couldn't start: {why}", choice.name),
+                    None => format!("{} is still starting", choice.name),
+                },
+                _ => "no language server for this file".to_string(),
+            });
+        };
+        let Some(r) = self.running.get_mut(&s.key).filter(|r| r.server.ready()) else {
+            return Err("the language server has stopped".to_string());
+        };
+        let (method, provider, what) = match ask {
+            Ask::Definition => ("textDocument/definition", "definitionProvider", "definitions"),
+        };
+        if !provides(&r.server.capabilities()[provider]) {
+            return Err(format!("{} can't find {what}", r.name));
+        }
+        let line = s.lines.get(at.row).map_or("", String::as_str);
+        let character = r.server.encoding().units(line, at.col);
+        let position = Json::object([("line", at.row.into()), ("character", character.into())]);
+        let params = Json::object([("textDocument", document(&s.uri)), ("position", position)]);
+        let request = r.server.request(method, params);
+        let asked = Asked {
+            id,
+            version: s.version,
+            at,
+            ask,
+        };
+        r.asked.insert(request, asked);
+        Ok(())
+    }
+
     // takes in what the servers have said, then tells them what changed in `docs`
     pub fn update(&mut self, docs: &[OpenDoc], servers: &Servers) -> Update {
         let mut update = Update::default();
@@ -215,8 +290,24 @@ impl Languages {
         let Languages { running, synced, .. } = self;
         for (key, r) in running.iter_mut() {
             while let Some(incoming) = r.server.poll() {
-                let Incoming::Notice { method, params } = incoming else {
-                    continue;
+                let (method, params) = match incoming {
+                    Incoming::Notice { method, params } => (method, params),
+                    Incoming::Reply { id, result } => {
+                        if let Some(asked) = r.asked.remove(&id) {
+                            let said = match result {
+                                Ok(result) => said(&asked.ask, &result, synced, r.server.encoding()),
+                                Err(e) => Said::Refused(e.message),
+                            };
+                            update.answers.push(Answer {
+                                id: asked.id,
+                                version: asked.version,
+                                at: asked.at,
+                                ask: asked.ask,
+                                said,
+                            });
+                        }
+                        continue;
+                    }
                 };
                 if method != "textDocument/publishDiagnostics" {
                     continue;
@@ -256,6 +347,7 @@ impl Languages {
                         name: choice.name,
                         server,
                         told: false,
+                        asked: HashMap::new(),
                     };
                     self.running.insert(key.clone(), running);
                 }
@@ -327,6 +419,72 @@ impl Languages {
             }
         }
     }
+}
+
+// a capability is offered as true or as an object of options
+fn provides(capability: &Json) -> bool {
+    matches!(capability, Json::Bool(true) | Json::Object(_))
+}
+
+fn said(ask: &Ask, result: &Json, synced: &HashMap<usize, Synced>, encoding: Encoding) -> Said {
+    let mut lines = Lines::new(synced);
+    match ask {
+        Ask::Definition => Said::Places(places(result, &mut lines, encoding)),
+    }
+}
+
+// files' lines, to turn a server's columns into the editor's: open files as the server has
+// them, others as they are on disk
+struct Lines<'a> {
+    synced: &'a HashMap<usize, Synced>,
+    read: HashMap<PathBuf, Vec<String>>,
+}
+
+impl<'a> Lines<'a> {
+    fn new(synced: &'a HashMap<usize, Synced>) -> Lines<'a> {
+        Lines {
+            synced,
+            read: HashMap::new(),
+        }
+    }
+
+    fn pos(&mut self, path: &Path, p: &Json, encoding: Encoding) -> Pos {
+        let row = p["line"].as_u64().unwrap_or(0) as usize;
+        let units = p["character"].as_u64().unwrap_or(0) as usize;
+        let open = self
+            .synced
+            .values()
+            .find(|s| lsp::uri_path(&s.uri).as_deref() == Some(path));
+        let lines = match open {
+            Some(s) => &s.lines,
+            None => self.read.entry(path.to_path_buf()).or_insert_with(|| {
+                std::fs::read_to_string(path).map_or(Vec::new(), |t| t.split('\n').map(str::to_string).collect())
+            }),
+        };
+        let line = lines.get(row).map_or("", |l| l.trim_end_matches('\r'));
+        Pos::new(row, encoding.chars(line, units))
+    }
+}
+
+// a Location, a list of them, or a list of LocationLinks
+fn places(result: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Place> {
+    let list = match result {
+        Json::Array(list) => list.as_slice(),
+        Json::Null => &[],
+        one => std::slice::from_ref(one),
+    };
+    list.iter()
+        .filter_map(|l| {
+            let (uri, range) = match l.get("targetUri") {
+                Some(uri) => (uri, &l["targetSelectionRange"]),
+                None => (&l["uri"], &l["range"]),
+            };
+            let path = lsp::uri_path(uri.as_str()?)?;
+            let start = lines.pos(&path, &range["start"], encoding);
+            let end = lines.pos(&path, &range["end"], encoding);
+            Some(Place { path, start, end })
+        })
+        .collect()
 }
 
 fn key(choice: &Choice) -> Key {
@@ -479,7 +637,7 @@ mod tests {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 let update = self.update(docs);
-                if done(self) || update.changed || !update.errors.is_empty() {
+                if done(self) || update.changed || !update.errors.is_empty() || !update.answers.is_empty() {
                     return update;
                 }
                 assert!(Instant::now() < deadline, "nothing happened");
@@ -794,6 +952,132 @@ mod tests {
         assert_eq!(r.langs.state(&choice), "the server stopped", "and :lsp says why");
         assert!(r.langs.problems(1).is_empty());
         assert_eq!(r.update(&docs), Update::default(), "and not again");
+    }
+
+    const DEFINES: &str = r#"{"textDocumentSync":{"openClose":true,"change":2},"definitionProvider":true}"#;
+
+    // the reply to the next request the server gets, after checking what it was
+    fn reply(fake: &mut Fake, method: &str, result: &str) -> Json {
+        let asked = fake.recv().unwrap();
+        assert_eq!(asked["method"].as_str(), Some(method));
+        let id = asked["id"].as_i64().unwrap();
+        fake.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#));
+        asked
+    }
+
+    fn answer(r: &mut Rig, docs: &[OpenDoc]) -> Answer {
+        let update = r.until(docs, |_| false);
+        assert_eq!(update.answers.len(), 1, "{update:?}");
+        update.answers.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn a_definition_comes_back_in_the_editors_columns() {
+        let mut r = rig();
+        let v1 = lines("let 😀x = 1;\n😀x");
+        let docs = [doc("/work/a.rs", 4, 1, &v1)];
+        let mut fake = r.start(&docs, DEFINES);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(1, 1), Ask::Definition).unwrap();
+        let at = Json::from(uri("/work/a.rs"));
+        let asked = reply(
+            &mut fake,
+            "textDocument/definition",
+            &format!(
+                r#"{{"uri":{at},"range":{{"start":{{"line":0,"character":6}},"end":{{"line":0,"character":7}}}}}}"#
+            ),
+        );
+        assert_eq!(
+            asked["params"]["position"]["character"].as_u64(),
+            Some(2),
+            "the emoji is two"
+        );
+        assert_eq!(
+            asked["params"]["textDocument"]["uri"].as_str(),
+            Some(uri("/work/a.rs").as_str())
+        );
+
+        let got = answer(&mut r, &docs);
+        assert_eq!((got.id, got.version, got.at), (1, 4, Pos::new(1, 1)));
+        let place = Place {
+            path: paths::absolute(Path::new("/work/a.rs")),
+            start: Pos::new(0, 5),
+            end: Pos::new(0, 6),
+        };
+        assert_eq!(got.said, Said::Places(vec![place]));
+    }
+
+    #[test]
+    fn definitions_in_files_that_arent_open_are_read_from_disk() {
+        let dir = std::env::temp_dir().join(format!("tvim-langs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let other = dir.join("b.rs");
+        std::fs::write(&other, "x\r\n é = 2;\n").unwrap();
+        let mut r = rig();
+        let v1 = lines("é");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, DEFINES);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(0, 0), Ask::Definition).unwrap();
+        let target = Json::from(lsp::file_uri(&other));
+        let range = r#"{"start":{"line":1,"character":1},"end":{"line":1,"character":2}}"#;
+        let links = format!(
+            r#"[{{"targetUri":{target},"targetRange":{range},"targetSelectionRange":{range}}},{{"targetUri":"https://x"}}]"#
+        );
+        reply(&mut fake, "textDocument/definition", &links);
+        let got = answer(&mut r, &docs);
+        let place = Place {
+            path: other,
+            start: Pos::new(1, 1),
+            end: Pos::new(1, 2),
+        };
+        assert_eq!(got.said, Said::Places(vec![place]), "links, and only to files");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn nothing_found_and_errors_are_answers_too() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, DEFINES);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(0, 0), Ask::Definition).unwrap();
+        reply(&mut fake, "textDocument/definition", "null");
+        assert_eq!(answer(&mut r, &docs).said, Said::Places(Vec::new()));
+
+        r.langs.ask(1, Pos::new(0, 0), Ask::Definition).unwrap();
+        let id = fake.recv().unwrap()["id"].as_i64().unwrap();
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32801,"message":"content modified"}}}}"#
+        ));
+        assert_eq!(answer(&mut r, &docs).said, Said::Refused("content modified".into()));
+    }
+
+    #[test]
+    fn asking_without_a_server_that_can_answer_says_why() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let none = [doc("/work/a.txt", 1, 1, &v1)];
+        r.update(&none);
+        assert_eq!(
+            r.langs.ask(1, Pos::new(0, 0), Ask::Definition),
+            Err("no language server for this file".into())
+        );
+
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        r.update(&docs);
+        assert_eq!(
+            r.langs.ask(1, Pos::new(0, 0), Ask::Definition),
+            Err("rust is still starting".into())
+        );
+        let (_, _, mut fake) = r.started.try_recv().unwrap();
+        fake.start(EDITS);
+        r.until(&docs, |r| r.langs.synced.contains_key(&1));
+        assert_eq!(
+            r.langs.ask(1, Pos::new(0, 0), Ask::Definition),
+            Err("rust can't find definitions".into())
+        );
     }
 
     fn edited(old: &str, new: &str) -> String {
