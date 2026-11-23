@@ -1510,6 +1510,7 @@ impl Editor {
                 Some(place) => self.jump_to_place(place),
                 None => self.error("no definition found"),
             },
+            _ => {}
         }
     }
 
