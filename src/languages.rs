@@ -44,6 +44,7 @@ pub struct Problem {
 pub enum Ask {
     Definition,
     Hover,
+    References,
 }
 
 // a stretch of a file, in the editor's columns
@@ -217,6 +218,7 @@ impl Languages {
         let (method, provider, what) = match ask {
             Ask::Definition => ("textDocument/definition", "definitionProvider", "find definitions"),
             Ask::Hover => ("textDocument/hover", "hoverProvider", "describe things"),
+            Ask::References => ("textDocument/references", "referencesProvider", "find references"),
         };
         if !provides(&r.server.capabilities()[provider]) {
             return Err(format!("{} can't {what}", r.name));
@@ -224,7 +226,11 @@ impl Languages {
         let line = s.lines.get(at.row).map_or("", String::as_str);
         let character = r.server.encoding().units(line, at.col);
         let position = Json::object([("line", at.row.into()), ("character", character.into())]);
-        let params = Json::object([("textDocument", document(&s.uri)), ("position", position)]);
+        let mut params = vec![("textDocument", document(&s.uri)), ("position", position)];
+        if ask == Ask::References {
+            params.push(("context", Json::object([("includeDeclaration", true.into())])));
+        }
+        let params = Json::object(params);
         let request = r.server.request(method, params);
         let asked = Asked {
             id,
@@ -433,7 +439,7 @@ fn provides(capability: &Json) -> bool {
 fn said(ask: &Ask, result: &Json, synced: &HashMap<usize, Synced>, encoding: Encoding) -> Said {
     let mut lines = Lines::new(synced);
     match ask {
-        Ask::Definition => Said::Places(places(result, &mut lines, encoding)),
+        Ask::Definition | Ask::References => Said::Places(places(result, &mut lines, encoding)),
         Ask::Hover => Said::Text(hover_text(&result["contents"])),
     }
 }
@@ -1057,6 +1063,28 @@ mod tests {
         };
         assert_eq!(got.said, Said::Places(vec![place]), "links, and only to files");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn references_include_the_declaration() {
+        let mut r = rig();
+        let v1 = lines("fn a() {}\na();");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, r#"{"textDocumentSync":1,"referencesProvider":true}"#);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(1, 0), Ask::References).unwrap();
+        let at = Json::from(uri("/work/a.rs"));
+        let found = format!(
+            r#"[{{"uri":{at},"range":{{"start":{{"line":0,"character":3}},"end":{{"line":0,"character":4}}}}}},
+                {{"uri":{at},"range":{{"start":{{"line":1,"character":0}},"end":{{"line":1,"character":1}}}}}}]"#
+        );
+        let asked = reply(&mut fake, "textDocument/references", &found);
+        assert_eq!(asked["params"]["context"]["includeDeclaration"].as_bool(), Some(true));
+        let Said::Places(places) = answer(&mut r, &docs).said else {
+            panic!("places")
+        };
+        let starts: Vec<Pos> = places.iter().map(|p| p.start).collect();
+        assert_eq!(starts, [Pos::new(0, 3), Pos::new(1, 0)]);
     }
 
     #[test]
