@@ -629,7 +629,7 @@ const G: &[(&str, &str)] = &[
     ("gJ", "join, no spaces"),
     ("gp gP", "put, go past it"),
     ("gi", "type where you left off"),
-    ("gd", "to the definition"),
+    ("gd gr", "definition, where it's used"),
 ];
 
 const Z: &[(&str, &str)] = &[
