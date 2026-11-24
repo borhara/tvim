@@ -204,7 +204,9 @@ fn moving_filtering_and_opening_recent_files() {
     let f = e.finder().unwrap();
     assert_eq!(f.query(), "gk", "once typing, j and k are letters");
     e.keys(&parse("<BS><BS>bt"));
-    assert_eq!(e.finder().unwrap().match_count(), 1);
+    // the files are listed by their whole path, and the temp folder's may hold a b and a t too
+    let top = e.finder().unwrap().matches().next().map(|(p, _)| p.to_string());
+    assert!(top.is_some_and(|p| p.ends_with("beta.md")), "the best match first");
     e.keys(&parse("<CR>"));
     assert!(e.finder().is_none());
     assert_eq!(tvim::paths::canonical(e.file().path.as_ref().unwrap()).unwrap(), b);
