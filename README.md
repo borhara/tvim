@@ -48,6 +48,7 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 - **Opening another file** never asks you to save first. Unsaved files stay open with a dot next to their name, and `:q` won't quit while any are left.
 - **`|`** runs one `:` command after another, as in `:w | bn`. `:s` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
+- **`gd`, `gr` and `K`** ask the file's language server, as they do in most Neovim setups, rather than searching the file, replacing characters or running `man`.
 - **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines.
 
 ## Extras
@@ -62,13 +63,25 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 | `Space b` | Open files |
 | `Space G` | Git menu |
 | `Space m` | Markdown preview |
+| `Space n` | Rename what's under the cursor, with a language server |
 | `Space z` | Zen mode: just the text, centred |
 
 **Sidebar.** `tvim .`, `Tab` or `:Lex` opens a folder tree beside the text. Use `j`/`k` to move, `Enter` to open, and `l`/`h` to open and close folders. `-` goes up a folder, `.` shows hidden files, `/` filters, and `q` hides the sidebar.
 
 **Git.** The git menu lists staged, changed and untracked files with a diff beside them. `s` stages, `c` commits, `d` discards, `l` shows the log, `b` lists branches, and `p`/`P` pull and push. Lines you've changed since the last commit are marked in the gutter. The line under the cursor shows who last changed it and when, which `:set nogl` turns off.
 
-**Language servers.** When a language server is installed for the file you open, tvim starts it and keeps it up to date as you type. Lines with problems get a coloured line number, the problem itself is tinted, and the cursor's line says what's wrong. `]d` and `[d` go to the next and previous problem. tvim knows these servers, and runs whichever you have:
+**Language servers.** When a language server is installed for the file you open, tvim starts it and keeps it up to date as you type. Lines with problems get a coloured line number, the problem itself is tinted, and the cursor's line says what's wrong. `]d` and `[d` go to the next and previous problem.
+
+The server also knows what the code means, so with the cursor on a name:
+
+| Keys | What it does |
+| --- | --- |
+| `gd` | Go to where it's defined. `Ctrl-o` comes back |
+| `gr` | List everywhere it's used, with a preview. Type to narrow the list |
+| `K` | Show its type and docs beside the cursor, until the next key |
+| `Space n` or `:rename new_name` | Rename it in every file. Files it changes are left unsaved, and `:wa` saves them |
+
+tvim knows these servers, and runs whichever you have:
 
 | Files | Server | Install |
 | --- | --- | --- |
