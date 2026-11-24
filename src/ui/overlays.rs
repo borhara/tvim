@@ -716,8 +716,14 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             ]),
         ),
         " h" => ("hunk".into(), owned(&[("r", "back to HEAD, or the last save")])),
-        "]" => ("]".into(), owned(&[("c", "the next change")])),
-        "[" => ("[".into(), owned(&[("c", "the previous change")])),
+        "]" => (
+            "]".into(),
+            owned(&[("c", "the next change"), ("d", "the next problem")]),
+        ),
+        "[" => (
+            "[".into(),
+            owned(&[("c", "the previous change"), ("d", "the previous problem")]),
+        ),
         "g" => ("g".into(), owned(G)),
         "z" => ("z".into(), owned(Z)),
         "Z" => (
