@@ -182,7 +182,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     if key == Key::Char(' ') && !visual {
         return match keys.get(i + 1) {
             None => Parse::More,
-            Some(Key::Char(c)) if "fgb/zmGr".contains(*c) => done(Act::Leader(*c), i + 2, count1),
+            Some(Key::Char(c)) if "fgb/zmGrn".contains(*c) => done(Act::Leader(*c), i + 2, count1),
             Some(Key::Char('h')) => match keys.get(i + 2) {
                 None => Parse::More,
                 Some(Key::Char('r')) => done(Act::Hunk('r'), i + 3, count1),
