@@ -62,6 +62,14 @@ pub struct Grep {
     capped: bool,
     selected: usize,
     top: Cell<usize>,
+    given: Option<Given>,
+}
+
+// places handed over to list rather than searched for, which typing narrows
+struct Given {
+    title: String,
+    word: String,
+    hits: Vec<Hit>,
 }
 
 impl Grep {
@@ -81,9 +89,78 @@ impl Grep {
             capped: false,
             selected: 0,
             top: Cell::new(0),
+            given: None,
         };
         g.refresh();
         g
+    }
+
+    /// Lists `places`, each a file and the row and column of `word` in it. Files are read
+    /// with `open`, which gives the text of those open in the editor, or from disk.
+    pub fn listing(
+        root: &Path,
+        title: &str,
+        word: &str,
+        places: &[(PathBuf, usize, usize)],
+        open: impl Fn(&Path) -> Option<String>,
+    ) -> Grep {
+        let root = crate::paths::canonical(root).unwrap_or_else(|_| root.to_path_buf());
+        let mut loaded = Loaded {
+            done: true,
+            ..Loaded::default()
+        };
+        let mut paths: Vec<&PathBuf> = Vec::new();
+        let mut hits = Vec::new();
+        for (path, row, col) in places {
+            let file = match paths.iter().position(|p| *p == path) {
+                Some(i) => i,
+                None => {
+                    let text = open(path)
+                        .or_else(|| std::fs::read_to_string(path).ok())
+                        .unwrap_or_default();
+                    loaded.files.push(file(crate::editor::listed(path), text));
+                    paths.push(path);
+                    paths.len() - 1
+                }
+            };
+            let last = loaded.files[file].starts.len() - 1;
+            hits.push(Hit {
+                file,
+                row: (*row).min(last),
+                col: *col,
+            });
+        }
+        let given = Given {
+            title: title.to_string(),
+            word: word.to_string(),
+            hits,
+        };
+        let mut g = Grep {
+            root,
+            loaded: Arc::new(Mutex::new(loaded)),
+            query: String::new(),
+            hits: Vec::new(),
+            searched: 0,
+            capped: false,
+            selected: 0,
+            top: Cell::new(0),
+            given: Some(given),
+        };
+        g.search_again();
+        g
+    }
+
+    /// What's listed, when it's places given rather than a search.
+    pub fn title(&self) -> Option<&str> {
+        self.given.as_ref().map(|g| g.title.as_str())
+    }
+
+    /// How many characters at each hit to pick out.
+    pub fn marked(&self) -> usize {
+        match &self.given {
+            Some(g) => g.word.chars().count(),
+            None => self.query.trim().chars().count(),
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Loaded> {
@@ -147,6 +224,37 @@ impl Grep {
         !self.query.chars().any(char::is_uppercase)
     }
     pub fn refresh(&mut self) -> bool {
+        if let Some(given) = &self.given {
+            if self.searched > 0 {
+                return false;
+            }
+            let ic = self.ignores_case();
+            let query = self.query.trim();
+            let needle = if ic {
+                query.to_ascii_lowercase()
+            } else {
+                query.to_string()
+            };
+            let loaded = lock(&self.loaded);
+            let has = |s: &str| {
+                if ic {
+                    s.to_ascii_lowercase().contains(&needle)
+                } else {
+                    s.contains(&needle)
+                }
+            };
+            self.hits = given
+                .hits
+                .iter()
+                .filter(|h| {
+                    let f = &loaded.files[h.file];
+                    has(&f.path) || has(f.line(h.row))
+                })
+                .cloned()
+                .collect();
+            self.searched = loaded.files.len().max(1);
+            return true;
+        }
         let before = self.hits.len();
         let query = self.query.trim().to_string();
         if query.is_empty() || self.capped {
@@ -200,7 +308,10 @@ impl Grep {
                         path: self.root.join(self.path(h)),
                         row: h.row,
                         col: h.col,
-                        query: self.query.trim().to_string(),
+                        query: match &self.given {
+                            Some(g) => g.word.clone(),
+                            None => self.query.trim().to_string(),
+                        },
                     },
                     None => Jump::Nothing,
                 };
@@ -241,6 +352,18 @@ impl Grep {
     }
 }
 
+fn file(path: String, text: String) -> File {
+    let mut starts = vec![0];
+    starts.extend(text.match_indices('\n').map(|(i, _)| i + 1).filter(|&i| i < text.len()));
+    let lower = text.to_ascii_lowercase();
+    File {
+        path,
+        text,
+        lower,
+        starts,
+    }
+}
+
 fn read_all(root: &Path, loaded: &Arc<Mutex<Loaded>>, waker: &Waker) {
     let (paths, cut_short) = walk(root);
     let mut total = 0;
@@ -269,15 +392,7 @@ fn read_all(root: &Path, loaded: &Arc<Mutex<Loaded>>, waker: &Waker) {
         }
         let Ok(text) = String::from_utf8(bytes) else { continue };
         total += text.len();
-        let mut starts = vec![0];
-        starts.extend(text.match_indices('\n').map(|(i, _)| i + 1).filter(|&i| i < text.len()));
-        let lower = text.to_ascii_lowercase();
-        batch.push(File {
-            path: rel,
-            text,
-            lower,
-            starts,
-        });
+        batch.push(file(rel, text));
         if batch.len() >= 200 {
             flush(&mut batch, false, false);
         }
@@ -339,6 +454,47 @@ mod tests {
         assert_eq!(grep(&root, "beta").hits().len(), 1);
         assert_eq!(grep(&root, "Beta").hits().len(), 1);
         assert_eq!(grep(&root, "BETA").hits().len(), 0);
+    }
+
+    #[test]
+    fn places_given_are_listed_and_typing_narrows_them() {
+        let root = project("given");
+        let a = crate::paths::canonical(&root.join("src/a.rs")).unwrap();
+        let notes = crate::paths::canonical(&root.join("notes.md")).unwrap();
+        let places = [
+            (a.clone(), 0, 3),
+            (notes.clone(), 0, 2),
+            (a.clone(), 2, 0),
+            (a.clone(), 99, 0),
+        ];
+        // a.rs is open, and changed since it was saved
+        let open = |p: &Path| (p == a).then(|| "fn alpha() {}\nlet Beta = 2;\n// alpha();\n".to_string());
+        let mut g = Grep::listing(&root, "uses of alpha", "alpha", &places, open);
+        assert_eq!(g.title(), Some("uses of alpha"));
+        assert_eq!(g.hits().len(), 4);
+        assert_eq!(g.files_hit(), 3, "a.rs, notes.md, then a.rs again");
+        assert_eq!(g.line(&g.hits()[2]), "// alpha();", "the text as it's open");
+        assert_eq!(g.hits()[3].row, 2, "kept inside the file");
+        assert_eq!(g.marked(), 5);
+        assert!(!g.loading());
+
+        for c in "notes".chars() {
+            g.key(Key::Char(c));
+        }
+        assert_eq!(g.hits().len(), 1, "by path");
+        g.key(Key::Ctrl('u'));
+        g.key(Key::Char('/'));
+        g.key(Key::Char('/'));
+        assert_eq!(g.hits().len(), 2, "or by line");
+        match g.key(Key::Enter) {
+            Jump::Open { path, row, col, query } => {
+                assert_eq!(path, a);
+                assert_eq!((row, col, query.as_str()), (2, 0, "alpha"), "the word, to search for");
+            }
+            other => panic!("{other:?}"),
+        }
+        g.key(Key::Ctrl('u'));
+        assert_eq!(g.hits().len(), 4);
     }
 
     #[test]
