@@ -173,6 +173,8 @@ impl Editor {
             self.open_git_menu(non_empty(arg));
         } else if is("lsp", 3) {
             self.lsp_ex(arg);
+        } else if is("rename", 3) {
+            self.rename(arg);
         } else if is("recent", 3) {
             self.pick_recent();
         } else if is("zen", 3) {

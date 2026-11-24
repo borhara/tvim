@@ -16,7 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
-use crate::languages::{Answer, Ask, Languages, OpenDoc, Place, Problem, Said};
+use crate::languages::{Answer, Ask, Edit, FileEdits, Languages, OpenDoc, Place, Problem, Said};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -1519,8 +1519,98 @@ impl Editor {
             (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
+            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files),
             _ => {}
         }
+    }
+
+    // renames the word under the cursor everywhere the language server says it's used
+    pub(crate) fn rename(&mut self, to: &str) {
+        let to = to.trim();
+        if to.is_empty() {
+            let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
+            return self.begin_cmdline(':', format!("rename {word}"));
+        }
+        self.ask_server(Ask::Rename(to.to_string()));
+    }
+
+    // makes each file's edits, opening those that aren't open yet, and leaves them unsaved
+    fn apply_edits(&mut self, files: Vec<FileEdits>) {
+        let canon = |p: &Path| crate::paths::canonical(p).ok();
+        let back = self.current;
+        let here = self.file.path.as_deref().and_then(canon);
+        let (mut changed, mut elsewhere) = (0, 0);
+        self.no_jumps = true;
+        for f in files.iter().filter(|f| !f.edits.is_empty()) {
+            if here.is_some() && canon(&f.path) == here {
+                self.switch_to(back);
+            } else if self.open_or_report(&f.path) {
+                elsewhere += 1;
+            } else {
+                continue;
+            }
+            self.edit_text(&f.edits);
+            changed += f.edits.len();
+        }
+        self.switch_to(back);
+        self.no_jumps = false;
+        let files = files.iter().filter(|f| !f.edits.is_empty()).count();
+        let mut said = match (changed, files) {
+            (0, _) => return self.error("nothing to rename"),
+            (1, _) => "renamed 1 place".to_string(),
+            (n, 1) => format!("renamed {n} places"),
+            (n, f) => format!("renamed {n} places in {f} files"),
+        };
+        if elsewhere > 0 {
+            said.push_str(", :wa saves them all");
+        }
+        self.info(said);
+    }
+
+    // as one change, keeping the cursor on the same text
+    fn edit_text(&mut self, edits: &[Edit]) {
+        let lines = self.buf.lines();
+        let mut starts = Vec::with_capacity(lines.len());
+        let mut at = 0;
+        for l in lines {
+            starts.push(at);
+            at += l.len() + 1;
+        }
+        let mut text = lines.join("\n");
+        let offset = |p: Pos| match lines.get(p.row) {
+            Some(line) => starts[p.row] + crate::text::byte_at(line, p.col),
+            None => text.len(),
+        };
+        let mut spans: Vec<(usize, usize, &str)> = edits
+            .iter()
+            .map(|e| (offset(e.start), offset(e.end), e.text.as_str()))
+            .filter(|(a, b, _)| a <= b)
+            .collect();
+        spans.sort_by_key(|&(a, b, _)| std::cmp::Reverse((a, b)));
+        let mut cursor = offset(self.cursor);
+        // from the end, so places yet to come stay put; any overlapping one already made is skipped
+        let mut done = usize::MAX;
+        for (from, to, new) in spans {
+            if to > done {
+                continue;
+            }
+            text.replace_range(from..to, new);
+            if cursor >= to {
+                cursor = cursor + new.len() - (to - from);
+            } else if cursor > from {
+                cursor = from;
+            }
+            done = from;
+        }
+        let row = text[..cursor].matches('\n').count();
+        let line_start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
+        let col = text[line_start..cursor].chars().count();
+        self.touch();
+        self.buf.replace_all(text.split('\n').map(str::to_string).collect());
+        self.end_change();
+        self.cursor = Pos::new(row, col);
+        self.clamp();
+        self.set_want();
     }
 
     // in the grep picker, with the text of open files as it is in the editor
@@ -2132,6 +2222,7 @@ impl Editor {
             'm' => self.toggle_preview(),
             'G' => self.open_git_menu(None),
             'r' => self.pick_recent(),
+            'n' => self.rename(""),
             _ => self.grep(None),
         }
     }
@@ -4775,7 +4866,7 @@ pub(crate) fn expand_home(path: &str) -> String {
 mod tests {
     use super::{Editor, Pos, slashed};
     use crate::keys::parse;
-    use crate::languages::{Answer, Ask, Place, Problem, Said, Severity};
+    use crate::languages::{Answer, Ask, Edit, FileEdits, Place, Problem, Said, Severity};
     use std::path::{Path, PathBuf};
 
     fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
@@ -4965,6 +5056,71 @@ mod tests {
         assert_eq!(e.grep_picker().unwrap().title(), Some("definitions of f"));
         e.answered(answer(&e, Ask::References, Said::Places(Vec::new())));
         assert_eq!(e.message.as_ref().unwrap().text, "no references found");
+    }
+
+    fn edit(start: (usize, usize), end: (usize, usize), text: &str) -> Edit {
+        Edit {
+            start: Pos::new(start.0, start.1),
+            end: Pos::new(end.0, end.1),
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn a_rename_edits_every_file_and_leaves_them_unsaved() {
+        let a = temp_file("ren-a.rs", "fn old() {}\nfn main() { old(); old(); }\n");
+        let b = temp_file("ren-b.rs", "use a::old;\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("j$F("));
+        let files = vec![
+            FileEdits {
+                path: a.clone(),
+                edits: vec![
+                    edit((1, 19), (1, 22), "brand_new"),
+                    edit((0, 3), (0, 6), "brand_new"),
+                    edit((1, 12), (1, 15), "brand_new"),
+                ],
+            },
+            FileEdits {
+                path: b.clone(),
+                edits: vec![edit((0, 7), (0, 10), "brand_new")],
+            },
+        ];
+        e.answered(answer(&e, Ask::Rename("brand_new".into()), Said::Edits(files)));
+        assert_eq!(
+            e.buf.lines(),
+            ["fn brand_new() {}", "fn main() { brand_new(); brand_new(); }"]
+        );
+        assert_eq!(e.cursor, Pos::new(1, 34), "still on the second call's (");
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(a.clone())
+        );
+        assert_eq!(
+            e.message.as_ref().unwrap().text,
+            "renamed 4 places in 2 files, :wa saves them all"
+        );
+        assert!(e.unsaved_elsewhere().unwrap().ends_with("ren-b.rs"));
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), "use a::old;\n", "not written");
+
+        e.keys(&parse("u"));
+        assert_eq!(
+            e.buf.lines(),
+            ["fn old() {}", "fn main() { old(); old(); }"],
+            "undone at once"
+        );
+    }
+
+    #[test]
+    fn rename_with_no_name_asks_for_one() {
+        let mut e = Editor::with_text("let count = 1;");
+        e.keys(&parse("w"));
+        e.keys(&parse("<Space>n"));
+        assert_eq!(e.mode, super::Mode::Command);
+        assert_eq!(e.cmd.text, "rename count");
+        e.keys(&parse("<Esc>"));
+        e.ex("rename total");
+        assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
     }
 
     #[test]
