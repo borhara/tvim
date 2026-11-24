@@ -1,7 +1,7 @@
 use tinsel::app::{Frame, Panel, Rect};
 use tinsel::{bold, mix, paint, palette};
 
-use super::{Colors, file_name, icon, input, styled_line, with_hits};
+use super::{Colors, file_name, icon, input, plural, styled_line, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
 use crate::grep::Grep;
@@ -458,6 +458,10 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         String::new()
     };
     let count = match (hits.len(), g.query().trim().is_empty()) {
+        (n, true) if g.title().is_some() => {
+            let files = plural(&g.files_hit().to_string(), "file");
+            format!("{} in {files}", plural(&n.to_string(), "place"))
+        }
         (_, true) if g.loading() => reading.trim_end().to_string(),
         (_, true) => format!("{} files", g.file_count()),
         (0, false) => format!("{reading}no matches"),
@@ -467,7 +471,8 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         }
     };
     let root = file_name(Some(g.root()), "/");
-    let panel = Panel::new(format!("search in {root}")).status(count);
+    let title = g.title().map_or_else(|| format!("search in {root}"), str::to_string);
+    let panel = Panel::new(title).status(count);
     let split = |w: usize| (w >= 90 && !hits.is_empty()).then_some(w / 2);
     let p = picker(frame, area, (140, 30), panel, g.query(), split, c)?;
     let list = p.list;
@@ -480,7 +485,7 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
         frame.print(list, 0, &paint(palette::MUTED, note));
         return Some(p.at);
     }
-    let query_len = g.query().trim().chars().count();
+    let query_len = g.marked();
     let top = g.top(list.height);
     for (i, hit) in hits.iter().enumerate().skip(top).take(list.height) {
         let y = list.y + i - top;
