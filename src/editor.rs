@@ -1510,14 +1510,54 @@ impl Editor {
         }
         match (answer.ask, answer.said) {
             (_, Said::Refused(why)) => self.error(why),
-            (Ask::Definition, Said::Places(places)) => match places.first() {
-                Some(place) => self.jump_to_place(place),
-                None => self.error("no definition found"),
+            (Ask::Definition, Said::Places(places)) => match places.as_slice() {
+                [] => self.error("no definition found"),
+                [place] => self.jump_to_place(place),
+                _ => self.list_places("definitions", "of", &places),
             },
+            (Ask::References, Said::Places(places)) if places.is_empty() => self.error("no references found"),
+            (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
             _ => {}
         }
+    }
+
+    // in the grep picker, with the text of open files as it is in the editor
+    fn list_places(&mut self, what: &str, joiner: &str, places: &[Place]) {
+        let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
+        let canon = |p: &Path| crate::paths::canonical(p).ok();
+        let mut open: Vec<(PathBuf, String)> = Vec::new();
+        let text = |lines: &[String], final_newline: bool| {
+            let mut text = lines.join("\n");
+            if final_newline {
+                text.push('\n');
+            }
+            text
+        };
+        if let Some(p) = self.file.path.as_deref().and_then(canon) {
+            open.push((p, text(self.buf.lines(), self.file.final_newline)));
+        }
+        for (_, d) in self.docs.iter().enumerate().filter(|&(i, _)| i != self.current) {
+            if let Some(p) = d.file.path.as_deref().and_then(canon) {
+                open.push((p, text(d.buf.lines(), d.file.final_newline)));
+            }
+        }
+        let spots: Vec<(PathBuf, usize, usize)> = places
+            .iter()
+            .map(|p| (p.path.clone(), p.start.row, p.start.col))
+            .collect();
+        let title = if word.is_empty() {
+            what.to_string()
+        } else {
+            format!("{what} {joiner} {word}")
+        };
+        self.reset_for_picker();
+        let found = |path: &Path| {
+            let path = canon(path)?;
+            open.iter().find(|(p, _)| *p == path).map(|(_, t)| t.clone())
+        };
+        self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, found));
     }
 
     fn jump_to_place(&mut self, place: &Place) {
@@ -2384,6 +2424,7 @@ impl Editor {
                 self.begin_insert(n, None);
             }
             'd' => self.ask_server(Ask::Definition),
+            'r' => self.ask_server(Ask::References),
             _ => {}
         }
     }
@@ -4864,6 +4905,43 @@ mod tests {
         e.keys(&parse("x"));
         e.answered(late);
         assert_eq!(e.cursor, Pos::new(0, 0), "the text changed");
+    }
+
+    #[test]
+    fn references_are_listed_and_enter_goes_to_one() {
+        let a = temp_file("refs-a.rs", "fn helper() {}\nfn main() {\n    helper();\n}\n");
+        let b = temp_file("refs-b.rs", "use a::helper;\n\nfn more() { helper() }\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("w"));
+        let said = Said::Places(vec![place(&a, 0, 3), place(&a, 2, 4), place(&b, 2, 12)]);
+        e.answered(answer(&e, Ask::References, said));
+        let g = e.grep_picker().expect("listed");
+        assert_eq!(g.title(), Some("references to helper"));
+        assert_eq!(g.hits().len(), 3);
+        e.keys(&parse("<Down><Down><CR>"));
+        assert!(e.grep_picker().is_none());
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(b)
+        );
+        assert_eq!(e.cursor, Pos::new(2, 12));
+        e.keys(&parse("n"));
+        assert_eq!(e.cursor, Pos::new(0, 7), "n looks for the word");
+    }
+
+    #[test]
+    fn definitions_in_more_than_one_place_are_listed() {
+        let a = temp_file("defs-a.rs", "fn f() {}\nfn f() {}\nf();\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("2j"));
+        e.answered(answer(
+            &e,
+            Ask::Definition,
+            Said::Places(vec![place(&a, 0, 3), place(&a, 1, 3)]),
+        ));
+        assert_eq!(e.grep_picker().unwrap().title(), Some("definitions of f"));
+        e.answered(answer(&e, Ask::References, Said::Places(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "no references found");
     }
 
     #[test]
