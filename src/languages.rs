@@ -45,6 +45,8 @@ pub enum Ask {
     Definition,
     Hover,
     References,
+    // to the new name
+    Rename(String),
 }
 
 // a stretch of a file, in the editor's columns
@@ -55,9 +57,24 @@ pub struct Place {
     pub end: Pos,
 }
 
+// text to put in place of a stretch of a file
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Edit {
+    pub start: Pos,
+    pub end: Pos,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileEdits {
+    pub path: PathBuf,
+    pub edits: Vec<Edit>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Said {
     Places(Vec<Place>),
+    Edits(Vec<FileEdits>),
     // markdown, empty when there's nothing to say
     Text(String),
     Refused(String),
@@ -215,10 +232,11 @@ impl Languages {
         let Some(r) = self.running.get_mut(&s.key).filter(|r| r.server.ready()) else {
             return Err("the language server has stopped".to_string());
         };
-        let (method, provider, what) = match ask {
+        let (method, provider, what) = match &ask {
             Ask::Definition => ("textDocument/definition", "definitionProvider", "find definitions"),
             Ask::Hover => ("textDocument/hover", "hoverProvider", "describe things"),
             Ask::References => ("textDocument/references", "referencesProvider", "find references"),
+            Ask::Rename(_) => ("textDocument/rename", "renameProvider", "rename things"),
         };
         if !provides(&r.server.capabilities()[provider]) {
             return Err(format!("{} can't {what}", r.name));
@@ -227,8 +245,10 @@ impl Languages {
         let character = r.server.encoding().units(line, at.col);
         let position = Json::object([("line", at.row.into()), ("character", character.into())]);
         let mut params = vec![("textDocument", document(&s.uri)), ("position", position)];
-        if ask == Ask::References {
-            params.push(("context", Json::object([("includeDeclaration", true.into())])));
+        match &ask {
+            Ask::References => params.push(("context", Json::object([("includeDeclaration", true.into())]))),
+            Ask::Rename(name) => params.push(("newName", name.as_str().into())),
+            _ => {}
         }
         let params = Json::object(params);
         let request = r.server.request(method, params);
@@ -441,7 +461,40 @@ fn said(ask: &Ask, result: &Json, synced: &HashMap<usize, Synced>, encoding: Enc
     match ask {
         Ask::Definition | Ask::References => Said::Places(places(result, &mut lines, encoding)),
         Ask::Hover => Said::Text(hover_text(&result["contents"])),
+        Ask::Rename(_) => Said::Edits(file_edits(result, &mut lines, encoding)),
     }
+}
+
+// a WorkspaceEdit's changes, as a map from each file to its edits or as a list of
+// TextDocumentEdits, leaving out files made, moved or deleted
+fn file_edits(workspace: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<FileEdits> {
+    let mut each: Vec<(&str, &Json)> = Vec::new();
+    if let Some(changes) = workspace["documentChanges"].as_array() {
+        for change in changes.iter().filter(|c| c.get("kind").is_none()) {
+            if let Some(uri) = change["textDocument"]["uri"].as_str() {
+                each.push((uri, &change["edits"]));
+            }
+        }
+    } else if let Json::Object(changes) = &workspace["changes"] {
+        each.extend(changes.iter().map(|(uri, edits)| (uri.as_str(), edits)));
+    }
+    let mut out: Vec<FileEdits> = Vec::new();
+    for (uri, list) in each {
+        let Some(path) = lsp::uri_path(uri) else { continue };
+        let edits = list.as_array().unwrap_or(&[]).iter().map(|e| Edit {
+            start: lines.pos(&path, &e["range"]["start"], encoding),
+            end: lines.pos(&path, &e["range"]["end"], encoding),
+            text: e["newText"].as_str().unwrap_or("").to_string(),
+        });
+        match out.iter_mut().find(|f| f.path == path) {
+            Some(f) => f.edits.extend(edits),
+            None => {
+                let edits = edits.collect();
+                out.push(FileEdits { path, edits });
+            }
+        }
+    }
+    out
 }
 
 // MarkupContent, a MarkedString, or a list of MarkedStrings
@@ -1085,6 +1138,66 @@ mod tests {
         };
         let starts: Vec<Pos> = places.iter().map(|p| p.start).collect();
         assert_eq!(starts, [Pos::new(0, 3), Pos::new(1, 0)]);
+    }
+
+    #[test]
+    fn a_rename_comes_back_as_edits_to_each_file() {
+        let mut r = rig();
+        let v1 = lines("let 😀a = 1;\n😀a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(
+            &docs,
+            r#"{"textDocumentSync":1,"renameProvider":{"prepareProvider":true}}"#,
+        );
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(1, 1), Ask::Rename("b".into())).unwrap();
+        let a = Json::from(uri("/work/a.rs"));
+        let edit = |line: usize, from: usize, to: usize| {
+            format!(
+                r#"{{"range":{{"start":{{"line":{line},"character":{from}}},"end":{{"line":{line},"character":{to}}}}},"newText":"b"}}"#
+            )
+        };
+        let changes = format!(
+            r#"{{"documentChanges":[{{"textDocument":{{"uri":{a},"version":1}},"edits":[{}]}},
+                {{"kind":"rename","oldUri":{a},"newUri":"file:///work/b.rs"}},
+                {{"textDocument":{{"uri":{a},"version":1}},"edits":[{}]}}]}}"#,
+            edit(0, 4, 7),
+            edit(1, 0, 3)
+        );
+        let asked = reply(&mut fake, "textDocument/rename", &changes);
+        assert_eq!(asked["params"]["newName"].as_str(), Some("b"));
+        let edits = vec![
+            Edit {
+                start: Pos::new(0, 4),
+                end: Pos::new(0, 6),
+                text: "b".into(),
+            },
+            Edit {
+                start: Pos::new(1, 0),
+                end: Pos::new(1, 2),
+                text: "b".into(),
+            },
+        ];
+        let path = paths::absolute(Path::new("/work/a.rs"));
+        assert_eq!(
+            answer(&mut r, &docs).said,
+            Said::Edits(vec![FileEdits {
+                path: path.clone(),
+                edits
+            }]),
+            "together, in the editor's columns"
+        );
+
+        r.langs.ask(1, Pos::new(1, 1), Ask::Rename("b".into())).unwrap();
+        reply(
+            &mut fake,
+            "textDocument/rename",
+            &format!(r#"{{"changes":{{{a}:[{}]}}}}"#, edit(1, 0, 3)),
+        );
+        let Said::Edits(files) = answer(&mut r, &docs).said else {
+            panic!("edits")
+        };
+        assert_eq!((files.len(), files[0].edits.len()), (1, 1), "or as a map");
     }
 
     #[test]
