@@ -1543,10 +1543,14 @@ impl Editor {
                 open.push((p, text(d.buf.lines(), d.file.final_newline)));
             }
         }
-        let spots: Vec<(PathBuf, usize, usize)> = places
+        let mut spots: Vec<(PathBuf, usize, usize)> = places
             .iter()
             .map(|p| (p.path.clone(), p.start.row, p.start.col))
             .collect();
+        // this file's first, then the others by name
+        let here = self.file.path.as_deref().and_then(canon);
+        spots.sort_by_key(|(p, row, col)| (canon(p) != here, p.clone(), *row, *col));
+        spots.dedup();
         let title = if word.is_empty() {
             what.to_string()
         } else {
@@ -4927,6 +4931,25 @@ mod tests {
         assert_eq!(e.cursor, Pos::new(2, 12));
         e.keys(&parse("n"));
         assert_eq!(e.cursor, Pos::new(0, 7), "n looks for the word");
+    }
+
+    #[test]
+    fn references_are_listed_from_this_file_first_and_in_order() {
+        let a = temp_file("order-a.rs", "x\nx\nx\n");
+        let b = temp_file("order-b.rs", "x\nx\n");
+        let mut e = Editor::open(&b).unwrap();
+        let said = Said::Places(vec![
+            place(&a, 2, 0),
+            place(&b, 1, 0),
+            place(&a, 0, 0),
+            place(&b, 0, 0),
+            place(&b, 0, 0),
+        ]);
+        e.answered(answer(&e, Ask::References, said));
+        let g = e.grep_picker().unwrap();
+        let listed: Vec<(String, usize)> = g.hits().iter().map(|h| (g.path(h), h.row)).collect();
+        let name = |p: &Path| crate::editor::listed(p);
+        assert_eq!(listed, [(name(&b), 0), (name(&b), 1), (name(&a), 0), (name(&a), 2)]);
     }
 
     #[test]
