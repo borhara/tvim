@@ -122,3 +122,38 @@ fn a_closed_file_is_opened_again() {
     assert_eq!((e.text().as_str(), e.cursor().row), ("a1\na2\na3", 1));
     assert_eq!(e.buffers().len(), 2);
 }
+
+#[cfg(unix)]
+#[test]
+fn a_closed_file_that_cant_be_read_is_passed_over() {
+    use std::os::unix::fs::PermissionsExt;
+    let (a, b) = two_files("unreadable");
+    let c = temp("unreadable-c.txt");
+    std::fs::write(&c, "c1\n").unwrap();
+    let mut e = Editor::new();
+    e.ex(&format!("e {}", a.display()));
+    e.keys(&parse("jj"));
+    e.ex(&format!("e {}", b.display()));
+    e.keys(&parse("j"));
+    e.ex(&format!("e {}", c.display()));
+    e.keys(&parse("2gt"));
+    e.ex("bd");
+    assert_eq!(e.buffers().len(), 2);
+    std::fs::set_permissions(&b, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read(&b).is_ok() {
+        // root reads it anyway
+        return;
+    }
+    e.keys(&parse("<C-o>"));
+    std::fs::set_permissions(&b, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(
+        (e.text().as_str(), e.cursor().row),
+        ("a1\na2\na3", 2),
+        "on to the one before"
+    );
+    assert!(
+        e.message().unwrap().text.contains("unreadable-b.txt"),
+        "{:?}",
+        e.message()
+    );
+}
