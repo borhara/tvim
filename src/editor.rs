@@ -1511,7 +1511,7 @@ impl Editor {
             (_, Said::Refused(why)) => self.error(why),
             (Ask::Definition, Said::Places(places)) => match places.as_slice() {
                 [] => self.error("no definition found"),
-                [place] => self.jump_to_place(place),
+                [place] => _ = self.go_to(&place.path, place.start),
                 _ => self.list_places("definitions", "of", &places),
             },
             (Ask::References, Said::Places(places)) if places.is_empty() => self.error("no references found"),
@@ -1682,19 +1682,21 @@ impl Editor {
         self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, found));
     }
 
-    fn jump_to_place(&mut self, place: &Place) {
+    // opens the file at `to`, remembering where it came from for Ctrl-o, and shows it
+    fn go_to(&mut self, path: &Path, to: Pos) -> bool {
         self.remember_jump();
-        if !self.open_or_report(&place.path) {
-            return;
+        if !self.open_or_report(path) {
+            return false;
         }
-        let row = place.start.row.min(self.buf.last_row());
-        self.cursor = Pos::new(row, place.start.col);
+        let row = to.row.min(self.buf.last_row());
+        self.cursor = Pos::new(row, to.col);
         self.clamp();
         self.set_want();
         if !(self.top.get()..=self.last_shown(self.top.get())).contains(&row) {
             self.top.set(row.saturating_sub(self.text_rows() / 3));
         }
         self.land(true);
+        true
     }
 
     pub fn hover(&self) -> Option<&str> {
@@ -1741,14 +1743,8 @@ impl Editor {
             Jump::Nothing => {}
             Jump::Close => self.grep = None,
             Jump::Open { path, row, col, query } => {
-                if self.open_or_report(&path) {
+                if self.go_to(&path, Pos::new(row, col)) {
                     self.grep = None;
-                    self.remember_jump();
-                    self.cursor = Pos::new(row.min(self.buf.last_row()), col);
-                    self.clamp();
-                    self.set_want();
-                    self.top.set(row.saturating_sub(self.text_rows() / 3));
-                    self.land(true);
                     self.last_search = Some(crate::regex::escape(&query));
                     self.search_backward = false;
                     self.search_shown = true;
@@ -5089,6 +5085,22 @@ mod tests {
         let g = e.grep_picker().unwrap();
         let lines: Vec<String> = g.hits().iter().map(|h| g.line(h)).collect();
         assert_eq!(lines, ["def f(): pass", "f()"]);
+    }
+
+    #[test]
+    fn ctrl_o_comes_back_from_a_listed_place_in_another_file() {
+        let a = temp_file("back-a.rs", "x\nx\nx\n");
+        let b = temp_file("back-b.rs", "\n\n\nx\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("jj"));
+        let said = Said::Places(vec![place(&a, 0, 0), place(&b, 3, 0)]);
+        e.answered(answer(&e, Ask::References, said));
+        e.keys(&parse("<C-n><CR>"));
+        assert_eq!(e.cursor, Pos::new(3, 0));
+        assert!(e.file.path.as_ref().unwrap().ends_with("back-b.rs"));
+        e.keys(&parse("<C-o>"));
+        assert!(e.file.path.as_ref().unwrap().ends_with("back-a.rs"));
+        assert_eq!(e.cursor, Pos::new(2, 0));
     }
 
     #[test]
