@@ -1,4 +1,4 @@
-//! Keeping tvim up to date: how it was installed, whether a newer release is out, and for an
+//! Keeping tvim up to date: how it was installed, whether a newer release is available, and for an
 //! install by install.sh, updating it in place: download, unpack and swap the binary, drawn as
 //! a tinsel step list under a strip of stars.
 //!
@@ -68,10 +68,13 @@ impl Install {
     fn news(&self, latest: &str) -> String {
         match self {
             Install::Dev => {
-                format!("tvim {latest} is out; this one was built from a checkout, so pull and build again")
+                format!("tvim {latest} is available; this one was built from a checkout, so pull and build again")
             }
-            Install::Elsewhere => format!("tvim {latest} is out: update it the way you installed it"),
-            install => format!("tvim {latest} is out: run {}", install.command().unwrap_or_default()),
+            Install::Elsewhere => format!("tvim {latest} is available: update it the way you installed it"),
+            install => format!(
+                "tvim {latest} is available: run {}",
+                install.command().unwrap_or_default()
+            ),
         }
     }
 
@@ -217,12 +220,12 @@ pub fn check_in_background(dir: &Path) {
     });
 }
 
-/// A row like the skyline along the bottom of tvim, at `t` seconds: dim dots, a few at a time
-/// fading up through ⋆ ✧ ✦ and back.
+/// A row like the skyline along the bottom of tvim, at `t` seconds: dim dots, stars fading up
+/// through ⋆ ✧ ✦ and back. Busier and quicker than the editor's, for a moment of news.
 fn skyline(width: usize, t: f64) -> String {
     let rest = mix(mix(palette::LINE, palette::SOFT, 0.35), palette::MUTED, 0.3);
     let row: String = (0..width)
-        .map(|i| match crate::ui::twinkle(i, width, t) {
+        .map(|i| match crate::ui::twinkle_among(i, width, t * 2.0, 5) {
             tw if tw >= 0.08 => paint(
                 tinsel::style::sample(&[palette::BERRY, palette::ROSE, palette::SHINE], tw),
                 ["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)],
@@ -237,7 +240,7 @@ fn skyline(width: usize, t: f64) -> String {
 fn news(mark: &str, latest: &str, current: &str) -> String {
     format!(
         "  {mark} {}  {}",
-        bold(&format!("tvim {latest} is out")),
+        bold(&format!("tvim {latest} is available")),
         paint(palette::MUTED, &format!("you have {current}"))
     )
 }

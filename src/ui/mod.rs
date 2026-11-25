@@ -332,13 +332,18 @@ fn accent(e: &Editor) -> Rgb {
 
 // a few dots at a time fade in and out, each lasting 3-6s
 pub(crate) fn twinkle(i: usize, n: usize, t: f64) -> f32 {
+    twinkle_among(i, n, t, 14)
+}
+
+// the same, with a star for every `per` dots
+pub(crate) fn twinkle_among(i: usize, n: usize, t: f64, per: usize) -> f32 {
     if t <= 0.0 || n == 0 {
         return 0.0;
     }
     let noise = |a: u32, b: u32| {
         (a.wrapping_mul(2_654_435_761) ^ b.wrapping_mul(40_503)).wrapping_mul(2_246_822_519) as f32 / u32::MAX as f32
     };
-    let stars = (n / 14).max(1) as u32;
+    let stars = (n / per.max(1)).max(1) as u32;
     let mut lit: f32 = 0.0;
     for s in 0..stars {
         let life = 3.0 + 3.0 * noise(s, 1) as f64;
