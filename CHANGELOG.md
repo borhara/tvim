@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0](https://github.com/borhara/tvim/compare/v1.2.0...v1.3.0) - 2026-11-25
+
+### Added
+
+- tvim on its own reopens what was open in this folder, or browses it
+- :rename and Space n rename the word under the cursor in every file
+- *(languages)* ask a server how to rename something
+- gr lists where the word under the cursor is used
+- *(grep)* list places handed over, narrowed by typing
+- *(languages)* ask a server where something is used
+- K shows what the language server says about the word under the cursor
+- *(languages)* ask a server to describe what's under the cursor
+- gd goes to the definition of what's under the cursor
+- *(languages)* ask a server where something is defined
+- :lsp says why a server isn't running
+- :lsp says how the server is doing, and :lsp restart starts afresh
+- show problems in the text, and what's wrong on the cursor's line
+- ]d and [d go to the next and previous problem
+- run language servers for the open files
+- *(languages)* say when a server won't start, or stops
+- *(languages)* hold the problems servers find
+- *(languages)* tell servers when a file is saved
+- *(languages)* send each edit as the one change that covers it
+- *(languages)* close files that are gone, renamed or given another server
+- *(languages)* open each file on its server, once the server is ready
+- *(languages)* start the language servers the open files need
+- *(lsp)* count columns the way the server does
+- choose language servers with :lsp, in the config file too
+- *(servers)* let a server be swapped for another command, or turned off
+- *(servers)* know which language server each kind of file gets
+- *(paths)* a path in full, whether or not it exists yet
+- *(lsp)* say why a server stopped, from what it wrote to stderr
+- *(lsp)* answer what the server asks of the editor
+- *(lsp)* initialize the server before sending it anything else
+- *(lsp)* shut the server down when done with it
+- *(lsp)* notice when the server has gone away
+- *(lsp)* hear replies and notices from the server
+- *(lsp)* start a server and send it requests and notifications
+- *(lsp)* turn paths into file URIs and back
+- *(lsp)* frame messages by their length in bytes
+- *(json)* read \u escapes, joining surrogate pairs
+- *(json)* parse strings and objects
+- *(json)* parse numbers, literals and arrays
+- *(json)* write values compactly
+- *(json)* build values from strings, numbers, options and lists
+- *(json)* a value type with lookups that chain through missing parts
+
+### Fixed
+
+- wrapping hover text narrower than a wide character no longer hangs
+- Ctrl-o comes back from a place picked in another file, as gd and the picker now go to places one way
+- drop a rename when a file it edits changed while the server was working it out
+- a rename says which files it couldn't open, and counts only those it changed
+- gd and gr in a file not saved yet stay in it and list it as it is
+- rename in a file not saved yet edits it, not an empty copy of it
+- text a server puts at one place goes in the order it gave it
+- wrap hover text by the room it takes, so wide characters stay inside the box
+- offer :rename while typing a command
+- list ]d and [d in the hints after ] and [
+- list references in order, this file's first
+- draw problems under the selection and search matches
+- keep problems in order after pulling them into shorter text
+- find problems' files however the server escapes their paths
+- highlight .cts files as typescript
+
+### Other
+
+- Merge branch 'open-folder-by-default'
+- gr lists files the server's answer already read from disk without reading them again
+- *(languages)* find open files by path once per answer, not for every position in it
+- join an open file's text for the list only when it's listed
+- work out each listed place's full path once, not on every comparison while sorting
+- don't count on the temp folder's path in the recent files test
+- describe gd, gr, K and renaming
+- show screenshots at the top of the readme
+- say how to install each language server
+- describe language servers
+- *(lsp)* share the fake server with the rest of the crate
+- split command lines into words in one place
+
 ## [1.2.0](https://github.com/borhara/tvim/compare/v1.1.0...v1.2.0) - 2026-11-19
 
 ### Added
