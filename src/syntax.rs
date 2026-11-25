@@ -932,5 +932,24 @@ mod tests {
         assert_eq!(Syntax::detect("README.md"), Some(Syntax::Markdown));
         assert_eq!(Syntax::detect("Makefile"), Some(Syntax::Shell));
         assert_eq!(Syntax::detect("notes.txt"), None);
+        for (file, name) in [
+            (".zshrc", "shell"),
+            ("Cargo.lock", "toml"),
+            ("Pipfile", "toml"),
+            ("tool.pyi", "python"),
+            ("server.go", "go"),
+            ("main.cpp", "c"),
+            ("App.swift", "c"),
+            ("Main.java", "java"),
+            ("build.groovy", "java"),
+            ("init.lua", "lua"),
+            ("setup.cfg", "toml"),
+            ("ci.yml", "yaml"),
+            ("tsconfig.jsonc", "json"),
+            ("page.mdx", "markdown"),
+            ("run.fish", "shell"),
+        ] {
+            assert_eq!(Syntax::detect(file).map(Syntax::name), Some(name), "{file}");
+        }
     }
 }
