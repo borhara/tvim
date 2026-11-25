@@ -60,6 +60,23 @@ fn deleting_yanking_and_shifting_ranges() {
     assert_eq!(t("    a", ":<<CR>"), "a");
     assert_eq!(t("a\nb\nc", ":1,2j<CR>"), "a b\nc");
     assert_eq!(t("a\nb\nc", ":%norm A;<CR>"), "a;\nb;\nc;");
+    assert_eq!(
+        t("a\nb\nc", ":%norm yyp<CR>"),
+        "a\na\nb\nb\nc\nc",
+        ":normal runs on the lines it was given, wherever lines put in push them"
+    );
+    assert_eq!(t("a\nb\nc", ":%norm Ox<CR>"), "x\na\nx\nb\nx\nc");
+    assert_eq!(t("a\nb\nc\nd", ":%norm dd<CR>"), "");
+    assert_eq!(
+        t("a\nb\nc\nd\ne\nf", ":%norm jdd<CR>"),
+        "a\nc\ne",
+        "and not on lines taken out"
+    );
+    assert_eq!(
+        t("a\nb\nc\nd", ":2,3norm ddp<CR>"),
+        "a\nb\nc\nd",
+        "b, put back below, is a line of its own now, and c moves it back"
+    );
     assert_eq!(t("a\nb", ":3,1d<CR>"), "a\nb", "a range past the end");
 }
 
