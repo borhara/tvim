@@ -26,6 +26,10 @@ Or, with Rust installed:
 cargo install tvim
 ```
 
+tvim looks for a newer version once a day. Installed by the script, it offers to update itself
+when it starts; installed by Homebrew or cargo, it says what to run. `tvim --update` checks
+straight away, and `set noupdatecheck` in your config stops it looking.
+
 ## Opening files
 
 ```sh
@@ -140,6 +144,7 @@ nnoremap <leader>w :w<CR>
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
 | `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
 | `linebreak` | `lbr` | off | with `wrap`, break lines between words |
+| `updatecheck` | `uc` | on | look for a newer tvim once a day, and offer it when tvim starts |
 
 ### Key mappings
 

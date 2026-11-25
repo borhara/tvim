@@ -5,6 +5,7 @@ use tinsel::app;
 use tvim::editor::Editor;
 use tvim::session;
 use tvim::ui::Tvim;
+use tvim::update::{self, Offer};
 
 const USAGE: &str = "\
 tvim: a vim-like editor for the terminal
@@ -19,8 +20,10 @@ usage: tvim [options] [file or folder]
   +/text        start on the first line holding text
   -h, --help    show this and exit
   -V, --version show the version and exit
+  --update      update to the latest tvim, or say how
 
-settings are read from ~/.config/tvim/config, one :set or :map line each";
+settings are read from ~/.config/tvim/config, one :set or :map line each;
+`set noupdatecheck` there stops tvim looking for newer versions";
 
 fn main() -> ExitCode {
     let mut file: Option<PathBuf> = None;
@@ -41,6 +44,13 @@ fn main() -> ExitCode {
             "-V" | "--version" => {
                 println!("tvim {}", env!("CARGO_PKG_VERSION"));
                 return ExitCode::SUCCESS;
+            }
+            "--update" => {
+                return if update::now_or_say() {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                };
             }
             "--" => options = false,
             a if a.starts_with('+') => start = Some(a[1..].to_string()),
@@ -95,6 +105,14 @@ fn main() -> ExitCode {
     if let Some(problem) = problem {
         editor.show_error(&problem);
     }
+    if let Some(dir) = state.as_deref().filter(|_| editor.options.update_check) {
+        match update::offer(dir) {
+            Offer::Restart(tvim) => return restart(&tvim),
+            Offer::Tell(news) => editor.show_info(&news),
+            Offer::Nothing => {}
+        }
+        update::check_in_background(dir);
+    }
 
     match app::run(Tvim::new(editor)) {
         Ok(mut tvim) => {
@@ -110,6 +128,23 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Starts the tvim just installed in this one's place, on the same files.
+#[cfg(unix)]
+fn restart(tvim: &Path) -> ExitCode {
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(tvim)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    tinsel::error(&format!("updated, but couldn't start the new tvim: {err}"));
+    ExitCode::FAILURE
+}
+
+#[cfg(not(unix))]
+fn restart(_: &Path) -> ExitCode {
+    tinsel::success("updated: start tvim again to use the new one");
+    ExitCode::SUCCESS
 }
 
 fn go_to(editor: &mut Editor, start: &str) {

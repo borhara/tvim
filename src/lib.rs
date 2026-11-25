@@ -31,6 +31,7 @@ pub mod syntax;
 pub mod text;
 mod time;
 pub mod ui;
+pub mod update;
 mod window;
 
 pub use buffer::{Buffer, Pos};

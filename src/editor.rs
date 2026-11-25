@@ -113,6 +113,7 @@ pub struct Options {
     pub zero_pad: bool,
     pub wrap: bool,
     pub linebreak: bool,
+    pub update_check: bool,
 }
 
 impl Default for Options {
@@ -143,6 +144,7 @@ impl Default for Options {
             zero_pad: false,
             wrap: false,
             linebreak: false,
+            update_check: true,
         }
     }
 }
@@ -175,6 +177,7 @@ impl Options {
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
             "linebreak" | "lbr" => ("linebreak", &mut self.linebreak),
+            "updatecheck" | "uc" => ("updatecheck", &mut self.update_check),
             _ => return None,
         })
     }

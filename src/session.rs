@@ -223,6 +223,10 @@ impl Editor {
         self.error(text);
     }
 
+    pub fn show_info(&mut self, text: &str) {
+        self.info(text);
+    }
+
     pub fn pick_recent(&mut self) {
         self.remember_place();
         let here = self.file.path.as_deref().map(absolute);
