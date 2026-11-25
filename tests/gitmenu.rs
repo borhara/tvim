@@ -370,3 +370,25 @@ fn a_staged_rename_unstages_and_discards_as_a_whole() {
     assert!(!dir.join("b.txt").exists());
     assert_eq!(git(&dir, &["status", "--porcelain"]).unwrap(), "");
 }
+
+#[test]
+fn the_log_and_branches_are_drawn_with_their_hints() {
+    let Some(dir) = repo("draw-log", "a\n") else { return };
+    git(&dir, &["branch", "side"]).unwrap();
+    std::fs::write(dir.join("a.txt"), "a\nb\n").unwrap();
+    git(&dir, &["commit", "-q", "-am", "second"]).unwrap();
+
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>Gl");
+    let screen = shown(e, 110, 30);
+    for want in ["second", "first", "a.txt | ", "J/K scroll", "l files"] {
+        assert!(screen.contains(want), "{want}\n{screen}");
+    }
+
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>Gb");
+    let screen = shown(e, 110, 30);
+    for want in ["✦ trunk", "· side", "⏎ switch"] {
+        assert!(screen.contains(want), "{want}\n{screen}");
+    }
+}
