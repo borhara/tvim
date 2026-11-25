@@ -1351,18 +1351,17 @@ impl Editor {
             self.explore(path);
             return Ok(());
         }
-        let canon = |p: &Path| crate::paths::canonical(p).ok();
-        let want = canon(path);
-        if want.is_some() {
-            if self.file.path.as_deref().and_then(canon) == want {
-                return Ok(());
-            }
-            let open = (0..self.docs.len())
-                .find(|&i| i != self.current && self.docs[i].file.path.as_deref().and_then(canon) == want);
-            if let Some(i) = open {
-                self.switch_to(i);
-                return Ok(());
-            }
+        // in full, so a file open but not saved yet is found too
+        let full = |p: &Path| Some(crate::paths::absolute(p));
+        let want = full(path);
+        if self.file.path.as_deref().and_then(full) == want {
+            return Ok(());
+        }
+        let open = (0..self.docs.len())
+            .find(|&i| i != self.current && self.docs[i].file.path.as_deref().and_then(full) == want);
+        if let Some(i) = open {
+            self.switch_to(i);
+            return Ok(());
         }
         if self.disposable() {
             self.load(path)?;
@@ -1618,7 +1617,7 @@ impl Editor {
     // in the grep picker, with the text of open files as it is in the editor
     fn list_places(&mut self, what: &str, joiner: &str, places: &[Place]) {
         let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
-        let canon = |p: &Path| crate::paths::canonical(p).ok();
+        let full = |p: &Path| Some(crate::paths::absolute(p));
         let mut open: Vec<(PathBuf, String)> = Vec::new();
         let text = |lines: &[String], final_newline: bool| {
             let mut text = lines.join("\n");
@@ -1627,11 +1626,11 @@ impl Editor {
             }
             text
         };
-        if let Some(p) = self.file.path.as_deref().and_then(canon) {
+        if let Some(p) = self.file.path.as_deref().and_then(full) {
             open.push((p, text(self.buf.lines(), self.file.final_newline)));
         }
         for (_, d) in self.docs.iter().enumerate().filter(|&(i, _)| i != self.current) {
-            if let Some(p) = d.file.path.as_deref().and_then(canon) {
+            if let Some(p) = d.file.path.as_deref().and_then(full) {
                 open.push((p, text(d.buf.lines(), d.file.final_newline)));
             }
         }
@@ -1640,8 +1639,8 @@ impl Editor {
             .map(|p| (p.path.clone(), p.start.row, p.start.col))
             .collect();
         // this file's first, then the others by name
-        let here = self.file.path.as_deref().and_then(canon);
-        spots.sort_by_key(|(p, row, col)| (canon(p) != here, p.clone(), *row, *col));
+        let here = self.file.path.as_deref().and_then(full);
+        spots.sort_by_key(|(p, row, col)| (full(p) != here, p.clone(), *row, *col));
         spots.dedup();
         let title = if word.is_empty() {
             what.to_string()
@@ -1650,7 +1649,7 @@ impl Editor {
         };
         self.reset_for_picker();
         let found = |path: &Path| {
-            let path = canon(path)?;
+            let path = full(path)?;
             open.iter().find(|(p, _)| *p == path).map(|(_, t)| t.clone())
         };
         self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, found));
@@ -5043,6 +5042,22 @@ mod tests {
         let listed: Vec<(String, usize)> = g.hits().iter().map(|h| (g.path(h), h.row)).collect();
         let name = |p: &Path| crate::editor::listed(p);
         assert_eq!(listed, [(name(&b), 0), (name(&b), 1), (name(&a), 0), (name(&a), 2)]);
+    }
+
+    #[test]
+    fn a_file_not_saved_yet_is_gone_to_and_listed_as_it_is() {
+        let path = unsaved_file("def-unsaved.py");
+        let mut e = Editor::open(&path).unwrap();
+        e.keys(&parse("idef f(): pass<CR>f()<Esc>"));
+        e.answered(answer(&e, Ask::Definition, Said::Places(vec![place(&path, 0, 4)])));
+        assert_eq!(e.cursor, Pos::new(0, 4));
+        assert_eq!(e.buf.lines(), ["def f(): pass", "f()"]);
+        assert_eq!(e.docs.len(), 1, "no second copy opened");
+        let said = Said::Places(vec![place(&path, 0, 4), place(&path, 1, 0)]);
+        e.answered(answer(&e, Ask::References, said));
+        let g = e.grep_picker().unwrap();
+        let lines: Vec<String> = g.hits().iter().map(|h| g.line(h)).collect();
+        assert_eq!(lines, ["def f(): pass", "f()"]);
     }
 
     #[test]
