@@ -1843,6 +1843,7 @@ mod tests {
             version: e.version(),
             at: e.cursor(),
             versions: Vec::new(),
+            read: Default::default(),
             ask: crate::languages::Ask::Hover,
             said: crate::languages::Said::Text(text.into()),
         };
