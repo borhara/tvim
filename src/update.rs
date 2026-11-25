@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tinsel::{Block, Card, Live, Region, Spinner, bold, mix, paint, palette};
+use tinsel::{Block, Card, Live, Region, bold, mix, paint, palette};
 
 const RELEASES: &str = "https://github.com/borhara/tvim/releases";
 const DAY: u64 = 24 * 60 * 60;
@@ -68,11 +68,11 @@ impl Install {
     fn news(&self, latest: &str) -> String {
         match self {
             Install::Dev => {
-                format!("tvim {latest} is available; this one was built from a checkout, so pull and build again")
+                format!("tvim v{latest} is available; this one was built from a checkout, so pull and build again")
             }
-            Install::Elsewhere => format!("tvim {latest} is available: update it the way you installed it"),
+            Install::Elsewhere => format!("tvim v{latest} is available: update it the way you installed it"),
             install => format!(
-                "tvim {latest} is available: run {}",
+                "tvim v{latest} is available: run {}",
                 install.command().unwrap_or_default()
             ),
         }
@@ -240,8 +240,8 @@ fn skyline(width: usize, t: f64) -> String {
 fn news(mark: &str, latest: &str, current: &str) -> String {
     format!(
         "  {mark} {}  {}",
-        bold(&format!("tvim {latest} is available")),
-        paint(palette::MUTED, &format!("you have {current}"))
+        bold(&format!("tvim v{latest} is available")),
+        paint(palette::MUTED, &format!("you have v{current}"))
     )
 }
 
@@ -258,7 +258,7 @@ fn announce(latest: &str, current: &str) {
 }
 
 /// Asks whether to update, with the skyline twinkling above the question the whole time it
-/// waits, and the mark beside the news sparkling. One key answers: y or Enter yes, n no, and
+/// waits. One key answers: y or Enter yes, n no, and
 /// Esc or Ctrl-C not now (None), as does there being no terminal to ask on.
 fn ask(latest: &str, current: &str) -> Option<bool> {
     let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -279,7 +279,7 @@ fn ask(latest: &str, current: &str) -> Option<bool> {
         };
         let mut frame = Block::new();
         frame.push(skyline(width, t));
-        frame.push(news(&Spinner::Sparkle.frame(t).to_string(), &latest, &current));
+        frame.push(news(&paint(palette::ROSE, "✦"), &latest, &current));
         frame.push(String::new());
         frame.push(format!(
             "  {}  {}  {reply}",
@@ -356,7 +356,7 @@ pub fn update_in(dir: &Path, version: &str) -> Option<PathBuf> {
         tinsel::error(&format!("couldn't make a folder to update in: {e}"));
         return None;
     }
-    let live = Live::new("tvim", version).no_history().no_notify();
+    let live = Live::new("tvim", format!("v{version}")).no_history().no_notify();
     let (download, unpack, install) = (live.step("Download"), live.step("Unpack"), live.step("Install"));
     let tvim = dir.join("tvim");
     let ok = download
@@ -384,7 +384,7 @@ pub fn update_in(dir: &Path, version: &str) -> Option<PathBuf> {
             let swapped = if is_ok_version(&new, version) {
                 swap(&new, &tvim).map_err(|e| e.to_string())
             } else {
-                Err(format!("the download isn't tvim {version}"))
+                Err(format!("the download isn't tvim v{version}"))
             };
             match &swapped {
                 Ok(()) => install.done(),
@@ -402,7 +402,7 @@ pub fn update_in(dir: &Path, version: &str) -> Option<PathBuf> {
         Some(rest) => format!("~/{}", rest.display()),
         None => dir.display().to_string(),
     };
-    live.finish_with_card(Card::success(&format!("updated to tvim {version}")).kv("in", &shown));
+    live.finish_with_card(Card::success(&format!("updated to tvim v{version}")).kv("in", &shown));
     Some(tvim)
 }
 
@@ -487,7 +487,7 @@ pub fn now_or_say() -> bool {
         let _ = state.write(&dir);
     }
     if !is_newer(&latest, current) {
-        tinsel::success(&format!("tvim {current} is the latest"));
+        tinsel::success(&format!("tvim v{current} is the latest"));
         return true;
     }
     match Install::current() {
