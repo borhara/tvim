@@ -1536,13 +1536,13 @@ impl Editor {
 
     // makes each file's edits, opening those that aren't open yet, and leaves them unsaved
     fn apply_edits(&mut self, files: Vec<FileEdits>) {
-        let canon = |p: &Path| crate::paths::canonical(p).ok();
+        // in full rather than canonical, as a file not saved yet has no canonical path
         let back = self.current;
-        let here = self.file.path.as_deref().and_then(canon);
+        let here = self.file.path.as_deref().map(crate::paths::absolute);
         let (mut changed, mut elsewhere) = (0, 0);
         self.no_jumps = true;
         for f in files.iter().filter(|f| !f.edits.is_empty()) {
-            if here.is_some() && canon(&f.path) == here {
+            if here.is_some() && Some(crate::paths::absolute(&f.path)) == here {
                 self.switch_to(back);
             } else if self.open_or_report(&f.path) {
                 elsewhere += 1;
@@ -5111,6 +5111,28 @@ mod tests {
             ["fn old() {}", "fn main() { old(); old(); }"],
             "undone at once"
         );
+    }
+
+    // a file named on the command line that isn't on disk yet
+    fn unsaved_file(name: &str) -> PathBuf {
+        let path = temp_file(name, "");
+        std::fs::remove_file(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_rename_in_a_file_not_saved_yet_edits_it() {
+        let path = unsaved_file("ren-unsaved.py");
+        let mut e = Editor::open(&path).unwrap();
+        e.keys(&parse("idef f(): pass<CR>f()<Esc>"));
+        let files = vec![FileEdits {
+            path: path.clone(),
+            edits: vec![edit((0, 4), (0, 5), "g"), edit((1, 0), (1, 1), "g")],
+        }];
+        e.answered(answer(&e, Ask::Rename("g".into()), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["def g(): pass", "g()"]);
+        assert_eq!(e.docs.len(), 1, "no second copy opened");
+        assert_eq!(e.message.as_ref().unwrap().text, "renamed 2 places");
     }
 
     #[test]
