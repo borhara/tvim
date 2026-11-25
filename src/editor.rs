@@ -1644,23 +1644,6 @@ impl Editor {
     // in the grep picker, with the text of open files as it is in the editor
     fn list_places(&mut self, what: &str, joiner: &str, places: &[Place]) {
         let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
-        let full = |p: &Path| Some(crate::paths::absolute(p));
-        let mut open: Vec<(PathBuf, String)> = Vec::new();
-        let text = |lines: &[String], final_newline: bool| {
-            let mut text = lines.join("\n");
-            if final_newline {
-                text.push('\n');
-            }
-            text
-        };
-        if let Some(p) = self.file.path.as_deref().and_then(full) {
-            open.push((p, text(self.buf.lines(), self.file.final_newline)));
-        }
-        for (_, d) in self.docs.iter().enumerate().filter(|&(i, _)| i != self.current) {
-            if let Some(p) = d.file.path.as_deref().and_then(full) {
-                open.push((p, text(d.buf.lines(), d.file.final_newline)));
-            }
-        }
         // each path in full once, rather than for every comparison while sorting
         let mut spots: Vec<(PathBuf, usize, usize)> = places
             .iter()
@@ -1678,8 +1661,23 @@ impl Editor {
             format!("{what} {joiner} {word}")
         };
         self.reset_for_picker();
-        let found = |path: &Path| open.iter().find(|(p, _)| p == path).map(|(_, t)| t.clone());
-        self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, found));
+        // an open file's text as it is in the editor, joined only for files that are listed
+        let open = |path: &Path| {
+            let full = |p: &Path| crate::paths::absolute(p) == path;
+            let (lines, final_newline) = if self.file.path.as_deref().is_some_and(full) {
+                (self.buf.lines(), self.file.final_newline)
+            } else {
+                let (_, d) = (self.docs.iter().enumerate())
+                    .find(|&(i, d)| i != self.current && d.file.path.as_deref().is_some_and(full))?;
+                (d.buf.lines(), d.file.final_newline)
+            };
+            let mut text = lines.join("\n");
+            if final_newline {
+                text.push('\n');
+            }
+            Some(text)
+        };
+        self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, open));
     }
 
     // opens the file at `to`, remembering where it came from for Ctrl-o, and shows it
