@@ -218,10 +218,18 @@ fn wrap(line: &str, width: usize) -> Vec<String> {
         } else {
             out.push(std::mem::replace(&mut row, format!("{indent}{word}")));
         }
+        // by the room it takes, as a wide character takes two columns
         while tinsel::text::width(&row) > width {
-            let cut: String = row.chars().take(width).collect();
-            row = row.chars().skip(width).collect();
-            out.push(cut);
+            let mut used = 0;
+            let at = row
+                .char_indices()
+                .find(|&(_, c)| {
+                    used += tinsel::text::width(c.encode_utf8(&mut [0; 4]));
+                    used > width
+                })
+                .map_or(row.len(), |(i, _)| i);
+            out.push(row[..at].to_string());
+            row = row[at..].to_string();
         }
     }
     if !row.trim().is_empty() {
@@ -846,6 +854,14 @@ mod tests {
             ]
         );
         assert!(hover_lines("\n---\n\n", 10).is_empty());
+    }
+
+    #[test]
+    fn wide_text_wraps_by_the_room_it_takes() {
+        let wide = "中".repeat(12);
+        let rows = wrap(&wide, 10);
+        assert_eq!(rows, ["中".repeat(5), "中".repeat(5), "中".repeat(2)]);
+        assert_eq!(wrap("ab中cd", 3), ["ab", "中c", "d"]);
     }
 
     #[test]
