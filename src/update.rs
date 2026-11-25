@@ -6,12 +6,13 @@
 //! folder, so the next launch can offer it without waiting on the network. Checks ask GitHub
 //! with curl, which install.sh needs too, so tvim itself needs no HTTP of its own.
 
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tinsel::app::{Frame, Sparkles};
-use tinsel::{Card, Live, bold, paint, palette};
+use tinsel::style::blink;
+use tinsel::{Block, Card, Live, Region, Spinner, bold, mix, paint, palette};
 
 const RELEASES: &str = "https://github.com/borhara/tvim/releases";
 const DAY: u64 = 24 * 60 * 60;
@@ -217,21 +218,77 @@ pub fn check_in_background(dir: &Path) {
     });
 }
 
-/// The news above the question: a strip of stars, like the ones along the bottom of tvim, and
-/// what's out.
+/// The stars in a strip two rows high, as (column, row, brightness from 0 to 1), in the order
+/// they come out: scattered, and the same every time.
+fn stars(width: usize) -> Vec<(usize, usize, f32)> {
+    // mixed well enough that where a star is says nothing about how bright it is
+    let noise = |a: usize, b: u64| {
+        let mut x = (a as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+        x ^= x >> 33;
+        x = x.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+        x ^= x >> 33;
+        x = x.wrapping_mul(0xC4CE_B9FE_1A85_EC53);
+        x ^= x >> 33;
+        (x >> 40) as f32 / (1u64 << 24) as f32
+    };
+    let mut stars: Vec<_> = (0..width * 2)
+        .filter(|&i| noise(i, 7) < 0.12)
+        .map(|i| (i % width, i / width, noise(i, 11)))
+        .collect();
+    stars.sort_by(|a, b| noise(a.0 + a.1 * width, 13).total_cmp(&noise(b.0 + b.1 * width, 13)));
+    stars
+}
+
+/// The strip with its first `out` stars out. Settled, the bright ones blink: the terminal
+/// keeps that going on its own, so they twinkle on while the question waits.
+fn sky(width: usize, out: usize, settled: bool) -> Vec<String> {
+    let mut rows = vec![vec![" ".to_string(); width]; 2];
+    for &(x, y, v) in stars(width).iter().take(out) {
+        let glyph = match v {
+            v if v > 0.8 => "✦",
+            v if v > 0.6 => "✧",
+            v if v > 0.35 => "⋆",
+            _ => "·",
+        };
+        let colour = if v > 0.35 {
+            mix(palette::BLUSH, palette::SHINE, v)
+        } else {
+            palette::MUTED
+        };
+        let star = paint(colour, glyph);
+        rows[y][x] = if settled && v > 0.6 { blink(&star) } else { star };
+    }
+    rows.into_iter().map(|row| format!("  {}", row.concat())).collect()
+}
+
+/// The news above the question: stars come out over a strip like the one along the bottom of
+/// tvim while its mark sparkles, then settle, twinkling, over what's out.
 fn announce(latest: &str, current: &str) {
-    let width = tinsel::terminal_width().clamp(24, 64);
-    // a still moment in the twinkle, once a few stars have come out
-    let mut sky = Frame::new(width, 2).at(4.0);
-    sky.render(sky.area(), Sparkles::new().density(0.08));
-    println!();
-    sky.snapshot().print();
-    println!(
-        "  {} {}  {}",
-        paint(palette::ROSE, "✦"),
+    let width = tinsel::terminal_width().saturating_sub(4).clamp(20, 60);
+    let news = format!(
+        "{}  {}",
         bold(&format!("tvim {latest} is out")),
         paint(palette::MUTED, &format!("you have {current}"))
     );
+    println!();
+    if std::io::stdout().is_terminal() {
+        let (count, began, shown) = (stars(width).len(), Instant::now(), news.clone());
+        let region = Region::new(move || {
+            let t = began.elapsed().as_secs_f64();
+            let mut frame = Block::new();
+            for row in sky(width, (t / 0.8 * count as f64) as usize, false) {
+                frame.push(row);
+            }
+            frame.push(format!("  {} {shown}", Spinner::Sparkle.frame(t)));
+            frame
+        });
+        std::thread::sleep(Duration::from_millis(1000));
+        region.finish();
+    }
+    for row in sky(width, usize::MAX, true) {
+        println!("{row}");
+    }
+    println!("  {} {news}", blink(&paint(palette::ROSE, "✦")));
     println!();
 }
 
@@ -444,6 +501,18 @@ mod tests {
         assert!(writable(&dir));
         assert!(!writable(&dir.join("missing")));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_sky_is_the_same_every_time_and_fills_its_width() {
+        assert!(!stars(40).is_empty());
+        assert_eq!(stars(40), stars(40));
+        let plain = |out, settled| tinsel::with_color_mode(tinsel::ColorMode::None, || sky(40, out, settled));
+        let full = plain(usize::MAX, true);
+        assert_eq!(full.len(), 2);
+        assert!(full.iter().all(|row| row.chars().count() == 42), "{full:?}");
+        assert!(full.concat().contains('✦'));
+        assert!(plain(0, false).iter().all(|row| row.trim().is_empty()), "none out yet");
     }
 
     #[test]
