@@ -51,6 +51,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("zen", "", "only the text, centred"),
     ("git", "", "the git menu: stage, commit, log, branches"),
     ("lsp", "", "the language server for this file, or choose one"),
+    ("rename", "ren", "rename what's under the cursor everywhere"),
     ("preview", "prev", "show or hide a markdown preview"),
     ("help", "h", "a quick reminder"),
     ("version", "ve", "show the version"),
@@ -211,6 +212,7 @@ mod tests {
         assert_eq!(labels("wq"), ["wq", "wqall"]);
         assert_eq!(labels("se"), ["set"]);
         assert_eq!(labels("Ex"), ["Explore"]);
+        assert_eq!(labels("ren"), ["rename"]);
         assert!(labels("42").is_empty());
         assert!(labels("").len() > 10);
     }
