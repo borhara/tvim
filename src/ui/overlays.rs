@@ -223,9 +223,10 @@ fn wrap(line: &str, width: usize) -> Vec<String> {
             let mut used = 0;
             let at = row
                 .char_indices()
-                .find(|&(_, c)| {
+                // at least one character a row, or one wider than the room would never fit
+                .find(|&(i, c)| {
                     used += tinsel::text::width(c.encode_utf8(&mut [0; 4]));
-                    used > width
+                    used > width && i > 0
                 })
                 .map_or(row.len(), |(i, _)| i);
             out.push(row[..at].to_string());
@@ -862,6 +863,7 @@ mod tests {
         let rows = wrap(&wide, 10);
         assert_eq!(rows, ["中".repeat(5), "中".repeat(5), "中".repeat(2)]);
         assert_eq!(wrap("ab中cd", 3), ["ab", "中c", "d"]);
+        assert_eq!(wrap("中中", 1), ["中", "中"], "too narrow for one, so it's let through");
     }
 
     #[test]
