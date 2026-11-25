@@ -1,4 +1,4 @@
-# fmt, clippy and the tests, on the Rust in nixpkgs
+# fmt, clippy and the tests, on the latest stable Rust, as you'd have
 when:
   - event: ["push", "pull_request"]
     branch: ["main"]
@@ -6,11 +6,9 @@ when:
 engine: microvm
 image: nixos
 
+# rustup rather than nixpkgs' Rust, whose clippy runs ahead of stable's
 dependencies:
-  - cargo
-  - rustc
-  - rustfmt
-  - clippy
+  - rustup
   - gcc
 
 environment:
@@ -18,6 +16,10 @@ environment:
   RUSTFLAGS: "-D warnings"
 
 steps:
+  - name: toolchain
+    command: |
+      rustup toolchain install stable --profile minimal --component rustfmt,clippy
+      rustup default stable
   - name: fmt
     command: cargo fmt --check
   - name: clippy
