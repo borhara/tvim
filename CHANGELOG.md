@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1](https://github.com/borhara/tvim/compare/v1.4.0...v1.4.1) - 2026-11-25
+
+### Fixed
+
+- an update unpacks in a folder of its own that only you can get into, not one another user could have made first
+- :normal over a range runs once on each line it was given, as lines the keys put in or take out move them
+- marks keep to their lines as lines above them come and go, and undo brings back those deleted with theirs
+- :w to the open file by another name, like ./a.txt, writes and saves it
+- a file that's one empty line keeps it when written, rather than being emptied
+- Ctrl-w in the grep picker no longer crashes after a separator wider than a byte
+
+### Other
+
+- *(finder)* the file and grep pickers edit their query with one helper
+- *(blame)* run git through git.rs's runner instead of a copy of it
+- *(languages)* an edit's shared ends come from diff::common_ends
+- *(motion)* find_open and find_close share one walk
+- editor.rs says which of its files holds what
+- *(jumps)* ctrl-o passes over a closed file that can't be read, saying why
+- *(syntax)* markdown rules, numbered and task lists, underscores and bare links
+- *(syntax)* go, java and lua keywords, decorators and yaml anchors
+- *(syntax)* every kind of file name finds its language
+- *(explorer)* paging through a long folder
+- *(explorer)* r reads the folder again, keeping the pick and letting go of folders gone
+- *(explorer)* the filter is edited as it's typed, and takes pastes
+- *(gitmenu)* the discard question and the commit message box are drawn
+- *(gitmenu)* the log and branches are drawn with their hints
+- *(update)* a release is downloaded, unpacked and swapped in, and a wrong or missing one leaves tvim be
+- *(update)* updating downloads from a releases link it's given, so tests can serve one
+- *(update)* the news says how each kind of install is updated
+- *(update)* a download is only trusted when it says it's the version asked for
+- *(update)* the new binary is swapped in whole, runnable, with nothing left beside it
+- visual mode moves to editor/visual.rs
+- insert mode and completion move to editor/insert.rs
+- dot repeat and macros move to editor/repeat.rs
+- operators, registers and puts move to editor/operators.rs
+- normal mode and its motions move to editor/normal.rs
+- the git menu, hunk resets and blame move to editor/git.rs
+- the grep and file pickers, explorer and zen move to editor/pickers.rs
+- drop the language types editor.rs no longer uses
+- talking to language servers moves to editor/lsp.rs
+- opening, switching and writing buffers move to editor/buffers.rs
+- flush_mapping goes with the rest of the mappings in editor/input.rs
+- key input and mappings move to editor/input.rs
+- the screen layout and scrolling move to editor/view.rs
+- the command line moves to editor/cmdline.rs
+- searching moves to editor/search.rs
+- the jump list and marks move to editor/jumps.rs
+- the editor's undo history moves to editor/undo.rs
+
 ## [1.4.0](https://github.com/borhara/tvim/compare/v1.3.0...v1.4.0) - 2026-11-25
 
 ### Added
