@@ -361,3 +361,26 @@ fn r_reads_the_folder_again() {
         "a folder gone is let go"
     );
 }
+
+#[test]
+fn paging_through_a_long_folder() {
+    let root = temp("paging");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    for i in 0..40 {
+        std::fs::write(root.join(format!("f{i:02}.txt")), "").unwrap();
+    }
+    let root = tvim::paths::canonical(&root).unwrap();
+    let mut e = Editor::new();
+    e.set_screen(80, 24);
+    e.explore(&root);
+    e.keys(&parse("<C-d>"));
+    let page = selected(&e);
+    assert!(page > 1, "half a screen down: {page}");
+    e.keys(&parse("<C-d><C-u>"));
+    assert_eq!(selected(&e), page);
+    e.keys(&parse("<End>"));
+    assert_eq!(selected(&e), 39);
+    e.keys(&parse("<Home>"));
+    assert_eq!(selected(&e), 0);
+}
