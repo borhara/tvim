@@ -311,3 +311,30 @@ fn the_sidebar_is_ruled_off_from_the_text() {
         "{shown}"
     );
 }
+
+#[test]
+fn the_filter_is_edited_as_its_typed() {
+    let (mut e, _) = browse("filter-edit");
+    e.keys(&parse("/zq"));
+    assert!(names(&e).is_empty());
+    e.keys(&parse("<BS>"));
+    assert_eq!(e.explorer().unwrap().filter(), Some("z"));
+    assert_eq!(names(&e), ["Zed.md"]);
+    e.keys(&parse("<C-u>"));
+    assert_eq!(e.explorer().unwrap().filter(), Some(""), "ctrl-u empties it");
+    assert_eq!(names(&e).len(), 4);
+    e.keys(&parse("<C-n><C-n><C-p>"));
+    assert_eq!(selected(&e), 1, "moving while filtering");
+    e.keys(&parse("<BS>"));
+    assert!(
+        !e.explorer().unwrap().is_filtering(),
+        "backspace on nothing stops filtering"
+    );
+
+    e.keys(&parse("/"));
+    e.paste("ze\nmore");
+    assert_eq!(names(&e), ["Zed.md"], "only the first line of a paste");
+    e.keys(&parse("<Esc>"));
+    e.paste("a");
+    assert_eq!(names(&e).len(), 4, "a paste outside the filter does nothing");
+}
