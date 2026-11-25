@@ -559,6 +559,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_download_is_only_trusted_when_it_says_its_the_version_asked_for() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("tvim-version-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tvim = dir.join("tvim");
+        std::fs::write(&tvim, "#!/bin/sh\necho 'tvim 1.4.1'\n").unwrap();
+        std::fs::set_permissions(&tvim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(is_ok_version(&tvim, "1.4.1"));
+        assert!(!is_ok_version(&tvim, "1.4.0"));
+        assert!(!is_ok_version(&dir.join("missing"), "1.4.1"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_archive_is_named_for_the_machine() {
         assert_eq!(
