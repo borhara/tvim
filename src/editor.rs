@@ -1,3 +1,13 @@
+//! The editor: buffers, modes and everything a key can do, without drawing any of it. The
+//! types and the getters the UI reads live here; the work is split by what it's about:
+//!
+//! - `normal`, `insert`, `visual`, `block` and `cmdline`: the modes, and the keys in each
+//! - `input`: where keys come in, and mappings
+//! - `operators` and `repeat`: changing text, registers, dot and macros
+//! - `undo`, `search` and `jumps`: history, searching, the jump list and marks
+//! - `buffers` and `view`: open files, and how they sit on the screen
+//! - `lsp`, `git` and `pickers`: language servers, the git menu, and the overlays
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
