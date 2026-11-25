@@ -945,6 +945,27 @@ mod tests {
     }
 
     #[test]
+    fn markdown_rules_lists_and_links() {
+        let m = Syntax::Markdown;
+        assert_eq!(kinds_of("- - -", m), [("- - -".into(), Punct)]);
+        assert_eq!(kinds_of("***", m), [("***".into(), Punct)]);
+        assert_eq!(kind_of("12. twelfth", m, "12."), ListMark);
+        assert_eq!(kind_of("3) third", m, "3)"), ListMark);
+        assert_eq!(kind_of("- [x] done", m, "-"), ListMark);
+        assert_eq!(kind_of("- [x] done", m, "[x]"), ListMark);
+        assert_eq!(kind_of("a __strong__ word", m, "__strong__"), Strong);
+        assert_eq!(kind_of("an _soft_ word", m, "_soft_"), Emphasis);
+        assert_eq!(kind_of("snake_case_name", m, "snake_case_name"), Plain);
+        assert_eq!(kind_of("go to https://x.y/z now", m, "https://x.y/z"), Url);
+        assert_eq!(kinds_of("just [brackets]", m), [("just [brackets]".into(), Plain)]);
+        assert_eq!(
+            kind_of("#hashtag", m, "#hashtag"),
+            Plain,
+            "not a heading without a space"
+        );
+    }
+
+    #[test]
     fn languages_from_names() {
         assert_eq!(Syntax::detect("main.rs"), Some(Syntax::Rust));
         assert_eq!(Syntax::detect("App.TSX"), Some(Syntax::JavaScript));
