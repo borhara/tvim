@@ -1512,10 +1512,10 @@ impl Editor {
             (Ask::Definition, Said::Places(places)) => match places.as_slice() {
                 [] => self.error("no definition found"),
                 [place] => _ = self.go_to(&place.path, place.start),
-                _ => self.list_places("definitions", "of", &places),
+                _ => self.list_places("definitions", "of", &places, &answer.read),
             },
             (Ask::References, Said::Places(places)) if places.is_empty() => self.error("no references found"),
-            (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places),
+            (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places, &answer.read),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
             (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions),
@@ -1642,7 +1642,7 @@ impl Editor {
     }
 
     // in the grep picker, with the text of open files as it is in the editor
-    fn list_places(&mut self, what: &str, joiner: &str, places: &[Place]) {
+    fn list_places(&mut self, what: &str, joiner: &str, places: &[Place], read: &HashMap<PathBuf, Vec<String>>) {
         let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
         // each path in full once, rather than for every comparison while sorting
         let mut spots: Vec<(PathBuf, usize, usize)> = places
@@ -1661,15 +1661,19 @@ impl Editor {
             format!("{what} {joiner} {word}")
         };
         self.reset_for_picker();
-        // an open file's text as it is in the editor, joined only for files that are listed
+        // an open file's text as it is in the editor, joined only for files that are listed, and
+        // others as the server's answer read them
         let open = |path: &Path| {
             let full = |p: &Path| crate::paths::absolute(p) == path;
             let (lines, final_newline) = if self.file.path.as_deref().is_some_and(full) {
                 (self.buf.lines(), self.file.final_newline)
             } else {
-                let (_, d) = (self.docs.iter().enumerate())
-                    .find(|&(i, d)| i != self.current && d.file.path.as_deref().is_some_and(full))?;
-                (d.buf.lines(), d.file.final_newline)
+                let doc = (self.docs.iter().enumerate())
+                    .find(|&(i, d)| i != self.current && d.file.path.as_deref().is_some_and(full));
+                match doc {
+                    Some((_, d)) => (d.buf.lines(), d.file.final_newline),
+                    None => return read.get(path).map(|lines| lines.join("\n")),
+                }
             };
             let mut text = lines.join("\n");
             if final_newline {
@@ -4974,6 +4978,7 @@ mod tests {
             versions: std::iter::once((e.buffer_id, e.version))
                 .chain(others.map(|(_, d)| (d.id, d.version)))
                 .collect(),
+            read: Default::default(),
             ask,
             said,
         }
@@ -5099,6 +5104,19 @@ mod tests {
         e.keys(&parse("<C-o>"));
         assert!(e.file.path.as_ref().unwrap().ends_with("back-a.rs"));
         assert_eq!(e.cursor, Pos::new(2, 0));
+    }
+
+    #[test]
+    fn files_the_answer_read_are_listed_without_reading_them_again() {
+        let a = temp_file("read-a.rs", "x\n");
+        let b = temp_file("read-b.rs", "on disk\n");
+        let mut e = Editor::open(&a).unwrap();
+        let mut said = answer(&e, Ask::References, Said::Places(vec![place(&b, 0, 0)]));
+        said.read
+            .insert(b.clone(), vec!["as the answer read it".into(), String::new()]);
+        e.answered(said);
+        let g = e.grep_picker().unwrap();
+        assert_eq!(g.line(&g.hits()[0]), "as the answer read it");
     }
 
     #[test]

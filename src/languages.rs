@@ -88,6 +88,8 @@ pub struct Answer {
     pub at: Pos,
     // every open file's version when asked, as an answer can be about other files too
     pub versions: Vec<(usize, u64)>,
+    // files that aren't open, as read from disk to work out columns, so they're read once
+    pub read: HashMap<PathBuf, Vec<String>>,
     pub ask: Ask,
     pub said: Said,
 }
@@ -328,15 +330,16 @@ impl Languages {
                     Incoming::Notice { method, params } => (method, params),
                     Incoming::Reply { id, result } => {
                         if let Some(asked) = r.asked.remove(&id) {
-                            let said = match result {
+                            let (said, read) = match result {
                                 Ok(result) => said(&asked.ask, &result, synced, r.server.encoding()),
-                                Err(e) => Said::Refused(e.message),
+                                Err(e) => (Said::Refused(e.message), HashMap::new()),
                             };
                             update.answers.push(Answer {
                                 id: asked.id,
                                 version: asked.version,
                                 at: asked.at,
                                 versions: asked.versions,
+                                read,
                                 ask: asked.ask,
                                 said,
                             });
@@ -461,13 +464,22 @@ fn provides(capability: &Json) -> bool {
     matches!(capability, Json::Bool(true) | Json::Object(_))
 }
 
-fn said(ask: &Ask, result: &Json, synced: &HashMap<usize, Synced>, encoding: Encoding) -> Said {
+// what was said, and the files read from disk to make sense of it
+fn said(
+    ask: &Ask,
+    result: &Json,
+    synced: &HashMap<usize, Synced>,
+    encoding: Encoding,
+) -> (Said, HashMap<PathBuf, Vec<String>>) {
     let mut lines = Lines::new(synced);
-    match ask {
+    let said = match ask {
         Ask::Definition | Ask::References => Said::Places(places(result, &mut lines, encoding)),
         Ask::Hover => Said::Text(hover_text(&result["contents"])),
         Ask::Rename(_) => Said::Edits(file_edits(result, &mut lines, encoding)),
-    }
+    };
+    // in full, as the editor has its paths
+    let read = lines.read.into_iter().map(|(p, l)| (paths::absolute(&p), l)).collect();
+    (said, read)
 }
 
 // a WorkspaceEdit's changes, as a map from each file to its edits or as a list of
