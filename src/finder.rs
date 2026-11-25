@@ -241,7 +241,11 @@ pub(crate) fn edit_query(query: &mut String, key: Key, between: impl Fn(char) ->
         Key::Char(c) => query.push(c),
         Key::Backspace | Key::Ctrl('h') => return Some(query.pop().is_some()),
         Key::Ctrl('w') => {
-            let keep = query.trim_end().rfind(between).map_or(0, |i| i + 1);
+            let keep = query
+                .trim_end()
+                .char_indices()
+                .rfind(|&(_, c)| between(c))
+                .map_or(0, |(i, c)| i + c.len_utf8());
             query.truncate(keep);
         }
         Key::Ctrl('u') => query.clear(),
@@ -324,6 +328,18 @@ mod tests {
         assert_eq!(best(&["tests/ui_test.rs", "src/ui.rs"], "ui"), "src/ui.rs");
         assert_eq!(best(&["src/some/deep/thing/mod.rs", "src/mod.rs"], "mod"), "src/mod.rs");
         assert_eq!(best(&["src/explorer.rs", "examples/x.rs"], "exp"), "src/explorer.rs");
+    }
+
+    #[test]
+    fn ctrl_w_deletes_back_to_a_separator_of_any_width() {
+        let mut q = "foo→bar".to_string();
+        assert_eq!(edit_query(&mut q, Key::Ctrl('w'), |c| !c.is_alphanumeric()), Some(true));
+        assert_eq!(q, "foo→");
+        edit_query(&mut q, Key::Ctrl('w'), |c| !c.is_alphanumeric());
+        assert_eq!(q, "foo→", "a separator at the end stays, as an ASCII one does");
+        let mut q = "src/main.rs ".to_string();
+        edit_query(&mut q, Key::Ctrl('w'), |c| "/ ._-".contains(c));
+        assert_eq!(q, "src/main.");
     }
 
     #[test]
