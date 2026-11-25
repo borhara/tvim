@@ -334,7 +334,9 @@ impl Editor {
                 }
             },
         };
-        let ours = self.file.path.as_ref() == Some(&target);
+        // in full, so ./a.txt is the a.txt that's open
+        let full = crate::paths::absolute(&target);
+        let ours = self.file.path.as_deref().map(crate::paths::absolute) == Some(full);
         if !ours && !force && target.exists() {
             self.error("E13: File exists (add ! to override)");
             return false;
@@ -350,10 +352,11 @@ impl Editor {
             return false;
         }
         let new = !existed;
-        if self.file.path.is_none() {
+        let named = self.file.path.is_none();
+        if named {
             self.file.path = Some(target.clone());
         }
-        if self.file.path.as_ref() == Some(&target) && rows.is_none() {
+        if (ours || named) && rows.is_none() {
             self.saved = self.version;
             self.saved_lines = self.buf.lines().to_vec();
             *self.marks_cache.borrow_mut() = None;

@@ -95,6 +95,23 @@ fn writing_somewhere_else() {
 }
 
 #[test]
+fn writing_to_its_own_file_by_another_name() {
+    let (mut e, path) = open("spelled.txt", b"x\n");
+    let dir = path.parent().unwrap();
+    let same = dir.join("..").join(dir.file_name().unwrap()).join("spelled.txt");
+    e.keys(&parse("iy<Esc>"));
+    e.ex(&format!("w {}", same.display()));
+    assert!(
+        e.message().unwrap().text.ends_with("written"),
+        "not E13: it's this file"
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "yx\n");
+    assert!(!e.is_modified(), "and it's saved");
+    e.ex(&format!("1w {}", same.display()));
+    assert!(e.message().unwrap().text.starts_with("E140"));
+}
+
+#[test]
 fn reloading_and_switching_files() {
     let (mut e, path) = open("reload.txt", b"first\n");
     e.keys(&parse("dd"));
