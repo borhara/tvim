@@ -1538,28 +1538,39 @@ impl Editor {
         // in full rather than canonical, as a file not saved yet has no canonical path
         let back = self.current;
         let here = self.file.path.as_deref().map(crate::paths::absolute);
-        let (mut changed, mut elsewhere) = (0, 0);
+        let (mut changed, mut touched, mut elsewhere) = (0, 0, 0);
+        // files that couldn't be opened, said at the end so the count doesn't hide them
+        let mut skipped = Vec::new();
         self.no_jumps = true;
         for f in files.iter().filter(|f| !f.edits.is_empty()) {
             if here.is_some() && Some(crate::paths::absolute(&f.path)) == here {
                 self.switch_to(back);
-            } else if self.open_or_report(&f.path) {
-                elsewhere += 1;
             } else {
-                continue;
+                let path = relative_to_cwd(&f.path);
+                match self.open_path(&path) {
+                    Ok(()) => elsewhere += 1,
+                    Err(e) => {
+                        skipped.push(format!("\"{}\" {e}", path.display()));
+                        continue;
+                    }
+                }
             }
             self.edit_text(&f.edits);
             changed += f.edits.len();
+            touched += 1;
         }
         self.switch_to(back);
         self.no_jumps = false;
-        let files = files.iter().filter(|f| !f.edits.is_empty()).count();
-        let mut said = match (changed, files) {
-            (0, _) => return self.error("nothing to rename"),
+        let mut said = match (changed, touched) {
+            (0, _) if skipped.is_empty() => return self.error("nothing to rename"),
+            (0, _) => "renamed nothing".to_string(),
             (1, _) => "renamed 1 place".to_string(),
             (n, 1) => format!("renamed {n} places"),
             (n, f) => format!("renamed {n} places in {f} files"),
         };
+        if !skipped.is_empty() {
+            return self.error(format!("{said}, but couldn't open {}", skipped.join("; ")));
+        }
         if elsewhere > 0 {
             said.push_str(", :wa saves them all");
         }
@@ -5148,6 +5159,29 @@ mod tests {
         assert_eq!(e.buf.lines(), ["def g(): pass", "g()"]);
         assert_eq!(e.docs.len(), 1, "no second copy opened");
         assert_eq!(e.message.as_ref().unwrap().text, "renamed 2 places");
+    }
+
+    #[test]
+    fn a_rename_says_which_files_it_couldnt_open() {
+        let a = temp_file("ren-skip-a.rs", "fn old() {}\nold();\n");
+        let b = a.with_file_name("ren-skip-b.rs");
+        std::fs::write(&b, [0xff, 0xfe]).unwrap();
+        let mut e = Editor::open(&a).unwrap();
+        let files = vec![
+            FileEdits {
+                path: a.clone(),
+                edits: vec![edit((0, 3), (0, 6), "new"), edit((1, 0), (1, 3), "new")],
+            },
+            FileEdits {
+                path: b.clone(),
+                edits: vec![edit((0, 0), (0, 1), "new")],
+            },
+        ];
+        e.answered(answer(&e, Ask::Rename("new".into()), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["fn new() {}", "new();"]);
+        let said = &e.message.as_ref().unwrap().text;
+        assert!(said.starts_with("renamed 2 places, but couldn't open "), "{said}");
+        assert!(said.contains("isn't UTF-8 text"), "{said}");
     }
 
     #[test]
