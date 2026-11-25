@@ -530,6 +530,36 @@ mod tests {
     }
 
     #[test]
+    fn the_new_binary_is_swapped_in_whole_and_runnable() {
+        let dir = std::env::temp_dir().join(format!("tvim-swap-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (new, old) = (dir.join("new"), dir.join("tvim"));
+        std::fs::write(&new, "new").unwrap();
+        std::fs::write(&old, "old").unwrap();
+        swap(&new, &old).unwrap();
+        assert_eq!(std::fs::read_to_string(&old).unwrap(), "new");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&old).unwrap().permissions().mode() & 0o777, 0o755);
+        }
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(left.len(), 2, "nothing left beside it: {left:?}");
+        assert!(swap(&dir.join("missing"), &old).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&old).unwrap(),
+            "new",
+            "a failed swap leaves it be"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn the_archive_is_named_for_the_machine() {
         assert_eq!(
             archive("aarch64", "macos").as_deref(),
