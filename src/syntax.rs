@@ -908,6 +908,25 @@ mod tests {
     }
 
     #[test]
+    fn go_java_and_lua() {
+        let line = "func (s *Server) Serve() error { defer close(); return nil }";
+        assert_eq!(kind_of(line, Syntax::Go, "func"), Keyword);
+        assert_eq!(kind_of(line, Syntax::Go, "defer"), Keyword);
+        assert_eq!(kind_of(line, Syntax::Go, "nil"), Constant);
+        let line = "@Override public synchronized void run() throws IOException {}";
+        assert_eq!(kind_of(line, Syntax::Java, "@Override"), Attribute);
+        assert_eq!(kind_of(line, Syntax::Java, "synchronized"), Keyword);
+        assert_eq!(kind_of(line, Syntax::Java, "throws"), Keyword);
+        assert_eq!(kind_of("@app.route('/')", Syntax::Python, "@app.route"), Attribute);
+        let line = "local function f() repeat x = nil until done end";
+        assert_eq!(kind_of(line, Syntax::Lua, "local"), Keyword);
+        assert_eq!(kind_of(line, Syntax::Lua, "until"), Keyword);
+        assert_eq!(kind_of(line, Syntax::Lua, "nil"), Constant);
+        assert_eq!(kind_of("base: &defaults", Syntax::Yaml, "&defaults"), Label);
+        assert_eq!(kind_of("  <<: *defaults", Syntax::Yaml, "*defaults"), Label);
+    }
+
+    #[test]
     fn markdown() {
         let m = Syntax::Markdown;
         assert_eq!(kind_of("## Title", m, "Title"), Heading);
