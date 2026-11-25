@@ -595,6 +595,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_release_is_downloaded_unpacked_and_swapped_in() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some(name) = archive(std::env::consts::ARCH, std::env::consts::OS) else {
+            return;
+        };
+        let root = std::env::temp_dir().join(format!("tvim-release-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (releases, bin, build) = (root.join("releases"), root.join("bin"), root.join("build"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&build).unwrap();
+        let tvim = bin.join("tvim");
+        std::fs::write(&tvim, "old").unwrap();
+        // a release on disk as GitHub lays one out, holding a tvim that says it's `says`
+        let release = |version: &str, says: &str| {
+            let new = build.join("tvim");
+            std::fs::write(&new, format!("#!/bin/sh\necho 'tvim {says}'\n")).unwrap();
+            std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let at = releases.join(format!("download/v{version}"));
+            std::fs::create_dir_all(&at).unwrap();
+            let tar = Command::new("tar")
+                .arg("czf")
+                .arg(at.join(&name))
+                .arg("-C")
+                .arg(&build)
+                .arg("tvim")
+                .status()
+                .unwrap();
+            assert!(tar.success());
+        };
+        let url = format!("file://{}", releases.display());
+
+        release("9.0.1", "9.0.0");
+        assert_eq!(update_from(&url, &bin, "9.0.1"), None, "not the version it says");
+        assert_eq!(std::fs::read_to_string(&tvim).unwrap(), "old");
+        assert_eq!(update_from(&url, &bin, "9.0.2"), None, "no such release");
+        assert_eq!(std::fs::read_to_string(&tvim).unwrap(), "old");
+
+        release("9.0.3", "9.0.3");
+        assert_eq!(update_from(&url, &bin, "9.0.3"), Some(tvim.clone()));
+        assert!(is_ok_version(&tvim, "9.0.3"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn the_archive_is_named_for_the_machine() {
         assert_eq!(
