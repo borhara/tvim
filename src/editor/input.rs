@@ -43,6 +43,11 @@ impl Editor {
         !self.map_typed.is_empty()
     }
 
+    /// Stops waiting for a longer mapping and runs what the held keys come to.
+    pub fn flush_mapping(&mut self) {
+        self.resolve_mappings(true);
+    }
+
     pub(super) fn map_mode(&self) -> Option<MapMode> {
         let overlay = self.git_menu.is_some() || self.finder.is_some() || self.grep.is_some();
         if overlay || self.explorer_focused() && self.mode != Mode::Command {

@@ -843,11 +843,6 @@ impl Editor {
         motion::match_bracket(&self.buf, self.cursor)
     }
 
-    /// Stops waiting for a longer mapping and runs what the held keys come to.
-    pub fn flush_mapping(&mut self) {
-        self.resolve_mappings(true);
-    }
-
     pub(crate) fn clamp(&mut self) {
         self.cursor.row = self.cursor.row.min(self.buf.last_row());
         let max = self.max_col(self.buf.line_len(self.cursor.row));
