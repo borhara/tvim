@@ -6,6 +6,7 @@
 # release; chore, test, docs and the rest ride along with the next one.
 #
 #   scripts/release.sh
+#   scripts/release.sh --dry-run    only build and package the binaries, into target/dist
 #
 # Run it on an up-to-date main once CI has passed on Tangled. It needs macOS (for the Apple
 # targets), release-plz, zig and cargo-zigbuild (`brew install release-plz zig
@@ -17,6 +18,16 @@ set -euo pipefail
 release_commits='^(feat|fix|perf)(\(.*\))?!?:|^[a-z]+(\(.*\))?!:'
 targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
 
+dry_run=false
+case "${1:-}" in
+    "") ;;
+    --dry-run) dry_run=true ;;
+    *)
+        echo "usage: scripts/release.sh [--dry-run]" >&2
+        exit 2
+        ;;
+esac
+
 version() {
     awk -F'"' '/^version = /{ print $2; exit }' Cargo.toml
 }
@@ -27,7 +38,9 @@ if [[ "$(uname -s)" != Darwin ]]; then
     echo "the macOS binaries can only be built on a Mac" >&2
     exit 1
 fi
-for tool in release-plz zig cargo-zigbuild gh; do
+tools=(zig cargo-zigbuild)
+$dry_run || tools+=(release-plz gh)
+for tool in "${tools[@]}"; do
     if ! command -v "$tool" >/dev/null; then
         echo "$tool isn't installed" >&2
         exit 1
@@ -40,6 +53,31 @@ for target in "${targets[@]}"; do
         exit 1
     fi
 done
+
+# each target's binary, built and packed with the license and readme into dist
+build() {
+    local dist="$1"
+    for target in "${targets[@]}"; do
+        case "$target" in
+            # zig links them, statically, so they run on any distro
+            *-linux-musl) cargo zigbuild --release --locked --target "$target" ;;
+            *) cargo build --release --locked --target "$target" ;;
+        esac
+        mkdir "$dist/$target"
+        cp "target/$target/release/tvim" LICENSE README.md "$dist/$target/"
+        tar czf "$dist/tvim-$target.tar.gz" -C "$dist/$target" tvim LICENSE README.md
+    done
+}
+
+if $dry_run; then
+    rm -rf target/dist
+    mkdir -p target/dist
+    build target/dist
+    target/dist/aarch64-apple-darwin/tvim --version
+    arch -x86_64 target/dist/x86_64-apple-darwin/tvim --version
+    ls -lh target/dist/*.tar.gz
+    exit 0
+fi
 
 if [[ "$(git branch --show-current)" != main ]]; then
     echo "releases are cut from main" >&2
@@ -84,16 +122,7 @@ fi
 # with nothing to take back
 dist="$(mktemp -d)"
 trap 'rm -rf "$dist"' EXIT
-for target in "${targets[@]}"; do
-    case "$target" in
-        # zig links them, statically, so they run on any distro
-        *-linux-musl) cargo zigbuild --release --locked --target "$target" ;;
-        *) cargo build --release --locked --target "$target" ;;
-    esac
-    mkdir "$dist/$target"
-    cp "target/$target/release/tvim" LICENSE README.md "$dist/$target/"
-    tar czf "$dist/tvim-$target.tar.gz" -C "$dist/$target" tvim LICENSE README.md
-done
+build "$dist"
 
 # this version's part of the changelog, for the tag's message and the GitHub release
 notes="$(awk -v v="$next" '$0 ~ "^## \\[" v "\\]" { f = 1; next } /^## \[/ { if (f) exit } f' CHANGELOG.md |
