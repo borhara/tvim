@@ -94,7 +94,7 @@ fn it_floats_with_a_preview() {
     let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
         tinsel::app::snapshot(&tvim::ui::Tvim::new(e), 140, 30).plain()
     });
-    assert!(shown.contains("search in tvim"), "{shown}");
+    assert!(shown.contains(&format!("search in {}", common::folder())), "{shown}");
     assert!(shown.contains("› fn breadcrumb"), "{shown}");
     assert!(shown.contains("src/ui/mod.rs:"), "{shown}");
     assert!(

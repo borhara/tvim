@@ -25,6 +25,13 @@ pub fn cursor_after(text: &str, spec: &str) -> (usize, usize) {
     after(text, spec).1
 }
 
+/// The folder the tests run in, which titles name: tvim in most checkouts, but not all (CI's
+/// is called repo).
+pub fn folder() -> String {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    dir.file_name().unwrap().to_string_lossy().into_owned()
+}
+
 pub fn temp(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("tvim-tests-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

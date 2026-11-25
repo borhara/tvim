@@ -113,7 +113,7 @@ fn it_floats_over_the_editor() {
     let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
         tinsel::app::snapshot(&tvim::ui::Tvim::new(e), 110, 24).plain()
     });
-    assert!(shown.contains("find in tvim"), "{shown}");
+    assert!(shown.contains(&format!("find in {}", common::folder())), "{shown}");
     assert!(shown.contains("› ui/mo"), "{shown}");
     assert!(shown.contains("› ⊛ src/ui/mod.rs"), "with its icon: {shown}");
     assert!(
