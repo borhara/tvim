@@ -524,14 +524,17 @@ fn hover_text(contents: &Json) -> String {
 // files' lines, to turn a server's columns into the editor's: open files as the server has
 // them, others as they are on disk
 struct Lines<'a> {
-    synced: &'a HashMap<usize, Synced>,
+    // by path, worked out once rather than for every position
+    open: HashMap<PathBuf, &'a [String]>,
     read: HashMap<PathBuf, Vec<String>>,
 }
 
 impl<'a> Lines<'a> {
     fn new(synced: &'a HashMap<usize, Synced>) -> Lines<'a> {
         Lines {
-            synced,
+            open: (synced.values())
+                .filter_map(|s| Some((lsp::uri_path(&s.uri)?, s.lines.as_slice())))
+                .collect(),
             read: HashMap::new(),
         }
     }
@@ -539,12 +542,8 @@ impl<'a> Lines<'a> {
     fn pos(&mut self, path: &Path, p: &Json, encoding: Encoding) -> Pos {
         let row = p["line"].as_u64().unwrap_or(0) as usize;
         let units = p["character"].as_u64().unwrap_or(0) as usize;
-        let open = self
-            .synced
-            .values()
-            .find(|s| lsp::uri_path(&s.uri).as_deref() == Some(path));
-        let lines = match open {
-            Some(s) => &s.lines,
+        let lines = match self.open.get(path) {
+            Some(lines) => *lines,
             None => self.read.entry(path.to_path_buf()).or_insert_with(|| {
                 std::fs::read_to_string(path).map_or(Vec::new(), |t| t.split('\n').map(str::to_string).collect())
             }),
