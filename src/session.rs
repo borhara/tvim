@@ -114,6 +114,12 @@ impl Editor {
             return false;
         };
         let (head, rest) = text.split_once('\n').unwrap_or((&text, ""));
+        let (folder, rest) = rest.split_once('\n').unwrap_or((rest, ""));
+        // only what was open in this folder, as another project's files would be in the way
+        let here = std::env::current_dir().ok().map(|d| absolute(&d));
+        if folder.strip_prefix("folder ").map(Path::new) != here.as_deref() {
+            return false;
+        }
         let current: usize = head.strip_prefix("current ").and_then(|n| n.parse().ok()).unwrap_or(0);
         let mut opened = 0;
         let mut back = None;
@@ -166,11 +172,16 @@ impl Editor {
             .filter(|b| b.path.as_deref().is_some_and(Path::is_file))
             .position(|b| b.current)
             .unwrap_or(0);
+        let here = std::env::current_dir().map(|d| absolute(&d)).unwrap_or_default();
         std::fs::create_dir_all(dir)?;
         write_whole(&dir.join("recent"), &format_places(&recent))?;
         write_whole(
             &dir.join("session"),
-            &format!("current {current_at}\n{}", format_places(&open)),
+            &format!(
+                "current {current_at}\nfolder {}\n{}",
+                here.display(),
+                format_places(&open)
+            ),
         )?;
         self.recent = recent;
         Ok(())

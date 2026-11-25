@@ -48,9 +48,15 @@ fn open_files_come_back_where_they_were() {
     e.save_state(&state).unwrap();
 
     let saved = std::fs::read_to_string(state.join("session")).unwrap();
+    let here = tvim::paths::canonical(&std::env::current_dir().unwrap()).unwrap();
     assert_eq!(
         saved,
-        format!("current 0\n30 4 {}\n12 1 {}\n", a.display(), b.display())
+        format!(
+            "current 0\nfolder {}\n30 4 {}\n12 1 {}\n",
+            here.display(),
+            a.display(),
+            b.display()
+        )
     );
 
     let mut e = Editor::new();
@@ -80,6 +86,23 @@ fn files_that_are_gone_are_skipped() {
     assert_eq!(e.file().path.as_ref().unwrap().file_name().unwrap(), "a.txt");
 
     assert!(!Editor::new().restore_session(&dir.join("nothing-here")));
+}
+
+#[test]
+fn only_files_open_in_this_folder_come_back() {
+    let dir = fresh("session-folder");
+    let state = dir.join("state");
+    let a = numbered(&dir, "a.txt", 3);
+    std::fs::create_dir_all(&state).unwrap();
+    let elsewhere = format!("current 0\nfolder {}\n1 1 {}\n", dir.display(), a.display());
+    std::fs::write(state.join("session"), elsewhere).unwrap();
+    let mut e = Editor::new();
+    assert!(!e.restore_session(&state), "saved in another folder");
+    assert!(e.file().path.is_none());
+
+    let before_folders = format!("current 0\n1 1 {}\n", a.display());
+    std::fs::write(state.join("session"), before_folders).unwrap();
+    assert!(!Editor::new().restore_session(&state), "saved before folders were");
 }
 
 #[test]
