@@ -530,6 +530,21 @@ mod tests {
     }
 
     #[test]
+    fn the_news_says_how_each_install_is_updated() {
+        assert_eq!(
+            Install::Homebrew.news("1.4.1"),
+            "tvim v1.4.1 is available: run brew upgrade tvim"
+        );
+        assert_eq!(
+            Install::Cargo.news("1.4.1"),
+            "tvim v1.4.1 is available: run cargo install tvim"
+        );
+        assert!(Install::Dev.news("1.4.1").contains("pull and build again"));
+        assert_eq!(Install::Dev.command(), None);
+        assert_eq!(Install::Script("/home/me/.local/bin".into()).command(), None);
+    }
+
+    #[test]
     fn the_new_binary_is_swapped_in_whole_and_runnable() {
         let dir = std::env::temp_dir().join(format!("tvim-swap-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
