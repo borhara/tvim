@@ -1661,13 +1661,16 @@ impl Editor {
                 open.push((p, text(d.buf.lines(), d.file.final_newline)));
             }
         }
+        // each path in full once, rather than for every comparison while sorting
         let mut spots: Vec<(PathBuf, usize, usize)> = places
             .iter()
-            .map(|p| (p.path.clone(), p.start.row, p.start.col))
+            .map(|p| (crate::paths::absolute(&p.path), p.start.row, p.start.col))
             .collect();
         // this file's first, then the others by name
-        let here = self.file.path.as_deref().and_then(full);
-        spots.sort_by_key(|(p, row, col)| (full(p) != here, p.clone(), *row, *col));
+        let here = self.file.path.as_deref().map(crate::paths::absolute);
+        spots.sort_by(|(p, row, col), (q, r, c)| {
+            (Some(p) != here.as_ref(), p, row, col).cmp(&(Some(q) != here.as_ref(), q, r, c))
+        });
         spots.dedup();
         let title = if word.is_empty() {
             what.to_string()
@@ -1675,10 +1678,7 @@ impl Editor {
             format!("{what} {joiner} {word}")
         };
         self.reset_for_picker();
-        let found = |path: &Path| {
-            let path = full(path)?;
-            open.iter().find(|(p, _)| *p == path).map(|(_, t)| t.clone())
-        };
+        let found = |path: &Path| open.iter().find(|(p, _)| p == path).map(|(_, t)| t.clone());
         self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, found));
     }
 
