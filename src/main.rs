@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use tinsel::app;
@@ -13,6 +13,7 @@ usage: tvim [options] [file or folder]
 
   file          the file to edit; a folder opens a file browser;
                 none reopens the files open when tvim last quit
+                in this folder, or browses it
   +N            start on line N
   +             start on the last line
   +/text        start on the first line holding text
@@ -80,8 +81,8 @@ fn main() -> ExitCode {
         None => {
             let mut e = Editor::new();
             e.set_recent(recent);
-            if let Some(dir) = &state {
-                e.restore_session(dir);
+            if !state.as_deref().is_some_and(|dir| e.restore_session(dir)) {
+                e.explore(Path::new("."));
             }
             e
         }
