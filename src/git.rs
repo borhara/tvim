@@ -241,7 +241,7 @@ fn parse_status(root: &Path, raw: &[u8]) -> Statuses {
     out
 }
 
-fn git(dir: &Path, args: &[&str]) -> Option<(i32, Vec<u8>)> {
+pub(crate) fn git(dir: &Path, args: &[impl AsRef<std::ffi::OsStr>]) -> Option<(i32, Vec<u8>)> {
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use tinsel::app::Waker;
 
 use crate::editor::dir_of;
+use crate::git::git;
 use crate::sync::{lock, wait_until};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -142,17 +142,9 @@ fn run(path: &Path, head: &str) -> Blame {
     let Some(name) = path.file_name() else {
         return Blame::default();
     };
-    let out = |args: &[&std::ffi::OsStr]| {
-        Command::new("git")
-            .arg("-C")
-            .arg(dir)
-            .args(args)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    let out = |args: &[&std::ffi::OsStr]| match git(dir, args) {
+        Some((0, out)) => Some(String::from_utf8_lossy(&out).into_owned()),
+        _ => None,
     };
     let me = out(&["config".as_ref(), "user.email".as_ref()]).map(|s| s.trim().to_string());
     let text = out(&[
