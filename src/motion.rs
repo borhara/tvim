@@ -188,33 +188,23 @@ pub fn match_bracket(b: &Buffer, p: Pos) -> Option<Pos> {
 }
 
 pub fn find_close(b: &Buffer, at: Pos, open: char, close: char) -> Option<Pos> {
-    let mut l = Line::new(b);
-    let mut depth = 0usize;
-    let mut p = at;
-    loop {
-        p = l.next(p)?;
-        match l.at(p) {
-            Some(c) if c == open => depth += 1,
-            Some(c) if c == close => {
-                if depth == 0 {
-                    return Some(p);
-                }
-                depth -= 1;
-            }
-            _ => {}
-        }
-    }
+    find_unnested(b, at, close, open, false)
 }
 
 pub fn find_open(b: &Buffer, at: Pos, open: char, close: char) -> Option<Pos> {
+    find_unnested(b, at, open, close, true)
+}
+
+// the next `want` from `at`, forward or back, passing over any pair that `nested` opens
+fn find_unnested(b: &Buffer, at: Pos, want: char, nested: char, back: bool) -> Option<Pos> {
     let mut l = Line::new(b);
     let mut depth = 0usize;
     let mut p = at;
     loop {
-        p = l.prev(p)?;
+        p = if back { l.prev(p)? } else { l.next(p)? };
         match l.at(p) {
-            Some(c) if c == close => depth += 1,
-            Some(c) if c == open => {
+            Some(c) if c == nested => depth += 1,
+            Some(c) if c == want => {
                 if depth == 0 {
                     return Some(p);
                 }
