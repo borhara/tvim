@@ -6,6 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::buffer::Pos;
+use crate::diff;
 use crate::json::Json;
 use crate::lsp::{self, Encoding, Incoming, Server};
 use crate::paths;
@@ -633,15 +634,7 @@ fn sync_of(capabilities: &Json) -> Sync {
 // the one edit that turns `old` into `new`: the lines between those the two share at the
 // start and at the end, replaced
 fn edit(old: &[String], new: &[String], encoding: Encoding) -> Json {
-    let head = old.iter().zip(new).take_while(|(a, b)| a == b).count();
-    let room = old.len().min(new.len()) - head;
-    let tail = old
-        .iter()
-        .rev()
-        .zip(new.iter().rev())
-        .take(room)
-        .take_while(|(a, b)| a == b)
-        .count();
+    let (head, tail) = diff::common_ends(old, new);
     let end_of = |row: usize| (row, encoding.units(&old[row], usize::MAX));
     let last = old.len() - 1;
     let (from, to, text) = if tail > 0 {
