@@ -16,7 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::{JumpList, Spot};
-use crate::languages::{Languages, OpenDoc, Problem};
+use crate::languages::{Answer, Ask, Edit, FileEdits, Languages, OpenDoc, Place, Problem, Said};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
@@ -489,6 +489,8 @@ pub struct Editor {
     pub(crate) maps: Maps,
     pub(crate) servers: Servers,
     pub(crate) languages: Languages,
+    // what the server said about the cursor's place, shown until the next key
+    hover: Option<String>,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -586,6 +588,7 @@ impl Editor {
             maps: Maps::default(),
             servers: Servers::default(),
             languages: Languages::default(),
+            hover: None,
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
@@ -1145,6 +1148,7 @@ impl Editor {
     }
 
     fn feed(&mut self, input: Input) {
+        self.hover = None;
         if self.git_menu.is_some() {
             return self.git_menu_input(input);
         }
@@ -1347,18 +1351,17 @@ impl Editor {
             self.explore(path);
             return Ok(());
         }
-        let canon = |p: &Path| crate::paths::canonical(p).ok();
-        let want = canon(path);
-        if want.is_some() {
-            if self.file.path.as_deref().and_then(canon) == want {
-                return Ok(());
-            }
-            let open = (0..self.docs.len())
-                .find(|&i| i != self.current && self.docs[i].file.path.as_deref().and_then(canon) == want);
-            if let Some(i) = open {
-                self.switch_to(i);
-                return Ok(());
-            }
+        // in full, so a file open but not saved yet is found too
+        let full = |p: &Path| Some(crate::paths::absolute(p));
+        let want = full(path);
+        if self.file.path.as_deref().and_then(full) == want {
+            return Ok(());
+        }
+        let open = (0..self.docs.len())
+            .find(|&i| i != self.current && self.docs[i].file.path.as_deref().and_then(full) == want);
+        if let Some(i) = open {
+            self.switch_to(i);
+            return Ok(());
         }
         if self.disposable() {
             self.load(path)?;
@@ -1482,6 +1485,224 @@ impl Editor {
         if !update.errors.is_empty() {
             self.error(update.errors.join("; "));
         }
+        for answer in update.answers {
+            self.answered(answer);
+        }
+    }
+
+    // asks the file's language server about the cursor's place
+    fn ask_server(&mut self, ask: Ask) {
+        if !self.options.lsp {
+            return self.error("language servers are off (:set lsp)");
+        }
+        // so the server has the text as it is now
+        self.sync_languages();
+        if let Err(why) = self.languages.ask(self.buffer_id, self.cursor, ask) {
+            self.error(why);
+        }
+    }
+
+    pub(crate) fn answered(&mut self, answer: Answer) {
+        // asked about somewhere the cursor has since left, or text that has since changed
+        if answer.id != self.buffer_id || answer.version != self.version || answer.at != self.cursor {
+            return;
+        }
+        match (answer.ask, answer.said) {
+            (_, Said::Refused(why)) => self.error(why),
+            (Ask::Definition, Said::Places(places)) => match places.as_slice() {
+                [] => self.error("no definition found"),
+                [place] => _ = self.go_to(&place.path, place.start),
+                _ => self.list_places("definitions", "of", &places, &answer.read),
+            },
+            (Ask::References, Said::Places(places)) if places.is_empty() => self.error("no references found"),
+            (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places, &answer.read),
+            (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
+            (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
+            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions),
+            _ => {}
+        }
+    }
+
+    // renames the word under the cursor everywhere the language server says it's used
+    pub(crate) fn rename(&mut self, to: &str) {
+        let to = to.trim();
+        if to.is_empty() {
+            let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
+            return self.begin_cmdline(':', format!("rename {word}"));
+        }
+        self.ask_server(Ask::Rename(to.to_string()));
+    }
+
+    // makes each file's edits, opening those that aren't open yet, and leaves them unsaved
+    fn apply_edits(&mut self, files: Vec<FileEdits>, asked: &[(usize, u64)]) {
+        // an open file changed since asking would take the edits in the wrong places
+        let open = std::iter::once((self.buffer_id, self.version, self.file.path.as_deref())).chain(
+            (self.docs.iter().enumerate())
+                .filter(|&(i, _)| i != self.current)
+                .map(|(_, d)| (d.id, d.version, d.file.path.as_deref())),
+        );
+        let changed: Vec<PathBuf> = open
+            .filter(|&(id, version, _)| asked.iter().any(|&(i, v)| i == id && v != version))
+            .filter_map(|(_, _, path)| path.map(crate::paths::absolute))
+            .collect();
+        if let Some(f) = files
+            .iter()
+            .find(|f| changed.contains(&crate::paths::absolute(&f.path)))
+        {
+            return self.error(format!("{} changed while renaming, so nothing was", listed(&f.path)));
+        }
+        // in full rather than canonical, as a file not saved yet has no canonical path
+        let back = self.current;
+        let here = self.file.path.as_deref().map(crate::paths::absolute);
+        let (mut changed, mut touched, mut elsewhere) = (0, 0, 0);
+        // files that couldn't be opened, said at the end so the count doesn't hide them
+        let mut skipped = Vec::new();
+        self.no_jumps = true;
+        for f in files.iter().filter(|f| !f.edits.is_empty()) {
+            if here.is_some() && Some(crate::paths::absolute(&f.path)) == here {
+                self.switch_to(back);
+            } else {
+                let path = relative_to_cwd(&f.path);
+                match self.open_path(&path) {
+                    Ok(()) => elsewhere += 1,
+                    Err(e) => {
+                        skipped.push(format!("\"{}\" {e}", path.display()));
+                        continue;
+                    }
+                }
+            }
+            self.edit_text(&f.edits);
+            changed += f.edits.len();
+            touched += 1;
+        }
+        self.switch_to(back);
+        self.no_jumps = false;
+        let mut said = match (changed, touched) {
+            (0, _) if skipped.is_empty() => return self.error("nothing to rename"),
+            (0, _) => "renamed nothing".to_string(),
+            (1, _) => "renamed 1 place".to_string(),
+            (n, 1) => format!("renamed {n} places"),
+            (n, f) => format!("renamed {n} places in {f} files"),
+        };
+        if !skipped.is_empty() {
+            return self.error(format!("{said}, but couldn't open {}", skipped.join("; ")));
+        }
+        if elsewhere > 0 {
+            said.push_str(", :wa saves them all");
+        }
+        self.info(said);
+    }
+
+    // as one change, keeping the cursor on the same text
+    fn edit_text(&mut self, edits: &[Edit]) {
+        let lines = self.buf.lines();
+        let mut starts = Vec::with_capacity(lines.len());
+        let mut at = 0;
+        for l in lines {
+            starts.push(at);
+            at += l.len() + 1;
+        }
+        let mut text = lines.join("\n");
+        let offset = |p: Pos| match lines.get(p.row) {
+            Some(line) => starts[p.row] + crate::text::byte_at(line, p.col),
+            None => text.len(),
+        };
+        let mut spans: Vec<(usize, usize, usize, &str)> = edits
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (offset(e.start), offset(e.end), i, e.text.as_str()))
+            .filter(|(a, b, _, _)| a <= b)
+            .collect();
+        // the last given goes in first, so text put at one place keeps the order it came in
+        spans.sort_by_key(|&(a, b, i, _)| std::cmp::Reverse((a, b, i)));
+        let mut cursor = offset(self.cursor);
+        // from the end, so places yet to come stay put; any overlapping one already made is skipped
+        let mut done = usize::MAX;
+        for (from, to, _, new) in spans {
+            if to > done {
+                continue;
+            }
+            text.replace_range(from..to, new);
+            if cursor >= to {
+                cursor = cursor + new.len() - (to - from);
+            } else if cursor > from {
+                cursor = from;
+            }
+            done = from;
+        }
+        let row = text[..cursor].matches('\n').count();
+        let line_start = text[..cursor].rfind('\n').map_or(0, |i| i + 1);
+        let col = text[line_start..cursor].chars().count();
+        self.touch();
+        self.buf.replace_all(text.split('\n').map(str::to_string).collect());
+        self.end_change();
+        self.cursor = Pos::new(row, col);
+        self.clamp();
+        self.set_want();
+    }
+
+    // in the grep picker, with the text of open files as it is in the editor
+    fn list_places(&mut self, what: &str, joiner: &str, places: &[Place], read: &HashMap<PathBuf, Vec<String>>) {
+        let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
+        // each path in full once, rather than for every comparison while sorting
+        let mut spots: Vec<(PathBuf, usize, usize)> = places
+            .iter()
+            .map(|p| (crate::paths::absolute(&p.path), p.start.row, p.start.col))
+            .collect();
+        // this file's first, then the others by name
+        let here = self.file.path.as_deref().map(crate::paths::absolute);
+        spots.sort_by(|(p, row, col), (q, r, c)| {
+            (Some(p) != here.as_ref(), p, row, col).cmp(&(Some(q) != here.as_ref(), q, r, c))
+        });
+        spots.dedup();
+        let title = if word.is_empty() {
+            what.to_string()
+        } else {
+            format!("{what} {joiner} {word}")
+        };
+        self.reset_for_picker();
+        // an open file's text as it is in the editor, joined only for files that are listed, and
+        // others as the server's answer read them
+        let open = |path: &Path| {
+            let full = |p: &Path| crate::paths::absolute(p) == path;
+            let (lines, final_newline) = if self.file.path.as_deref().is_some_and(full) {
+                (self.buf.lines(), self.file.final_newline)
+            } else {
+                let doc = (self.docs.iter().enumerate())
+                    .find(|&(i, d)| i != self.current && d.file.path.as_deref().is_some_and(full));
+                match doc {
+                    Some((_, d)) => (d.buf.lines(), d.file.final_newline),
+                    None => return read.get(path).map(|lines| lines.join("\n")),
+                }
+            };
+            let mut text = lines.join("\n");
+            if final_newline {
+                text.push('\n');
+            }
+            Some(text)
+        };
+        self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, open));
+    }
+
+    // opens the file at `to`, remembering where it came from for Ctrl-o, and shows it
+    fn go_to(&mut self, path: &Path, to: Pos) -> bool {
+        self.remember_jump();
+        if !self.open_or_report(path) {
+            return false;
+        }
+        let row = to.row.min(self.buf.last_row());
+        self.cursor = Pos::new(row, to.col);
+        self.clamp();
+        self.set_want();
+        if !(self.top.get()..=self.last_shown(self.top.get())).contains(&row) {
+            self.top.set(row.saturating_sub(self.text_rows() / 3));
+        }
+        self.land(true);
+        true
+    }
+
+    pub fn hover(&self) -> Option<&str> {
+        self.hover.as_deref()
     }
 
     pub(crate) fn problems(&self, buffer: usize) -> &[Problem] {
@@ -1524,14 +1745,8 @@ impl Editor {
             Jump::Nothing => {}
             Jump::Close => self.grep = None,
             Jump::Open { path, row, col, query } => {
-                if self.open_or_report(&path) {
+                if self.go_to(&path, Pos::new(row, col)) {
                     self.grep = None;
-                    self.remember_jump();
-                    self.cursor = Pos::new(row.min(self.buf.last_row()), col);
-                    self.clamp();
-                    self.set_want();
-                    self.top.set(row.saturating_sub(self.text_rows() / 3));
-                    self.land(true);
                     self.last_search = Some(crate::regex::escape(&query));
                     self.search_backward = false;
                     self.search_shown = true;
@@ -2033,6 +2248,7 @@ impl Editor {
             'm' => self.toggle_preview(),
             'G' => self.open_git_menu(None),
             'r' => self.pick_recent(),
+            'n' => self.rename(""),
             _ => self.grep(None),
         }
     }
@@ -2204,6 +2420,7 @@ impl Editor {
         let n = count.unwrap_or(1);
         let op = |e: &mut Self, op: Op, m: Motion| e.operate(op, Target::Motion(m), count, register);
         match key {
+            Key::Char('K') => self.ask_server(Ask::Hover),
             Key::Char('x') | Key::Delete => {
                 if self.buf.line_len(self.cursor.row) > 0 {
                     op(self, Op::Delete, Motion::Right)
@@ -2327,6 +2544,8 @@ impl Editor {
                 }
                 self.begin_insert(n, None);
             }
+            'd' => self.ask_server(Ask::Definition),
+            'r' => self.ask_server(Ask::References),
             _ => {}
         }
     }
@@ -4673,7 +4892,8 @@ pub(crate) fn expand_home(path: &str) -> String {
 mod tests {
     use super::{Editor, Pos, slashed};
     use crate::keys::parse;
-    use crate::languages::{Problem, Severity};
+    use crate::languages::{Answer, Ask, Edit, FileEdits, Place, Problem, Said, Severity};
+    use std::path::{Path, PathBuf};
 
     fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
         Problem {
@@ -4738,6 +4958,342 @@ mod tests {
         assert_eq!(e.problem_here().unwrap().message, "spans two lines");
         e.keys(&parse("j"));
         assert_eq!(e.problem_here(), None);
+    }
+
+    fn temp_file(name: &str, text: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tvim-editor-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap();
+        crate::paths::canonical(&path).unwrap()
+    }
+
+    // as the server would answer about where the cursor is now
+    fn answer(e: &Editor, ask: Ask, said: Said) -> Answer {
+        let others = e.docs.iter().enumerate().filter(|&(i, _)| i != e.current);
+        Answer {
+            id: e.buffer_id,
+            version: e.version,
+            at: e.cursor,
+            versions: std::iter::once((e.buffer_id, e.version))
+                .chain(others.map(|(_, d)| (d.id, d.version)))
+                .collect(),
+            read: Default::default(),
+            ask,
+            said,
+        }
+    }
+
+    fn place(path: &Path, row: usize, col: usize) -> Place {
+        Place {
+            path: path.to_path_buf(),
+            start: Pos::new(row, col),
+            end: Pos::new(row, col + 1),
+        }
+    }
+
+    #[test]
+    fn a_definition_is_gone_to_and_ctrl_o_comes_back() {
+        let a = temp_file("def-a.rs", "use b;\nfn main() {\n    helper();\n}\n");
+        let b = temp_file("def-b.rs", "\n\npub fn helper() {}\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("jj4l"));
+        let said = Said::Places(vec![place(&b, 2, 7)]);
+        e.answered(answer(&e, Ask::Definition, said));
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(b)
+        );
+        assert_eq!(e.cursor, Pos::new(2, 7));
+        e.keys(&parse("<C-o>"));
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(a.clone())
+        );
+        assert_eq!(e.cursor, Pos::new(2, 4));
+
+        let said = Said::Places(vec![place(&a, 1, 3)]);
+        e.answered(answer(&e, Ask::Definition, said));
+        assert_eq!(e.cursor, Pos::new(1, 3), "in the same file");
+        e.keys(&parse("<C-o>"));
+        assert_eq!(e.cursor, Pos::new(2, 4));
+    }
+
+    #[test]
+    fn answers_about_somewhere_since_left_are_dropped() {
+        let a = temp_file("def-left.rs", "one\ntwo\nthree\n");
+        let mut e = Editor::open(&a).unwrap();
+        let late = answer(&e, Ask::Definition, Said::Places(vec![place(&a, 2, 0)]));
+        e.keys(&parse("l"));
+        e.answered(late.clone());
+        assert_eq!(e.cursor, Pos::new(0, 1), "the cursor moved");
+        e.keys(&parse("h"));
+        e.keys(&parse("x"));
+        e.answered(late);
+        assert_eq!(e.cursor, Pos::new(0, 0), "the text changed");
+    }
+
+    #[test]
+    fn references_are_listed_and_enter_goes_to_one() {
+        let a = temp_file("refs-a.rs", "fn helper() {}\nfn main() {\n    helper();\n}\n");
+        let b = temp_file("refs-b.rs", "use a::helper;\n\nfn more() { helper() }\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("w"));
+        let said = Said::Places(vec![place(&a, 0, 3), place(&a, 2, 4), place(&b, 2, 12)]);
+        e.answered(answer(&e, Ask::References, said));
+        let g = e.grep_picker().expect("listed");
+        assert_eq!(g.title(), Some("references to helper"));
+        assert_eq!(g.hits().len(), 3);
+        e.keys(&parse("<Down><Down><CR>"));
+        assert!(e.grep_picker().is_none());
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(b)
+        );
+        assert_eq!(e.cursor, Pos::new(2, 12));
+        e.keys(&parse("n"));
+        assert_eq!(e.cursor, Pos::new(0, 7), "n looks for the word");
+    }
+
+    #[test]
+    fn references_are_listed_from_this_file_first_and_in_order() {
+        let a = temp_file("order-a.rs", "x\nx\nx\n");
+        let b = temp_file("order-b.rs", "x\nx\n");
+        let mut e = Editor::open(&b).unwrap();
+        let said = Said::Places(vec![
+            place(&a, 2, 0),
+            place(&b, 1, 0),
+            place(&a, 0, 0),
+            place(&b, 0, 0),
+            place(&b, 0, 0),
+        ]);
+        e.answered(answer(&e, Ask::References, said));
+        let g = e.grep_picker().unwrap();
+        let listed: Vec<(String, usize)> = g.hits().iter().map(|h| (g.path(h), h.row)).collect();
+        let name = |p: &Path| crate::editor::listed(p);
+        assert_eq!(listed, [(name(&b), 0), (name(&b), 1), (name(&a), 0), (name(&a), 2)]);
+    }
+
+    #[test]
+    fn a_file_not_saved_yet_is_gone_to_and_listed_as_it_is() {
+        let path = unsaved_file("def-unsaved.py");
+        let mut e = Editor::open(&path).unwrap();
+        e.keys(&parse("idef f(): pass<CR>f()<Esc>"));
+        e.answered(answer(&e, Ask::Definition, Said::Places(vec![place(&path, 0, 4)])));
+        assert_eq!(e.cursor, Pos::new(0, 4));
+        assert_eq!(e.buf.lines(), ["def f(): pass", "f()"]);
+        assert_eq!(e.docs.len(), 1, "no second copy opened");
+        let said = Said::Places(vec![place(&path, 0, 4), place(&path, 1, 0)]);
+        e.answered(answer(&e, Ask::References, said));
+        let g = e.grep_picker().unwrap();
+        let lines: Vec<String> = g.hits().iter().map(|h| g.line(h)).collect();
+        assert_eq!(lines, ["def f(): pass", "f()"]);
+    }
+
+    #[test]
+    fn ctrl_o_comes_back_from_a_listed_place_in_another_file() {
+        let a = temp_file("back-a.rs", "x\nx\nx\n");
+        let b = temp_file("back-b.rs", "\n\n\nx\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("jj"));
+        let said = Said::Places(vec![place(&a, 0, 0), place(&b, 3, 0)]);
+        e.answered(answer(&e, Ask::References, said));
+        e.keys(&parse("<C-n><CR>"));
+        assert_eq!(e.cursor, Pos::new(3, 0));
+        assert!(e.file.path.as_ref().unwrap().ends_with("back-b.rs"));
+        e.keys(&parse("<C-o>"));
+        assert!(e.file.path.as_ref().unwrap().ends_with("back-a.rs"));
+        assert_eq!(e.cursor, Pos::new(2, 0));
+    }
+
+    #[test]
+    fn files_the_answer_read_are_listed_without_reading_them_again() {
+        let a = temp_file("read-a.rs", "x\n");
+        let b = temp_file("read-b.rs", "on disk\n");
+        let mut e = Editor::open(&a).unwrap();
+        let mut said = answer(&e, Ask::References, Said::Places(vec![place(&b, 0, 0)]));
+        said.read
+            .insert(b.clone(), vec!["as the answer read it".into(), String::new()]);
+        e.answered(said);
+        let g = e.grep_picker().unwrap();
+        assert_eq!(g.line(&g.hits()[0]), "as the answer read it");
+    }
+
+    #[test]
+    fn definitions_in_more_than_one_place_are_listed() {
+        let a = temp_file("defs-a.rs", "fn f() {}\nfn f() {}\nf();\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("2j"));
+        e.answered(answer(
+            &e,
+            Ask::Definition,
+            Said::Places(vec![place(&a, 0, 3), place(&a, 1, 3)]),
+        ));
+        assert_eq!(e.grep_picker().unwrap().title(), Some("definitions of f"));
+        e.answered(answer(&e, Ask::References, Said::Places(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "no references found");
+    }
+
+    fn edit(start: (usize, usize), end: (usize, usize), text: &str) -> Edit {
+        Edit {
+            start: Pos::new(start.0, start.1),
+            end: Pos::new(end.0, end.1),
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn a_rename_edits_every_file_and_leaves_them_unsaved() {
+        let a = temp_file("ren-a.rs", "fn old() {}\nfn main() { old(); old(); }\n");
+        let b = temp_file("ren-b.rs", "use a::old;\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse("j$F("));
+        let files = vec![
+            FileEdits {
+                path: a.clone(),
+                edits: vec![
+                    edit((1, 19), (1, 22), "brand_new"),
+                    edit((0, 3), (0, 6), "brand_new"),
+                    edit((1, 12), (1, 15), "brand_new"),
+                ],
+            },
+            FileEdits {
+                path: b.clone(),
+                edits: vec![edit((0, 7), (0, 10), "brand_new")],
+            },
+        ];
+        e.answered(answer(&e, Ask::Rename("brand_new".into()), Said::Edits(files)));
+        assert_eq!(
+            e.buf.lines(),
+            ["fn brand_new() {}", "fn main() { brand_new(); brand_new(); }"]
+        );
+        assert_eq!(e.cursor, Pos::new(1, 34), "still on the second call's (");
+        assert_eq!(
+            e.file.path.as_deref().map(|p| crate::paths::canonical(p).unwrap()),
+            Some(a.clone())
+        );
+        assert_eq!(
+            e.message.as_ref().unwrap().text,
+            "renamed 4 places in 2 files, :wa saves them all"
+        );
+        assert!(e.unsaved_elsewhere().unwrap().ends_with("ren-b.rs"));
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), "use a::old;\n", "not written");
+
+        e.keys(&parse("u"));
+        assert_eq!(
+            e.buf.lines(),
+            ["fn old() {}", "fn main() { old(); old(); }"],
+            "undone at once"
+        );
+    }
+
+    // a file named on the command line that isn't on disk yet
+    fn unsaved_file(name: &str) -> PathBuf {
+        let path = temp_file(name, "");
+        std::fs::remove_file(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_rename_in_a_file_not_saved_yet_edits_it() {
+        let path = unsaved_file("ren-unsaved.py");
+        let mut e = Editor::open(&path).unwrap();
+        e.keys(&parse("idef f(): pass<CR>f()<Esc>"));
+        let files = vec![FileEdits {
+            path: path.clone(),
+            edits: vec![edit((0, 4), (0, 5), "g"), edit((1, 0), (1, 1), "g")],
+        }];
+        e.answered(answer(&e, Ask::Rename("g".into()), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["def g(): pass", "g()"]);
+        assert_eq!(e.docs.len(), 1, "no second copy opened");
+        assert_eq!(e.message.as_ref().unwrap().text, "renamed 2 places");
+    }
+
+    #[test]
+    fn a_rename_says_which_files_it_couldnt_open() {
+        let a = temp_file("ren-skip-a.rs", "fn old() {}\nold();\n");
+        let b = a.with_file_name("ren-skip-b.rs");
+        std::fs::write(&b, [0xff, 0xfe]).unwrap();
+        let mut e = Editor::open(&a).unwrap();
+        let files = vec![
+            FileEdits {
+                path: a.clone(),
+                edits: vec![edit((0, 3), (0, 6), "new"), edit((1, 0), (1, 3), "new")],
+            },
+            FileEdits {
+                path: b.clone(),
+                edits: vec![edit((0, 0), (0, 1), "new")],
+            },
+        ];
+        e.answered(answer(&e, Ask::Rename("new".into()), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["fn new() {}", "new();"]);
+        let said = &e.message.as_ref().unwrap().text;
+        assert!(said.starts_with("renamed 2 places, but couldn't open "), "{said}");
+        assert!(said.contains("isn't UTF-8 text"), "{said}");
+    }
+
+    #[test]
+    fn a_rename_is_dropped_when_a_file_it_edits_changed_while_waiting() {
+        let a = temp_file("ren-stale-a.rs", "use b::old;\nfn main() { old(); }\n");
+        let b = temp_file("ren-stale-b.rs", "pub fn old() {}\n");
+        let mut e = Editor::open(&b).unwrap();
+        e.ex(&format!("e {}", a.display()));
+        let files = vec![
+            FileEdits {
+                path: a.clone(),
+                edits: vec![edit((0, 7), (0, 10), "new")],
+            },
+            FileEdits {
+                path: b.clone(),
+                edits: vec![edit((0, 7), (0, 10), "new")],
+            },
+        ];
+        let asked = answer(&e, Ask::Rename("new".into()), Said::Edits(files));
+        e.ex("bp");
+        e.keys(&parse("O// added above<Esc>"));
+        e.ex("bn");
+        e.answered(asked);
+        let said = &e.message.as_ref().unwrap().text;
+        assert!(
+            said.ends_with("ren-stale-b.rs changed while renaming, so nothing was"),
+            "{said}"
+        );
+        assert_eq!(e.buf.lines()[0], "use b::old;");
+        e.ex("bp");
+        assert_eq!(e.buf.lines(), ["// added above", "pub fn old() {}"]);
+    }
+
+    #[test]
+    fn text_put_at_one_place_keeps_its_order() {
+        let a = temp_file("ren-order.rs", "let x\n");
+        let mut e = Editor::open(&a).unwrap();
+        let files = vec![FileEdits {
+            path: a.clone(),
+            edits: vec![edit((0, 4), (0, 4), "A"), edit((0, 4), (0, 4), "B")],
+        }];
+        e.answered(answer(&e, Ask::Rename("x".into()), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["let ABx"]);
+    }
+
+    #[test]
+    fn rename_with_no_name_asks_for_one() {
+        let mut e = Editor::with_text("let count = 1;");
+        e.keys(&parse("w"));
+        e.keys(&parse("<Space>n"));
+        assert_eq!(e.mode, super::Mode::Command);
+        assert_eq!(e.cmd.text, "rename count");
+        e.keys(&parse("<Esc>"));
+        e.ex("rename total");
+        assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
+    }
+
+    #[test]
+    fn nothing_found_or_no_server_is_said() {
+        let mut e = Editor::with_text("a");
+        e.answered(answer(&e, Ask::Definition, Said::Places(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "no definition found");
+        e.keys(&parse("gd"));
+        assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
     }
 
     #[test]

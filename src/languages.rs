@@ -39,11 +39,67 @@ pub struct Problem {
     pub message: String,
 }
 
+// what the editor can ask a server about a place in a file
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ask {
+    Definition,
+    Hover,
+    References,
+    // to the new name
+    Rename(String),
+}
+
+// a stretch of a file, in the editor's columns
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Place {
+    pub path: PathBuf,
+    pub start: Pos,
+    pub end: Pos,
+}
+
+// text to put in place of a stretch of a file
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Edit {
+    pub start: Pos,
+    pub end: Pos,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileEdits {
+    pub path: PathBuf,
+    pub edits: Vec<Edit>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Said {
+    Places(Vec<Place>),
+    Edits(Vec<FileEdits>),
+    // markdown, empty when there's nothing to say
+    Text(String),
+    Refused(String),
+}
+
+// a server's answer, with what was asked, of which file, and where it was then
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Answer {
+    pub id: usize,
+    pub version: u64,
+    pub at: Pos,
+    // every open file's version when asked, as an answer can be about other files too
+    pub versions: Vec<(usize, u64)>,
+    // files that aren't open, as read from disk to work out columns, so they're read once
+    pub read: HashMap<PathBuf, Vec<String>>,
+    pub ask: Ask,
+    pub said: Said,
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Update {
     // problems came or went, so there's something new to show
     pub changed: bool,
     pub errors: Vec<String>,
+    pub answers: Vec<Answer>,
 }
 
 // a server is one command run for one project
@@ -55,6 +111,16 @@ struct Running {
     server: Server,
     // whether the user has been told it stopped
     told: bool,
+    // requests waiting on a reply, by their id
+    asked: HashMap<i64, Asked>,
+}
+
+struct Asked {
+    id: usize,
+    version: u64,
+    at: Pos,
+    versions: Vec<(usize, u64)>,
+    ask: Ask,
 }
 
 struct Synced {
@@ -157,6 +223,51 @@ impl Languages {
         self.choices.clear();
     }
 
+    // asks the server for file `id` about the place `at`, the answer coming with a later update
+    pub fn ask(&mut self, id: usize, at: Pos, ask: Ask) -> Result<(), String> {
+        let Some(s) = self.synced.get(&id) else {
+            return Err(match self.choices.get(&id) {
+                Some((_, _, Some(choice))) => match self.refused.get(&key(choice)) {
+                    Some(why) => format!("{} couldn't start: {why}", choice.name),
+                    None => format!("{} is still starting", choice.name),
+                },
+                _ => "no language server for this file".to_string(),
+            });
+        };
+        let Some(r) = self.running.get_mut(&s.key).filter(|r| r.server.ready()) else {
+            return Err("the language server has stopped".to_string());
+        };
+        let (method, provider, what) = match &ask {
+            Ask::Definition => ("textDocument/definition", "definitionProvider", "find definitions"),
+            Ask::Hover => ("textDocument/hover", "hoverProvider", "describe things"),
+            Ask::References => ("textDocument/references", "referencesProvider", "find references"),
+            Ask::Rename(_) => ("textDocument/rename", "renameProvider", "rename things"),
+        };
+        if !provides(&r.server.capabilities()[provider]) {
+            return Err(format!("{} can't {what}", r.name));
+        }
+        let line = s.lines.get(at.row).map_or("", String::as_str);
+        let character = r.server.encoding().units(line, at.col);
+        let position = Json::object([("line", at.row.into()), ("character", character.into())]);
+        let mut params = vec![("textDocument", document(&s.uri)), ("position", position)];
+        match &ask {
+            Ask::References => params.push(("context", Json::object([("includeDeclaration", true.into())]))),
+            Ask::Rename(name) => params.push(("newName", name.as_str().into())),
+            _ => {}
+        }
+        let params = Json::object(params);
+        let request = r.server.request(method, params);
+        let asked = Asked {
+            id,
+            version: s.version,
+            at,
+            versions: self.synced.iter().map(|(&id, s)| (id, s.version)).collect(),
+            ask,
+        };
+        r.asked.insert(request, asked);
+        Ok(())
+    }
+
     // takes in what the servers have said, then tells them what changed in `docs`
     pub fn update(&mut self, docs: &[OpenDoc], servers: &Servers) -> Update {
         let mut update = Update::default();
@@ -215,8 +326,26 @@ impl Languages {
         let Languages { running, synced, .. } = self;
         for (key, r) in running.iter_mut() {
             while let Some(incoming) = r.server.poll() {
-                let Incoming::Notice { method, params } = incoming else {
-                    continue;
+                let (method, params) = match incoming {
+                    Incoming::Notice { method, params } => (method, params),
+                    Incoming::Reply { id, result } => {
+                        if let Some(asked) = r.asked.remove(&id) {
+                            let (said, read) = match result {
+                                Ok(result) => said(&asked.ask, &result, synced, r.server.encoding()),
+                                Err(e) => (Said::Refused(e.message), HashMap::new()),
+                            };
+                            update.answers.push(Answer {
+                                id: asked.id,
+                                version: asked.version,
+                                at: asked.at,
+                                versions: asked.versions,
+                                read,
+                                ask: asked.ask,
+                                said,
+                            });
+                        }
+                        continue;
+                    }
                 };
                 if method != "textDocument/publishDiagnostics" {
                     continue;
@@ -256,6 +385,7 @@ impl Languages {
                         name: choice.name,
                         server,
                         told: false,
+                        asked: HashMap::new(),
                     };
                     self.running.insert(key.clone(), running);
                 }
@@ -327,6 +457,133 @@ impl Languages {
             }
         }
     }
+}
+
+// a capability is offered as true or as an object of options
+fn provides(capability: &Json) -> bool {
+    matches!(capability, Json::Bool(true) | Json::Object(_))
+}
+
+// what was said, and the files read from disk to make sense of it
+fn said(
+    ask: &Ask,
+    result: &Json,
+    synced: &HashMap<usize, Synced>,
+    encoding: Encoding,
+) -> (Said, HashMap<PathBuf, Vec<String>>) {
+    let mut lines = Lines::new(synced);
+    let said = match ask {
+        Ask::Definition | Ask::References => Said::Places(places(result, &mut lines, encoding)),
+        Ask::Hover => Said::Text(hover_text(&result["contents"])),
+        Ask::Rename(_) => Said::Edits(file_edits(result, &mut lines, encoding)),
+    };
+    // in full, as the editor has its paths
+    let read = lines.read.into_iter().map(|(p, l)| (paths::absolute(&p), l)).collect();
+    (said, read)
+}
+
+// a WorkspaceEdit's changes, as a map from each file to its edits or as a list of
+// TextDocumentEdits, leaving out files made, moved or deleted
+fn file_edits(workspace: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<FileEdits> {
+    let mut each: Vec<(&str, &Json)> = Vec::new();
+    if let Some(changes) = workspace["documentChanges"].as_array() {
+        for change in changes.iter().filter(|c| c.get("kind").is_none()) {
+            if let Some(uri) = change["textDocument"]["uri"].as_str() {
+                each.push((uri, &change["edits"]));
+            }
+        }
+    } else if let Json::Object(changes) = &workspace["changes"] {
+        each.extend(changes.iter().map(|(uri, edits)| (uri.as_str(), edits)));
+    }
+    let mut out: Vec<FileEdits> = Vec::new();
+    for (uri, list) in each {
+        let Some(path) = lsp::uri_path(uri) else { continue };
+        let edits = list.as_array().unwrap_or(&[]).iter().map(|e| Edit {
+            start: lines.pos(&path, &e["range"]["start"], encoding),
+            end: lines.pos(&path, &e["range"]["end"], encoding),
+            text: e["newText"].as_str().unwrap_or("").to_string(),
+        });
+        match out.iter_mut().find(|f| f.path == path) {
+            Some(f) => f.edits.extend(edits),
+            None => {
+                let edits = edits.collect();
+                out.push(FileEdits { path, edits });
+            }
+        }
+    }
+    out
+}
+
+// MarkupContent, a MarkedString, or a list of MarkedStrings
+fn hover_text(contents: &Json) -> String {
+    match contents {
+        Json::String(s) => s.trim().to_string(),
+        Json::Array(list) => {
+            let parts: Vec<String> = list.iter().map(hover_text).filter(|p| !p.is_empty()).collect();
+            parts.join("\n\n")
+        }
+        Json::Object(_) => {
+            let value = contents["value"].as_str().unwrap_or("").trim();
+            match contents["language"].as_str() {
+                Some(language) if !value.is_empty() => format!("```{language}\n{value}\n```"),
+                _ => value.to_string(),
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+// files' lines, to turn a server's columns into the editor's: open files as the server has
+// them, others as they are on disk
+struct Lines<'a> {
+    // by path, worked out once rather than for every position
+    open: HashMap<PathBuf, &'a [String]>,
+    read: HashMap<PathBuf, Vec<String>>,
+}
+
+impl<'a> Lines<'a> {
+    fn new(synced: &'a HashMap<usize, Synced>) -> Lines<'a> {
+        Lines {
+            open: (synced.values())
+                .filter_map(|s| Some((lsp::uri_path(&s.uri)?, s.lines.as_slice())))
+                .collect(),
+            read: HashMap::new(),
+        }
+    }
+
+    fn pos(&mut self, path: &Path, p: &Json, encoding: Encoding) -> Pos {
+        let row = p["line"].as_u64().unwrap_or(0) as usize;
+        let units = p["character"].as_u64().unwrap_or(0) as usize;
+        let lines = match self.open.get(path) {
+            Some(lines) => *lines,
+            None => self.read.entry(path.to_path_buf()).or_insert_with(|| {
+                std::fs::read_to_string(path).map_or(Vec::new(), |t| t.split('\n').map(str::to_string).collect())
+            }),
+        };
+        let line = lines.get(row).map_or("", |l| l.trim_end_matches('\r'));
+        Pos::new(row, encoding.chars(line, units))
+    }
+}
+
+// a Location, a list of them, or a list of LocationLinks
+fn places(result: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Place> {
+    let list = match result {
+        Json::Array(list) => list.as_slice(),
+        Json::Null => &[],
+        one => std::slice::from_ref(one),
+    };
+    list.iter()
+        .filter_map(|l| {
+            let (uri, range) = match l.get("targetUri") {
+                Some(uri) => (uri, &l["targetSelectionRange"]),
+                None => (&l["uri"], &l["range"]),
+            };
+            let path = lsp::uri_path(uri.as_str()?)?;
+            let start = lines.pos(&path, &range["start"], encoding);
+            let end = lines.pos(&path, &range["end"], encoding);
+            Some(Place { path, start, end })
+        })
+        .collect()
 }
 
 fn key(choice: &Choice) -> Key {
@@ -479,7 +736,7 @@ mod tests {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 let update = self.update(docs);
-                if done(self) || update.changed || !update.errors.is_empty() {
+                if done(self) || update.changed || !update.errors.is_empty() || !update.answers.is_empty() {
                     return update;
                 }
                 assert!(Instant::now() < deadline, "nothing happened");
@@ -794,6 +1051,247 @@ mod tests {
         assert_eq!(r.langs.state(&choice), "the server stopped", "and :lsp says why");
         assert!(r.langs.problems(1).is_empty());
         assert_eq!(r.update(&docs), Update::default(), "and not again");
+    }
+
+    const DEFINES: &str = r#"{"textDocumentSync":{"openClose":true,"change":2},"definitionProvider":true}"#;
+
+    // the reply to the next request the server gets, after checking what it was
+    fn reply(fake: &mut Fake, method: &str, result: &str) -> Json {
+        let asked = fake.recv().unwrap();
+        assert_eq!(asked["method"].as_str(), Some(method));
+        let id = asked["id"].as_i64().unwrap();
+        fake.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#));
+        asked
+    }
+
+    fn answer(r: &mut Rig, docs: &[OpenDoc]) -> Answer {
+        let update = r.until(docs, |_| false);
+        assert_eq!(update.answers.len(), 1, "{update:?}");
+        update.answers.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn a_definition_comes_back_in_the_editors_columns() {
+        let mut r = rig();
+        let v1 = lines("let 😀x = 1;\n😀x");
+        let docs = [doc("/work/a.rs", 4, 1, &v1)];
+        let mut fake = r.start(&docs, DEFINES);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(1, 1), Ask::Definition).unwrap();
+        let at = Json::from(uri("/work/a.rs"));
+        let asked = reply(
+            &mut fake,
+            "textDocument/definition",
+            &format!(
+                r#"{{"uri":{at},"range":{{"start":{{"line":0,"character":6}},"end":{{"line":0,"character":7}}}}}}"#
+            ),
+        );
+        assert_eq!(
+            asked["params"]["position"]["character"].as_u64(),
+            Some(2),
+            "the emoji is two"
+        );
+        assert_eq!(
+            asked["params"]["textDocument"]["uri"].as_str(),
+            Some(uri("/work/a.rs").as_str())
+        );
+
+        let got = answer(&mut r, &docs);
+        assert_eq!((got.id, got.version, got.at), (1, 4, Pos::new(1, 1)));
+        let place = Place {
+            path: paths::absolute(Path::new("/work/a.rs")),
+            start: Pos::new(0, 5),
+            end: Pos::new(0, 6),
+        };
+        assert_eq!(got.said, Said::Places(vec![place]));
+    }
+
+    #[test]
+    fn definitions_in_files_that_arent_open_are_read_from_disk() {
+        let dir = std::env::temp_dir().join(format!("tvim-langs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let other = dir.join("b.rs");
+        std::fs::write(&other, "x\r\n é = 2;\n").unwrap();
+        let mut r = rig();
+        let v1 = lines("é");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, DEFINES);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(0, 0), Ask::Definition).unwrap();
+        let target = Json::from(lsp::file_uri(&other));
+        let range = r#"{"start":{"line":1,"character":1},"end":{"line":1,"character":2}}"#;
+        let links = format!(
+            r#"[{{"targetUri":{target},"targetRange":{range},"targetSelectionRange":{range}}},{{"targetUri":"https://x"}}]"#
+        );
+        reply(&mut fake, "textDocument/definition", &links);
+        let got = answer(&mut r, &docs);
+        let place = Place {
+            path: other,
+            start: Pos::new(1, 1),
+            end: Pos::new(1, 2),
+        };
+        assert_eq!(got.said, Said::Places(vec![place]), "links, and only to files");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn references_include_the_declaration() {
+        let mut r = rig();
+        let v1 = lines("fn a() {}\na();");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, r#"{"textDocumentSync":1,"referencesProvider":true}"#);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(1, 0), Ask::References).unwrap();
+        let at = Json::from(uri("/work/a.rs"));
+        let found = format!(
+            r#"[{{"uri":{at},"range":{{"start":{{"line":0,"character":3}},"end":{{"line":0,"character":4}}}}}},
+                {{"uri":{at},"range":{{"start":{{"line":1,"character":0}},"end":{{"line":1,"character":1}}}}}}]"#
+        );
+        let asked = reply(&mut fake, "textDocument/references", &found);
+        assert_eq!(asked["params"]["context"]["includeDeclaration"].as_bool(), Some(true));
+        let Said::Places(places) = answer(&mut r, &docs).said else {
+            panic!("places")
+        };
+        let starts: Vec<Pos> = places.iter().map(|p| p.start).collect();
+        assert_eq!(starts, [Pos::new(0, 3), Pos::new(1, 0)]);
+    }
+
+    #[test]
+    fn a_rename_comes_back_as_edits_to_each_file() {
+        let mut r = rig();
+        let v1 = lines("let 😀a = 1;\n😀a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(
+            &docs,
+            r#"{"textDocumentSync":1,"renameProvider":{"prepareProvider":true}}"#,
+        );
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(1, 1), Ask::Rename("b".into())).unwrap();
+        let a = Json::from(uri("/work/a.rs"));
+        let edit = |line: usize, from: usize, to: usize| {
+            format!(
+                r#"{{"range":{{"start":{{"line":{line},"character":{from}}},"end":{{"line":{line},"character":{to}}}}},"newText":"b"}}"#
+            )
+        };
+        let changes = format!(
+            r#"{{"documentChanges":[{{"textDocument":{{"uri":{a},"version":1}},"edits":[{}]}},
+                {{"kind":"rename","oldUri":{a},"newUri":"file:///work/b.rs"}},
+                {{"textDocument":{{"uri":{a},"version":1}},"edits":[{}]}}]}}"#,
+            edit(0, 4, 7),
+            edit(1, 0, 3)
+        );
+        let asked = reply(&mut fake, "textDocument/rename", &changes);
+        assert_eq!(asked["params"]["newName"].as_str(), Some("b"));
+        let edits = vec![
+            Edit {
+                start: Pos::new(0, 4),
+                end: Pos::new(0, 6),
+                text: "b".into(),
+            },
+            Edit {
+                start: Pos::new(1, 0),
+                end: Pos::new(1, 2),
+                text: "b".into(),
+            },
+        ];
+        let path = paths::absolute(Path::new("/work/a.rs"));
+        let answered = answer(&mut r, &docs);
+        assert_eq!(answered.versions, [(1, 1)], "to check each file against");
+        assert_eq!(
+            answered.said,
+            Said::Edits(vec![FileEdits {
+                path: path.clone(),
+                edits
+            }]),
+            "together, in the editor's columns"
+        );
+
+        r.langs.ask(1, Pos::new(1, 1), Ask::Rename("b".into())).unwrap();
+        reply(
+            &mut fake,
+            "textDocument/rename",
+            &format!(r#"{{"changes":{{{a}:[{}]}}}}"#, edit(1, 0, 3)),
+        );
+        let Said::Edits(files) = answer(&mut r, &docs).said else {
+            panic!("edits")
+        };
+        assert_eq!((files.len(), files[0].edits.len()), (1, 1), "or as a map");
+    }
+
+    #[test]
+    fn nothing_found_and_errors_are_answers_too() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, DEFINES);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(0, 0), Ask::Definition).unwrap();
+        reply(&mut fake, "textDocument/definition", "null");
+        assert_eq!(answer(&mut r, &docs).said, Said::Places(Vec::new()));
+
+        r.langs.ask(1, Pos::new(0, 0), Ask::Definition).unwrap();
+        let id = fake.recv().unwrap()["id"].as_i64().unwrap();
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32801,"message":"content modified"}}}}"#
+        ));
+        assert_eq!(answer(&mut r, &docs).said, Said::Refused("content modified".into()));
+    }
+
+    #[test]
+    fn hovers_come_back_as_markdown_however_theyre_sent() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, r#"{"textDocumentSync":1,"hoverProvider":{}}"#);
+        fake.recv().unwrap();
+        for (contents, text) in [
+            (
+                r#"{"kind":"markdown","value":"```rust\nfn a()\n```\n\nDoes a.\n"}"#,
+                "```rust\nfn a()\n```\n\nDoes a.",
+            ),
+            (r#""plain""#, "plain"),
+            (
+                r#"[{"language":"rust","value":"fn a()"},"","Does a."]"#,
+                "```rust\nfn a()\n```\n\nDoes a.",
+            ),
+        ] {
+            r.langs.ask(1, Pos::new(0, 0), Ask::Hover).unwrap();
+            reply(
+                &mut fake,
+                "textDocument/hover",
+                &format!(r#"{{"contents":{contents}}}"#),
+            );
+            assert_eq!(answer(&mut r, &docs).said, Said::Text(text.into()));
+        }
+        r.langs.ask(1, Pos::new(0, 0), Ask::Hover).unwrap();
+        reply(&mut fake, "textDocument/hover", "null");
+        assert_eq!(answer(&mut r, &docs).said, Said::Text(String::new()), "nothing to say");
+    }
+
+    #[test]
+    fn asking_without_a_server_that_can_answer_says_why() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let none = [doc("/work/a.txt", 1, 1, &v1)];
+        r.update(&none);
+        assert_eq!(
+            r.langs.ask(1, Pos::new(0, 0), Ask::Definition),
+            Err("no language server for this file".into())
+        );
+
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        r.update(&docs);
+        assert_eq!(
+            r.langs.ask(1, Pos::new(0, 0), Ask::Definition),
+            Err("rust is still starting".into())
+        );
+        let (_, _, mut fake) = r.started.try_recv().unwrap();
+        fake.start(EDITS);
+        r.until(&docs, |r| r.langs.synced.contains_key(&1));
+        assert_eq!(
+            r.langs.ask(1, Pos::new(0, 0), Ask::Definition),
+            Err("rust can't find definitions".into())
+        );
     }
 
     fn edited(old: &str, new: &str) -> String {
