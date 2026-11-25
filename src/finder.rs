@@ -218,30 +218,11 @@ impl Finder {
                 };
             }
             k if navigate(&mut self.selected, self.matches.len(), &Event::Key(k), Keymap::Picker) => {}
-            Key::Char(c) => {
-                self.query.push(c);
-                self.refresh();
-            }
-            Key::Backspace | Key::Ctrl('h') => {
-                if self.query.pop().is_none() {
-                    return Pick::Close;
-                }
-                self.refresh();
-            }
-            Key::Ctrl('w') => {
-                let keep = self
-                    .query
-                    .trim_end()
-                    .rfind(['/', ' ', '.', '_', '-'])
-                    .map_or(0, |i| i + 1);
-                self.query.truncate(keep);
-                self.refresh();
-            }
-            Key::Ctrl('u') => {
-                self.query.clear();
-                self.refresh();
-            }
-            _ => {}
+            k => match edit_query(&mut self.query, k, |c| "/ ._-".contains(c)) {
+                Some(true) => self.refresh(),
+                Some(false) => return Pick::Close,
+                None => {}
+            },
         }
         Pick::Nothing
     }
@@ -250,6 +231,23 @@ impl Finder {
         self.query.push_str(text.lines().next().unwrap_or("").trim());
         self.refresh();
     }
+}
+
+/// Edits a picker's query with `key`: Some(true) when it changed, Some(false) for a backspace
+/// with nothing left to delete, and None for a key that doesn't edit. Ctrl-w deletes back to
+/// the last character `between` words.
+pub(crate) fn edit_query(query: &mut String, key: Key, between: impl Fn(char) -> bool) -> Option<bool> {
+    match key {
+        Key::Char(c) => query.push(c),
+        Key::Backspace | Key::Ctrl('h') => return Some(query.pop().is_some()),
+        Key::Ctrl('w') => {
+            let keep = query.trim_end().rfind(between).map_or(0, |i| i + 1);
+            query.truncate(keep);
+        }
+        Key::Ctrl('u') => query.clear(),
+        _ => return None,
+    }
+    Some(true)
 }
 
 // scrolls as little as it can to keep selected in view

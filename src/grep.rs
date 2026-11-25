@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use tinsel::app::{Event, Key, Keymap, Waker, navigate};
 
-use crate::finder::{follow, walk};
+use crate::finder::{edit_query, follow, walk};
 use crate::sync::{lock, wait_until};
 
 const MAX_FILE: u64 = 1_000_000;
@@ -318,30 +318,11 @@ impl Grep {
             }
             Key::Ctrl('d') => self.selected = (self.selected + 10).min(last),
             k if navigate(&mut self.selected, self.hits.len(), &Event::Key(k), Keymap::Picker) => {}
-            Key::Char(c) => {
-                self.query.push(c);
-                self.search_again();
-            }
-            Key::Backspace | Key::Ctrl('h') => {
-                if self.query.pop().is_none() {
-                    return Jump::Close;
-                }
-                self.search_again();
-            }
-            Key::Ctrl('w') => {
-                let keep = self
-                    .query
-                    .trim_end()
-                    .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-                    .map_or(0, |i| i + 1);
-                self.query.truncate(keep);
-                self.search_again();
-            }
-            Key::Ctrl('u') => {
-                self.query.clear();
-                self.search_again();
-            }
-            _ => {}
+            k => match edit_query(&mut self.query, k, |c| !c.is_alphanumeric() && c != '_') {
+                Some(true) => self.search_again(),
+                Some(false) => return Jump::Close,
+                None => {}
+            },
         }
         Jump::Nothing
     }
