@@ -346,6 +346,11 @@ impl Drop for Keys {
 /// as a step list ending in a card. The new binary goes beside the old one and is renamed over
 /// it, so a failure at any point leaves the old one as it was.
 pub fn update_in(dir: &Path, version: &str) -> Option<PathBuf> {
+    update_from(RELEASES, dir, version)
+}
+
+/// As update_in, downloading from `releases`, which tests point at a folder of their own.
+fn update_from(releases: &str, dir: &Path, version: &str) -> Option<PathBuf> {
     let Some(name) = archive(std::env::consts::ARCH, std::env::consts::OS) else {
         tinsel::error("there's no prebuilt tvim for this machine: use cargo install tvim");
         return None;
@@ -364,7 +369,7 @@ pub fn update_in(dir: &Path, version: &str) -> Option<PathBuf> {
             Command::new("curl")
                 .args(["-fsSL", "--max-time", "120", "-o"])
                 .arg(work.join(&name))
-                .arg(format!("{RELEASES}/download/v{version}/{name}")),
+                .arg(format!("{releases}/download/v{version}/{name}")),
         )
         .is_ok()
         && unpack
