@@ -114,6 +114,47 @@ fn marks_and_jumps() {
 }
 
 #[test]
+fn marks_keep_to_their_lines() {
+    let t = "one\ntwo\nthree\nfour";
+    assert_eq!(at(t, "jjlmaggdd`a"), (1, 1), "a line taken out above");
+    assert_eq!(at(t, "jjlmaggOnew<Esc>`a"), (3, 1), "a line put in above");
+    assert_eq!(at(t, "jjlmaggyyP`a"), (3, 1));
+    assert_eq!(at(t, "jjlmaGdd`a"), (2, 1), "nothing moves for a change below");
+    assert_eq!(at(t, "jjmajJ'a"), (2, 0), "a line joined to it");
+    assert_eq!(at(t, "jmakJ'a"), (0, 0), "a line joined into the one above");
+    assert_eq!(at(t, "ggmaG:1,2d<CR>'a"), (0, 0), "gone with its line");
+    assert_eq!(at(t, "jjlmaggdd:'a<CR>"), (1, 0), "ranges use them too");
+    assert_eq!(at(t, "jjlmaggddu`a"), (2, 1), "undo puts it back");
+    assert_eq!(at(t, "jjlmaggddu<C-r>`a"), (1, 1), "and redo moves it again");
+    assert_eq!(
+        at(t, "jjmadduG'a"),
+        (2, 0),
+        "a mark taken with its line comes back with it"
+    );
+
+    assert_eq!(at(t, "jOxy<Esc>gg`^"), (1, 1), "nor does one set in the change itself");
+
+    let mut e = common::ed(t);
+    e.keys(&tvim::keys::parse("jjmadd'a"));
+    assert_eq!(e.message().map(|m| m.text.as_str()), Some("E20: Mark not set"));
+}
+
+#[test]
+fn the_last_selection_keeps_to_its_lines() {
+    let mut e = common::ed("one\ntwo\nthree\nfour");
+    e.keys(&tvim::keys::parse("jjVj<Esc>ggdd"));
+    e.ex("'<,'>d");
+    assert_eq!(e.text(), "two");
+    let mut e = common::ed("one\ntwo\nthree\nfour");
+    e.keys(&tvim::keys::parse("jjvl<Esc>ggOnew<Esc>gvd"));
+    assert_eq!(e.text(), "new\none\ntwo\nree\nfour");
+    let mut e = common::ed("one\ntwo\nthree");
+    e.keys(&tvim::keys::parse("jVj<Esc>Gdd"));
+    e.ex("'<,'>d");
+    assert_eq!(e.text(), "one", "the end of one whose last line went moves up");
+}
+
+#[test]
 fn brackets_on_a_very_long_line() {
     let line = format!("({})", "ab ".repeat(66_000));
     let mut e = common::ed(&line);

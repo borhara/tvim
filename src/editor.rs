@@ -220,6 +220,7 @@ struct Snapshot {
     lines: Vec<String>,
     cursor: Pos,
     version: u64,
+    marks: HashMap<char, Pos>,
 }
 
 #[derive(Clone, Debug, Default)]

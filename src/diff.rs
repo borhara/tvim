@@ -89,6 +89,26 @@ pub fn hunks(old: &[String], new: &[String]) -> Vec<Hunk> {
     out
 }
 
+/// Where line `row` of the old text is in the new, from their hunks: Ok for a line kept or
+/// changed (one of fewer changed lines than before goes to the last of them), and Err for a
+/// line removed, with the line now in its place.
+pub fn follow(hunks: &[Hunk], row: usize) -> Result<usize, usize> {
+    let mut new = row;
+    for h in hunks {
+        if row < h.old.start {
+            break;
+        }
+        if row < h.old.end {
+            if h.new.is_empty() {
+                return Err(h.new.start);
+            }
+            return Ok((h.new.start + row - h.old.start).min(h.new.end - 1));
+        }
+        new = new + h.new.len() - h.old.len();
+    }
+    Ok(new)
+}
+
 fn common(a: &[String], b: &[String]) -> Vec<(usize, usize)> {
     let (n, m) = (a.len(), b.len());
     let mut len = vec![0u32; (n + 1) * (m + 1)];
@@ -161,5 +181,23 @@ mod tests {
         let h = hunks(&lines("1\n2\n3\n4"), &lines("1\nX\nY\n3"));
         assert_eq!(h, [Hunk { old: 1..2, new: 1..3 }, Hunk { old: 3..4, new: 4..4 }]);
         assert_eq!((h[0].row(), h[1].row()), (1, 3));
+    }
+
+    #[test]
+    fn lines_followed_through_hunks() {
+        let h = hunks(&lines("a\nb\nc\nd\ne"), &lines("x\na\nc\nD\nE\nF"));
+        let f = |row| follow(&h, row);
+        assert_eq!(f(0), Ok(1), "pushed down by a line put above");
+        assert_eq!(f(1), Err(2), "removed, with c in its place");
+        assert_eq!(f(2), Ok(2));
+        assert_eq!((f(3), f(4)), (Ok(3), Ok(4)), "changed lines stay put");
+        let joined = hunks(&lines("a\nb\nc\nz"), &lines("a b c\nz"));
+        assert_eq!(follow(&joined, 2), Ok(0), "into what's left of a change");
+        assert_eq!(follow(&joined, 3), Ok(1));
+        assert_eq!(
+            follow(&hunks(&lines("a\nb"), &lines("a")), 1),
+            Err(1),
+            "removed at the end"
+        );
     }
 }
