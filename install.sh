@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the latest tvim release from GitHub.
 #
-#   curl -fsSL https://github.com/borhara/tvim/releases/latest/download/install.sh | sh
+#   curl -fsSL tvim.shiv.mov | sh
 #
 # Set TVIM_INSTALL_DIR to install somewhere other than ~/.local/bin.
 set -eu

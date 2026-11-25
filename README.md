@@ -11,7 +11,7 @@ tvim is a text editor for the terminal that uses vim's keys. If you already use 
 On macOS or Linux:
 
 ```sh
-curl -fsSL https://github.com/borhara/tvim/releases/latest/download/install.sh | sh
+curl -fsSL tvim.shiv.mov | sh
 ```
 
 Or with Homebrew:
