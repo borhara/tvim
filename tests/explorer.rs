@@ -338,3 +338,26 @@ fn the_filter_is_edited_as_its_typed() {
     e.paste("a");
     assert_eq!(names(&e).len(), 4, "a paste outside the filter does nothing");
 }
+
+#[test]
+fn r_reads_the_folder_again() {
+    let (mut e, root) = browse("reload");
+    e.keys(&parse("ljj"));
+    assert_eq!(names(&e)[selected(&e)], "a.rs");
+    std::fs::write(root.join("_new.txt"), "").unwrap();
+    std::fs::write(root.join("sub/also.txt"), "").unwrap();
+    e.keys(&parse("R"));
+    assert_eq!(
+        names(&e),
+        ["sub", "also.txt", "inner.txt", "_new.txt", "a.rs", "b.txt", "Zed.md"]
+    );
+    assert_eq!(names(&e)[selected(&e)], "a.rs", "still on the same file");
+
+    std::fs::remove_dir_all(root.join("sub")).unwrap();
+    e.keys(&parse("<C-l>"));
+    assert_eq!(
+        names(&e),
+        ["_new.txt", "a.rs", "b.txt", "Zed.md"],
+        "a folder gone is let go"
+    );
+}
