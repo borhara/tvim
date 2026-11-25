@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tinsel::style::blink;
 use tinsel::{Block, Card, Live, Region, Spinner, bold, mix, paint, palette};
 
 const RELEASES: &str = "https://github.com/borhara/tvim/releases";
@@ -218,78 +217,126 @@ pub fn check_in_background(dir: &Path) {
     });
 }
 
-/// The stars in a strip two rows high, as (column, row, brightness from 0 to 1), in the order
-/// they come out: scattered, and the same every time.
-fn stars(width: usize) -> Vec<(usize, usize, f32)> {
-    // mixed well enough that where a star is says nothing about how bright it is
-    let noise = |a: usize, b: u64| {
-        let mut x = (a as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
-        x ^= x >> 33;
-        x = x.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
-        x ^= x >> 33;
-        x = x.wrapping_mul(0xC4CE_B9FE_1A85_EC53);
-        x ^= x >> 33;
-        (x >> 40) as f32 / (1u64 << 24) as f32
-    };
-    let mut stars: Vec<_> = (0..width * 2)
-        .filter(|&i| noise(i, 7) < 0.12)
-        .map(|i| (i % width, i / width, noise(i, 11)))
+/// A row like the skyline along the bottom of tvim, at `t` seconds: dim dots, a few at a time
+/// fading up through ⋆ ✧ ✦ and back.
+fn skyline(width: usize, t: f64) -> String {
+    let rest = mix(mix(palette::LINE, palette::SOFT, 0.35), palette::MUTED, 0.3);
+    let row: String = (0..width)
+        .map(|i| match crate::ui::twinkle(i, width, t) {
+            tw if tw >= 0.08 => paint(
+                tinsel::style::sample(&[palette::BERRY, palette::ROSE, palette::SHINE], tw),
+                ["⋆", "✧", "✦"][((tw * 3.0) as usize).min(2)],
+            ),
+            _ => paint(rest, "·"),
+        })
         .collect();
-    stars.sort_by(|a, b| noise(a.0 + a.1 * width, 13).total_cmp(&noise(b.0 + b.1 * width, 13)));
-    stars
+    format!("  {row}")
 }
 
-/// The strip with its first `out` stars out. Settled, the bright ones blink: the terminal
-/// keeps that going on its own, so they twinkle on while the question waits.
-fn sky(width: usize, out: usize, settled: bool) -> Vec<String> {
-    let mut rows = vec![vec![" ".to_string(); width]; 2];
-    for &(x, y, v) in stars(width).iter().take(out) {
-        let glyph = match v {
-            v if v > 0.8 => "✦",
-            v if v > 0.6 => "✧",
-            v if v > 0.35 => "⋆",
-            _ => "·",
-        };
-        let colour = if v > 0.35 {
-            mix(palette::BLUSH, palette::SHINE, v)
-        } else {
-            palette::MUTED
-        };
-        let star = paint(colour, glyph);
-        rows[y][x] = if settled && v > 0.6 { blink(&star) } else { star };
-    }
-    rows.into_iter().map(|row| format!("  {}", row.concat())).collect()
-}
-
-/// The news above the question: stars come out over a strip like the one along the bottom of
-/// tvim while its mark sparkles, then settle, twinkling, over what's out.
-fn announce(latest: &str, current: &str) {
-    let width = tinsel::terminal_width().saturating_sub(4).clamp(20, 60);
-    let news = format!(
-        "{}  {}",
+/// What's out, after a mark.
+fn news(mark: &str, latest: &str, current: &str) -> String {
+    format!(
+        "  {mark} {}  {}",
         bold(&format!("tvim {latest} is out")),
         paint(palette::MUTED, &format!("you have {current}"))
-    );
+    )
+}
+
+fn sky_width() -> usize {
+    tinsel::terminal_width().saturating_sub(4).clamp(20, 60)
+}
+
+/// The news, with the skyline still, for when nothing's asked.
+fn announce(latest: &str, current: &str) {
     println!();
-    if std::io::stdout().is_terminal() {
-        let (count, began, shown) = (stars(width).len(), Instant::now(), news.clone());
-        let region = Region::new(move || {
-            let t = began.elapsed().as_secs_f64();
-            let mut frame = Block::new();
-            for row in sky(width, (t / 0.8 * count as f64) as usize, false) {
-                frame.push(row);
+    println!("{}", skyline(sky_width(), 4.0));
+    println!("{}", news(&paint(palette::ROSE, "✦"), latest, current));
+    println!();
+}
+
+/// Asks whether to update, with the skyline twinkling above the question the whole time it
+/// waits, and the mark beside the news sparkling. One key answers: y or Enter yes, n no, and
+/// Esc or Ctrl-C not now (None), as does there being no terminal to ask on.
+fn ask(latest: &str, current: &str) -> Option<bool> {
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let Some(keys) = terminal.then(Keys::raw).flatten() else {
+        announce(latest, current);
+        return tinsel::prompt::confirm("Update now?", true).ok();
+    };
+    let answer = std::sync::Arc::new(std::sync::Mutex::new(None::<&'static str>));
+    let (width, began, shown) = (sky_width(), Instant::now(), answer.clone());
+    let (latest, current) = (latest.to_string(), current.to_string());
+    println!();
+    let region = Region::new(move || {
+        // a few seconds in, so some stars are already out
+        let t = began.elapsed().as_secs_f64() + 3.0;
+        let reply = match *shown.lock().unwrap() {
+            Some(said) => paint(palette::SOFT, said),
+            None => paint(palette::MUTED, "Y/n"),
+        };
+        let mut frame = Block::new();
+        frame.push(skyline(width, t));
+        frame.push(news(&Spinner::Sparkle.frame(t).to_string(), &latest, &current));
+        frame.push(String::new());
+        frame.push(format!(
+            "  {}  {}  {reply}",
+            paint(palette::ROSE, "?"),
+            bold("Update now?")
+        ));
+        frame
+    })
+    .keep();
+    let choice = keys.answer();
+    drop(keys);
+    *answer.lock().unwrap() = Some(match choice {
+        Some(true) => "yes",
+        Some(false) => "no",
+        None => "not now",
+    });
+    // a beat for the answer to be drawn before the last frame stays
+    std::thread::sleep(Duration::from_millis(120));
+    region.finish();
+    println!();
+    choice
+}
+
+/// The terminal taken out of line mode to read single keys, and put back when dropped.
+struct Keys {
+    saved: String,
+}
+
+impl Keys {
+    /// Keys one at a time, unechoed, with Ctrl-C read as a key rather than ending tvim; None
+    /// when stty can't do it.
+    fn raw() -> Option<Keys> {
+        let stty = |args: &[&str]| Command::new("stty").args(args).stdin(Stdio::inherit()).output().ok();
+        let saved = stty(&["-g"]).filter(|o| o.status.success())?;
+        let saved = String::from_utf8_lossy(&saved.stdout).trim().to_string();
+        stty(&["-icanon", "-echo", "-isig", "min", "1"])
+            .filter(|o| o.status.success())
+            .map(|_| Keys { saved })
+    }
+
+    fn answer(&self) -> Option<bool> {
+        use std::io::Read;
+        let mut byte = [0u8];
+        while std::io::stdin().read_exact(&mut byte).is_ok() {
+            match byte[0] {
+                b'y' | b'Y' | b'\r' | b'\n' => return Some(true),
+                b'n' | b'N' => return Some(false),
+                // Esc (and anything starting with it, like an arrow key), Ctrl-C, Ctrl-D, q
+                0x1b | 0x03 | 0x04 | b'q' => return None,
+                _ => {}
             }
-            frame.push(format!("  {} {shown}", Spinner::Sparkle.frame(t)));
-            frame
-        });
-        std::thread::sleep(Duration::from_millis(1000));
-        region.finish();
+        }
+        None
     }
-    for row in sky(width, usize::MAX, true) {
-        println!("{row}");
+}
+
+impl Drop for Keys {
+    fn drop(&mut self) {
+        let _ = Command::new("stty").arg(&self.saved).stdin(Stdio::inherit()).status();
     }
-    println!("  {} {news}", blink(&paint(palette::ROSE, "✦")));
-    println!();
 }
 
 /// Downloads `version` for this machine, unpacks it, and swaps it in for the tvim in `dir`,
@@ -400,9 +447,8 @@ pub fn offer(dir: &Path) -> Offer {
     let offer = match &install {
         Install::Dev => return Offer::Nothing,
         Install::Script(bin) => {
-            announce(&latest, current);
-            match tinsel::prompt::confirm("Update now?", true) {
-                Ok(true) => {
+            match ask(&latest, current) {
+                Some(true) => {
                     return match update_in(bin, &latest) {
                         Some(tvim) => {
                             // a moment to see the card before the editor takes the screen
@@ -412,9 +458,9 @@ pub fn offer(dir: &Path) -> Offer {
                         None => Offer::Nothing,
                     };
                 }
-                Ok(false) => Offer::Nothing,
+                Some(false) => Offer::Nothing,
                 // Esc, or no terminal to ask on: ask again next time
-                Err(_) => return Offer::Nothing,
+                None => return Offer::Nothing,
             }
         }
         _ => Offer::Tell(install.news(&latest)),
@@ -504,15 +550,17 @@ mod tests {
     }
 
     #[test]
-    fn the_sky_is_the_same_every_time_and_fills_its_width() {
-        assert!(!stars(40).is_empty());
-        assert_eq!(stars(40), stars(40));
-        let plain = |out, settled| tinsel::with_color_mode(tinsel::ColorMode::None, || sky(40, out, settled));
-        let full = plain(usize::MAX, true);
-        assert_eq!(full.len(), 2);
-        assert!(full.iter().all(|row| row.chars().count() == 42), "{full:?}");
-        assert!(full.concat().contains('✦'));
-        assert!(plain(0, false).iter().all(|row| row.trim().is_empty()), "none out yet");
+    fn the_skyline_is_dots_with_a_few_stars_coming_and_going() {
+        let plain = |t| tinsel::with_color_mode(tinsel::ColorMode::None, || skyline(40, t));
+        assert_eq!(
+            plain(0.0),
+            format!("  {}", "·".repeat(40)),
+            "nothing out before it starts"
+        );
+        let rows: Vec<String> = (1..40).map(|t| plain(t as f64 * 0.5)).collect();
+        assert!(rows.iter().all(|row| row.chars().count() == 42), "{rows:?}");
+        assert!(rows.iter().any(|row| row.contains('✦')), "stars come out: {rows:?}");
+        assert!(rows.iter().any(|row| row != &rows[0]), "and move: {rows:?}");
     }
 
     #[test]

@@ -331,7 +331,7 @@ fn accent(e: &Editor) -> Rgb {
 }
 
 // a few dots at a time fade in and out, each lasting 3-6s
-fn twinkle(i: usize, n: usize, t: f64) -> f32 {
+pub(crate) fn twinkle(i: usize, n: usize, t: f64) -> f32 {
     if t <= 0.0 || n == 0 {
         return 0.0;
     }
