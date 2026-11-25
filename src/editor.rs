@@ -211,6 +211,8 @@ pub struct FileInfo {
     pub crlf: bool,
     pub final_newline: bool,
     pub new: bool,
+    // read as one empty line, which a buffer with nothing in it still writes back
+    pub blank_line: bool,
 }
 
 #[derive(Clone, Debug, Default)]

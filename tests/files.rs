@@ -36,6 +36,20 @@ fn line_endings_and_the_final_newline_are_kept() {
     e.keys(&parse(":w<CR>"));
     assert_eq!(std::fs::read(&path).unwrap(), b"");
     assert_eq!(e.text(), "");
+
+    let (mut e, path) = open("blank.txt", b"\n");
+    assert!(e.message().unwrap().text.contains(" 1L, 1B"));
+    e.keys(&parse(":w<CR>"));
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        b"\n",
+        "one empty line isn't an empty file"
+    );
+    assert!(!e.is_modified());
+
+    let (mut e, path) = open("blank-dos.txt", b"\r\n");
+    e.keys(&parse(":w<CR>"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"\r\n");
 }
 
 #[test]

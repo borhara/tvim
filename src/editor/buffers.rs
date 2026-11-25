@@ -266,6 +266,7 @@ impl Editor {
                     crlf,
                     final_newline,
                     new: false,
+                    blank_line: text == "\n",
                 };
                 let lines = if text.is_empty() { 0 } else { self.buf.len() };
                 let mut notes = String::new();
@@ -284,6 +285,7 @@ impl Editor {
                     crlf: false,
                     final_newline: true,
                     new: true,
+                    blank_line: false,
                 };
                 self.info(format!("\"{display}\" [New]"));
             }
@@ -315,7 +317,7 @@ impl Editor {
         let mut out = lines.join(nl);
         let whole = rows.is_none();
         // keep the file's original trailing newline, or lack of one
-        if !whole || self.file.final_newline && !self.buf.is_empty() {
+        if !whole || self.file.final_newline && (!self.buf.is_empty() || self.file.blank_line) {
             out.push_str(nl);
         }
         out
