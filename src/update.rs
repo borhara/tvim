@@ -355,12 +355,13 @@ fn update_from(releases: &str, dir: &Path, version: &str) -> Option<PathBuf> {
         tinsel::error("there's no prebuilt tvim for this machine: use cargo install tvim");
         return None;
     };
-    let work = std::env::temp_dir().join(format!("tvim-update-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&work);
-    if let Err(e) = std::fs::create_dir_all(&work) {
-        tinsel::error(&format!("couldn't make a folder to update in: {e}"));
-        return None;
-    }
+    let work = match private_dir(&std::env::temp_dir(), "tvim-update") {
+        Ok(dir) => dir,
+        Err(e) => {
+            tinsel::error(&format!("couldn't make a folder to update in: {e}"));
+            return None;
+        }
+    };
     let live = Live::new("tvim", format!("v{version}")).no_history().no_notify();
     let (download, unpack, install) = (live.step("Download"), live.step("Unpack"), live.step("Install"));
     let tvim = dir.join("tvim");
@@ -409,6 +410,29 @@ fn update_from(releases: &str, dir: &Path, version: &str) -> Option<PathBuf> {
     };
     live.finish_with_card(Card::success(&format!("updated to tvim v{version}")).kv("in", &shown));
     Some(tvim)
+}
+
+/// A new folder in `parent` that only this user can get into, to unpack a download in. It's
+/// made fresh, never one found there already: in a temp folder others share, one made first
+/// by someone else could have its tvim swapped for theirs before it's installed.
+fn private_dir(parent: &Path, prefix: &str) -> std::io::Result<PathBuf> {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let mut tries = 0;
+    loop {
+        let dir = parent.join(format!("{prefix}-{}-{nanos}-{tries}", std::process::id()));
+        match builder.create(&dir) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && tries < 100 => tries += 1,
+            made => return made.map(|()| dir),
+        }
+    }
 }
 
 /// Puts `new` where `old` is: copied in beside it first, then renamed over it in one go.
@@ -577,6 +601,28 @@ mod tests {
             "a failed swap leaves it be"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn downloads_unpack_in_a_folder_of_their_own() {
+        let parent = std::env::temp_dir().join(format!("tvim-private-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        std::fs::create_dir_all(&parent).unwrap();
+        let a = private_dir(&parent, "work").unwrap();
+        let b = private_dir(&parent, "work").unwrap();
+        assert_ne!(a, b, "never one already there");
+        assert_eq!(std::fs::read_dir(&a).unwrap().count(), 0);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&a).unwrap().permissions().mode() & 0o777,
+                0o700,
+                "nor open to others"
+            );
+        }
+        assert!(private_dir(&parent.join("missing"), "work").is_err());
+        let _ = std::fs::remove_dir_all(&parent);
     }
 
     #[cfg(unix)]
