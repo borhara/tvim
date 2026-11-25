@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0](https://github.com/borhara/tvim/compare/v1.3.0...v1.4.0) - 2026-11-25
+
+### Added
+
+- the update's news has a still mark, and its versions read as v1.3.0
+- the update says a new tvim is available, under more stars twinkling faster
+- the update twinkles like tvim's skyline the whole time it asks, and takes one key to answer
+- the update's stars come out one by one while its mark sparkles, then keep twinkling while it asks
+- updating draws a strip of stars, then download, unpack and install as steps and a card, and leaves alone installs it can't write to
+- tvim looks for a newer version once a day and offers it at launch, updating itself when installed by the script
+
+### Other
+
+- install with curl -fsSL tvim.shiv.mov | sh
+- the release script can build and pack the binaries alone, with --dry-run
+
 ## [1.3.0](https://github.com/borhara/tvim/compare/v1.2.0...v1.3.0) - 2026-11-25
 
 ### Added
