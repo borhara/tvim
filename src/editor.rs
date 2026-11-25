@@ -16,7 +16,7 @@ use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
 use crate::jumps::JumpList;
-use crate::languages::{Answer, Ask, Edit, FileEdits, Languages, Place, Problem, Said};
+use crate::languages::{Ask, Languages};
 use crate::mapping::Maps;
 use crate::motion::{self, Find};
 use crate::object::{Span, object};
