@@ -15,7 +15,7 @@ use crate::finder::{Finder, Pick};
 use crate::git::{Base, Git, Tree};
 use crate::gitmenu::{GitMenu, Want};
 use crate::grep::{Grep, Jump};
-use crate::jumps::{JumpList, Spot};
+use crate::jumps::JumpList;
 use crate::languages::{Answer, Ask, Edit, FileEdits, Languages, OpenDoc, Place, Problem, Said};
 use crate::mapping::{Lookup, MapMode, Mapping, Maps};
 use crate::motion::{self, Find};
@@ -28,6 +28,7 @@ use crate::text::{char_count, class, col_at, first_non_blank, indent, is_word, v
 use crate::window::{Node, Win};
 
 mod block;
+mod jumps;
 mod undo;
 pub use block::Block;
 
@@ -4599,82 +4600,6 @@ impl Editor {
 
     pub(crate) fn push_effect(&mut self, e: Effect) {
         self.effects.push(e);
-    }
-
-    pub(crate) fn remember_jump(&mut self) {
-        self.jump_from(self.cursor);
-    }
-
-    fn jump_from(&mut self, from: Pos) {
-        self.marks.insert('\'', from);
-        self.push_jump(from);
-    }
-
-    fn push_jump(&mut self, pos: Pos) {
-        if self.no_jumps {
-            return;
-        }
-        self.jumps.push(Spot { pos, ..self.here() });
-    }
-
-    fn here(&self) -> Spot {
-        Spot {
-            buffer: self.buffer_id,
-            path: self.file.path.clone(),
-            pos: self.cursor,
-        }
-    }
-
-    fn jump_older(&mut self, mut n: usize) {
-        let mut here = self.here();
-        while let Some(spot) = self.jumps.back(here.clone(), n) {
-            if self.go_to_spot(spot) {
-                return;
-            }
-            here = self.here();
-            n = 1;
-        }
-    }
-
-    fn jump_newer(&mut self, mut n: usize) {
-        while let Some(spot) = self.jumps.forward(n) {
-            if self.go_to_spot(spot) {
-                return;
-            }
-            n = 1;
-        }
-    }
-
-    fn go_to_spot(&mut self, spot: Spot) -> bool {
-        self.no_jumps = true;
-        let found = if spot.buffer == self.buffer_id {
-            true
-        } else if let Some(i) = (0..self.docs.len()).find(|&i| i != self.current && self.docs[i].id == spot.buffer) {
-            self.switch_to(i);
-            true
-        } else if let Some(path) = &spot.path {
-            match self.open_path(path) {
-                Ok(()) => true,
-                Err(e) => {
-                    self.error(format!("\"{}\" {e}", path.display()));
-                    false
-                }
-            }
-        } else {
-            false
-        };
-        self.no_jumps = false;
-        if found {
-            self.leave_visual_if_any();
-            self.mode = Mode::Normal;
-            self.cursor = self.clamp_pos(spot.pos);
-            self.set_want();
-        }
-        found
-    }
-
-    pub(crate) fn marks(&self) -> &HashMap<char, Pos> {
-        &self.marks
     }
 
     pub(crate) fn set_cursor(&mut self, p: Pos) {
