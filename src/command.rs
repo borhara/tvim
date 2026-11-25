@@ -182,7 +182,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     if key == Key::Char(' ') && !visual {
         return match keys.get(i + 1) {
             None => Parse::More,
-            Some(Key::Char(c)) if "fgb/zmGr".contains(*c) => done(Act::Leader(*c), i + 2, count1),
+            Some(Key::Char(c)) if "fgb/zmGrn".contains(*c) => done(Act::Leader(*c), i + 2, count1),
             Some(Key::Char('h')) => match keys.get(i + 2) {
                 None => Parse::More,
                 Some(Key::Char('r')) => done(Act::Hunk('r'), i + 3, count1),
@@ -203,7 +203,9 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     match key {
         Key::Char('g') => match keys.get(i + 1) {
             None => return Parse::More,
-            Some(Key::Char(c @ ('v' | 'J' | 'i' | 'p' | 'P' | 't' | 'T'))) => return done(Act::G(*c), i + 2, count1),
+            Some(Key::Char(c @ ('v' | 'J' | 'i' | 'p' | 'P' | 't' | 'T' | 'd' | 'r'))) => {
+                return done(Act::G(*c), i + 2, count1);
+            }
             _ => {}
         },
         Key::Char('z') => {
@@ -249,7 +251,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 }
 
-const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&";
+const NORMAL_KEYS: &str = "xXsSDCYpPJ~uU.iaIAoORvV:/?*#&K";
 const VISUAL_KEYS: &str = "xXsSDCYpPJ~uUoORvV:IA";
 
 /// Whether `keys` are no more than a register and a count, so a new command starts next.

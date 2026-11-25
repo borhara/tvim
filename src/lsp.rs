@@ -305,6 +305,10 @@ fn initialize_params(root: &Path) -> Json {
             "capabilities",
             Json::object([
                 (
+                    "workspace",
+                    Json::object([("workspaceEdit", Json::object([("documentChanges", true.into())]))]),
+                ),
+                (
                     "general",
                     Json::object([("positionEncodings", vec!["utf-8", "utf-16"].into())]),
                 ),
@@ -313,6 +317,13 @@ fn initialize_params(root: &Path) -> Json {
                     Json::object([
                         ("synchronization", Json::object([("didSave", true.into())])),
                         ("publishDiagnostics", Json::Object(Vec::new())),
+                        ("definition", Json::object([("linkSupport", true.into())])),
+                        ("references", Json::Object(Vec::new())),
+                        ("rename", Json::Object(Vec::new())),
+                        (
+                            "hover",
+                            Json::object([("contentFormat", vec!["markdown", "plaintext"].into())]),
+                        ),
                     ]),
                 ),
             ]),
