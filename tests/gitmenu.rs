@@ -392,3 +392,22 @@ fn the_log_and_branches_are_drawn_with_their_hints() {
         assert!(screen.contains(want), "{want}\n{screen}");
     }
 }
+
+#[test]
+fn the_discard_question_and_commit_message_are_drawn() {
+    let Some(dir) = repo("draw-prompt", "a\n") else { return };
+    std::fs::write(dir.join("a.txt"), "oops\n").unwrap();
+
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>Gd");
+    let screen = shown(e, 110, 30);
+    assert!(screen.contains("discard changes to a.txt?"), "{screen}");
+    assert!(screen.contains("any other key keeps them"), "{screen}");
+
+    let mut e = open(&dir.join("a.txt"));
+    menu(&mut e, "<Space>Gs");
+    e.keys(&parse("cfix it"));
+    let screen = shown(e, 110, 30);
+    assert!(screen.contains("message › fix it"), "{screen}");
+    assert!(screen.contains("a.txt  staged"), "{screen}");
+}
