@@ -31,7 +31,7 @@ cargo install tvim
 ```sh
 tvim notes.md             # edit a file
 tvim .                    # browse a folder in the sidebar
-tvim                      # reopen whatever was open last time
+tvim                      # reopen what was open here last time, or browse this folder
 tvim +42 src/main.rs      # start on line 42
 tvim +/TODO src/lib.rs    # start on the first TODO
 ```
