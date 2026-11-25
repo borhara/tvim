@@ -86,6 +86,8 @@ pub struct Answer {
     pub id: usize,
     pub version: u64,
     pub at: Pos,
+    // every open file's version when asked, as an answer can be about other files too
+    pub versions: Vec<(usize, u64)>,
     pub ask: Ask,
     pub said: Said,
 }
@@ -115,6 +117,7 @@ struct Asked {
     id: usize,
     version: u64,
     at: Pos,
+    versions: Vec<(usize, u64)>,
     ask: Ask,
 }
 
@@ -256,6 +259,7 @@ impl Languages {
             id,
             version: s.version,
             at,
+            versions: self.synced.iter().map(|(&id, s)| (id, s.version)).collect(),
             ask,
         };
         r.asked.insert(request, asked);
@@ -332,6 +336,7 @@ impl Languages {
                                 id: asked.id,
                                 version: asked.version,
                                 at: asked.at,
+                                versions: asked.versions,
                                 ask: asked.ask,
                                 said,
                             });
@@ -1179,8 +1184,10 @@ mod tests {
             },
         ];
         let path = paths::absolute(Path::new("/work/a.rs"));
+        let answered = answer(&mut r, &docs);
+        assert_eq!(answered.versions, [(1, 1)], "to check each file against");
         assert_eq!(
-            answer(&mut r, &docs).said,
+            answered.said,
             Said::Edits(vec![FileEdits {
                 path: path.clone(),
                 edits

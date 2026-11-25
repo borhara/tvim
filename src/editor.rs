@@ -1518,7 +1518,7 @@ impl Editor {
             (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
-            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files),
+            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions),
             _ => {}
         }
     }
@@ -1534,7 +1534,23 @@ impl Editor {
     }
 
     // makes each file's edits, opening those that aren't open yet, and leaves them unsaved
-    fn apply_edits(&mut self, files: Vec<FileEdits>) {
+    fn apply_edits(&mut self, files: Vec<FileEdits>, asked: &[(usize, u64)]) {
+        // an open file changed since asking would take the edits in the wrong places
+        let open = std::iter::once((self.buffer_id, self.version, self.file.path.as_deref())).chain(
+            (self.docs.iter().enumerate())
+                .filter(|&(i, _)| i != self.current)
+                .map(|(_, d)| (d.id, d.version, d.file.path.as_deref())),
+        );
+        let changed: Vec<PathBuf> = open
+            .filter(|&(id, version, _)| asked.iter().any(|&(i, v)| i == id && v != version))
+            .filter_map(|(_, _, path)| path.map(crate::paths::absolute))
+            .collect();
+        if let Some(f) = files
+            .iter()
+            .find(|f| changed.contains(&crate::paths::absolute(&f.path)))
+        {
+            return self.error(format!("{} changed while renaming, so nothing was", listed(&f.path)));
+        }
         // in full rather than canonical, as a file not saved yet has no canonical path
         let back = self.current;
         let here = self.file.path.as_deref().map(crate::paths::absolute);
@@ -4956,10 +4972,14 @@ mod tests {
 
     // as the server would answer about where the cursor is now
     fn answer(e: &Editor, ask: Ask, said: Said) -> Answer {
+        let others = e.docs.iter().enumerate().filter(|&(i, _)| i != e.current);
         Answer {
             id: e.buffer_id,
             version: e.version,
             at: e.cursor,
+            versions: std::iter::once((e.buffer_id, e.version))
+                .chain(others.map(|(_, d)| (d.id, d.version)))
+                .collect(),
             ask,
             said,
         }
@@ -5182,6 +5202,37 @@ mod tests {
         let said = &e.message.as_ref().unwrap().text;
         assert!(said.starts_with("renamed 2 places, but couldn't open "), "{said}");
         assert!(said.contains("isn't UTF-8 text"), "{said}");
+    }
+
+    #[test]
+    fn a_rename_is_dropped_when_a_file_it_edits_changed_while_waiting() {
+        let a = temp_file("ren-stale-a.rs", "use b::old;\nfn main() { old(); }\n");
+        let b = temp_file("ren-stale-b.rs", "pub fn old() {}\n");
+        let mut e = Editor::open(&b).unwrap();
+        e.ex(&format!("e {}", a.display()));
+        let files = vec![
+            FileEdits {
+                path: a.clone(),
+                edits: vec![edit((0, 7), (0, 10), "new")],
+            },
+            FileEdits {
+                path: b.clone(),
+                edits: vec![edit((0, 7), (0, 10), "new")],
+            },
+        ];
+        let asked = answer(&e, Ask::Rename("new".into()), Said::Edits(files));
+        e.ex("bp");
+        e.keys(&parse("O// added above<Esc>"));
+        e.ex("bn");
+        e.answered(asked);
+        let said = &e.message.as_ref().unwrap().text;
+        assert!(
+            said.ends_with("ren-stale-b.rs changed while renaming, so nothing was"),
+            "{said}"
+        );
+        assert_eq!(e.buf.lines()[0], "use b::old;");
+        e.ex("bp");
+        assert_eq!(e.buf.lines(), ["// added above", "pub fn old() {}"]);
     }
 
     #[test]

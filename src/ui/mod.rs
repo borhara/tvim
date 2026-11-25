@@ -1842,6 +1842,7 @@ mod tests {
             id: e.buffer_id,
             version: e.version(),
             at: e.cursor(),
+            versions: Vec::new(),
             ask: crate::languages::Ask::Hover,
             said: crate::languages::Said::Text(text.into()),
         };
