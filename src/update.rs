@@ -1,5 +1,6 @@
 //! Keeping tvim up to date: how it was installed, whether a newer release is out, and for an
-//! install by install.sh, updating it in place.
+//! install by install.sh, updating it in place: download, unpack and swap the binary, drawn as
+//! a tinsel step list under a strip of stars.
 //!
 //! A check runs in the background at most once a day and keeps what it found in the state
 //! folder, so the next launch can offer it without waiting on the network. Checks ask GitHub
@@ -7,7 +8,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tinsel::app::{Frame, Sparkles};
+use tinsel::{Card, Live, bold, paint, palette};
 
 const RELEASES: &str = "https://github.com/borhara/tvim/releases";
 const DAY: u64 = 24 * 60 * 60;
@@ -19,6 +23,8 @@ pub enum Install {
     Script(PathBuf),
     Homebrew,
     Cargo,
+    /// Some way tvim can't tell, in a folder it can't write to, like a package manager's.
+    Elsewhere,
     /// Built from a checkout, which updates with the code.
     Dev,
 }
@@ -50,8 +56,22 @@ impl Install {
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cargo")))
             .map(|home| real(home.join("bin")));
         match std::env::current_exe() {
-            Ok(exe) => Install::of(&real(exe), cargo_bin.as_deref()),
+            Ok(exe) => match Install::of(&real(exe), cargo_bin.as_deref()) {
+                Install::Script(dir) if !writable(&dir) => Install::Elsewhere,
+                install => install,
+            },
             Err(_) => Install::Dev,
+        }
+    }
+
+    /// The news of a newer version, for an install tvim can't update itself.
+    fn news(&self, latest: &str) -> String {
+        match self {
+            Install::Dev => {
+                format!("tvim {latest} is out; this one was built from a checkout, so pull and build again")
+            }
+            Install::Elsewhere => format!("tvim {latest} is out: update it the way you installed it"),
+            install => format!("tvim {latest} is out: run {}", install.command().unwrap_or_default()),
         }
     }
 
@@ -63,6 +83,28 @@ impl Install {
             _ => None,
         }
     }
+}
+
+/// Whether tvim could put a new binary in `dir`.
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".tvim-update-{}", std::process::id()));
+    let wrote = std::fs::write(&probe, b"").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    wrote
+}
+
+/// The release archive for this machine, named as install.sh and the release script name them.
+pub fn archive(arch: &str, os: &str) -> Option<String> {
+    let arch = match arch {
+        "aarch64" | "x86_64" => arch,
+        _ => return None,
+    };
+    let os = match os {
+        "macos" => "apple-darwin",
+        "linux" => "unknown-linux-musl",
+        _ => return None,
+    };
+    Some(format!("tvim-{arch}-{os}.tar.gz"))
 }
 
 /// Whether `latest` is a later version than `current`, both as in 1.4.0.
@@ -175,26 +217,108 @@ pub fn check_in_background(dir: &Path) {
     });
 }
 
-/// Runs the latest release's install.sh into `dir`, replacing the tvim there. Downloaded first
-/// rather than piped, so a failed download isn't mistaken for a finished install.
-pub fn install_into(dir: &Path) -> Result<(), String> {
-    let script = std::env::temp_dir().join(format!("tvim-install-{}.sh", std::process::id()));
-    let downloaded = Command::new("curl")
-        .args(["-fsSL", "--max-time", "60", "-o"])
-        .arg(&script)
-        .arg(format!("{RELEASES}/latest/download/install.sh"))
-        .status();
-    let ran = match downloaded {
-        Ok(s) if s.success() => Command::new("sh").arg(&script).env("TVIM_INSTALL_DIR", dir).status(),
-        Ok(_) => return Err("couldn't download the installer".into()),
-        Err(e) => return Err(format!("couldn't run curl: {e}")),
+/// The news above the question: a strip of stars, like the ones along the bottom of tvim, and
+/// what's out.
+fn announce(latest: &str, current: &str) {
+    let width = tinsel::terminal_width().clamp(24, 64);
+    // a still moment in the twinkle, once a few stars have come out
+    let mut sky = Frame::new(width, 2).at(4.0);
+    sky.render(sky.area(), Sparkles::new().density(0.08));
+    println!();
+    sky.snapshot().print();
+    println!(
+        "  {} {}  {}",
+        paint(palette::ROSE, "✦"),
+        bold(&format!("tvim {latest} is out")),
+        paint(palette::MUTED, &format!("you have {current}"))
+    );
+    println!();
+}
+
+/// Downloads `version` for this machine, unpacks it, and swaps it in for the tvim in `dir`,
+/// as a step list ending in a card. The new binary goes beside the old one and is renamed over
+/// it, so a failure at any point leaves the old one as it was.
+pub fn update_in(dir: &Path, version: &str) -> Option<PathBuf> {
+    let Some(name) = archive(std::env::consts::ARCH, std::env::consts::OS) else {
+        tinsel::error("there's no prebuilt tvim for this machine: use cargo install tvim");
+        return None;
     };
-    let _ = std::fs::remove_file(&script);
-    match ran {
-        Ok(s) if s.success() => Ok(()),
-        Ok(_) => Err("the installer failed".into()),
-        Err(e) => Err(format!("couldn't run the installer: {e}")),
+    let work = std::env::temp_dir().join(format!("tvim-update-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&work);
+    if let Err(e) = std::fs::create_dir_all(&work) {
+        tinsel::error(&format!("couldn't make a folder to update in: {e}"));
+        return None;
     }
+    let live = Live::new("tvim", version).no_history().no_notify();
+    let (download, unpack, install) = (live.step("Download"), live.step("Unpack"), live.step("Install"));
+    let tvim = dir.join("tvim");
+    let ok = download
+        .run(
+            Command::new("curl")
+                .args(["-fsSL", "--max-time", "120", "-o"])
+                .arg(work.join(&name))
+                .arg(format!("{RELEASES}/download/v{version}/{name}")),
+        )
+        .is_ok()
+        && unpack
+            .run(
+                Command::new("tar")
+                    .arg("xzf")
+                    .arg(work.join(&name))
+                    .arg("-C")
+                    .arg(&work),
+            )
+            .is_ok()
+        && {
+            install.start();
+            install.detail(dir.display().to_string());
+            // checked before it replaces anything
+            let new = work.join("tvim");
+            let swapped = if is_ok_version(&new, version) {
+                swap(&new, &tvim).map_err(|e| e.to_string())
+            } else {
+                Err(format!("the download isn't tvim {version}"))
+            };
+            match &swapped {
+                Ok(()) => install.done(),
+                Err(why) => install.fail(why.clone()),
+            }
+            swapped.is_ok()
+        };
+    let _ = std::fs::remove_dir_all(&work);
+    if !ok {
+        live.finish();
+        return None;
+    }
+    let home = std::env::var("HOME").ok().filter(|h| !h.is_empty());
+    let shown = match home.as_deref().and_then(|h| dir.strip_prefix(h).ok()) {
+        Some(rest) => format!("~/{}", rest.display()),
+        None => dir.display().to_string(),
+    };
+    live.finish_with_card(Card::success(&format!("updated to tvim {version}")).kv("in", &shown));
+    Some(tvim)
+}
+
+/// Puts `new` where `old` is: copied in beside it first, then renamed over it in one go.
+fn swap(new: &Path, old: &Path) -> std::io::Result<()> {
+    let beside = old.with_file_name(format!(".tvim-new-{}", std::process::id()));
+    std::fs::copy(new, &beside)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&beside, std::fs::Permissions::from_mode(0o755))?;
+    }
+    std::fs::rename(&beside, old).inspect_err(|_| {
+        let _ = std::fs::remove_file(&beside);
+    })
+}
+
+/// Whether the binary at `tvim` says it's `version`.
+fn is_ok_version(tvim: &Path, version: &str) -> bool {
+    Command::new(tvim)
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == format!("tvim {version}"))
 }
 
 /// What a launch should do about a newer version an earlier check found.
@@ -207,8 +331,8 @@ pub enum Offer {
     Tell(String),
 }
 
-/// At launch: asks whether to update an install.sh install, or for Homebrew and cargo says
-/// what to run, once for each new version.
+/// At launch: asks whether to update an install.sh install, or for the others says what to
+/// run, once for each new version.
 pub fn offer(dir: &Path) -> Offer {
     let current = env!("CARGO_PKG_VERSION");
     let mut state = State::read(dir);
@@ -219,24 +343,24 @@ pub fn offer(dir: &Path) -> Offer {
     let offer = match &install {
         Install::Dev => return Offer::Nothing,
         Install::Script(bin) => {
-            let question = format!("tvim {latest} is out (you have {current}). Update now?");
-            match tinsel::prompt::confirm(&question, true) {
-                Ok(true) => match install_into(bin) {
-                    Ok(()) => return Offer::Restart(bin.join("tvim")),
-                    Err(why) => {
-                        tinsel::error(&format!("couldn't update tvim: {why}"));
-                        return Offer::Nothing;
-                    }
-                },
+            announce(&latest, current);
+            match tinsel::prompt::confirm("Update now?", true) {
+                Ok(true) => {
+                    return match update_in(bin, &latest) {
+                        Some(tvim) => {
+                            // a moment to see the card before the editor takes the screen
+                            std::thread::sleep(Duration::from_millis(900));
+                            Offer::Restart(tvim)
+                        }
+                        None => Offer::Nothing,
+                    };
+                }
                 Ok(false) => Offer::Nothing,
                 // Esc, or no terminal to ask on: ask again next time
                 Err(_) => return Offer::Nothing,
             }
         }
-        _ => Offer::Tell(format!(
-            "tvim {latest} is out: run {}",
-            install.command().unwrap_or_default()
-        )),
+        _ => Offer::Tell(install.news(&latest)),
     };
     state.skipped = Some(latest);
     let _ = state.write(dir);
@@ -261,24 +385,12 @@ pub fn now_or_say() -> bool {
         return true;
     }
     match Install::current() {
-        Install::Script(dir) => match install_into(&dir) {
-            Ok(()) => true,
-            Err(why) => {
-                tinsel::error(&format!("couldn't update tvim: {why}"));
-                false
-            }
-        },
-        Install::Dev => {
-            tinsel::info(&format!(
-                "tvim {latest} is out; this one was built from a checkout, so pull and build again"
-            ));
-            true
+        Install::Script(dir) => {
+            announce(&latest, current);
+            update_in(&dir, &latest).is_some()
         }
         install => {
-            tinsel::info(&format!(
-                "tvim {latest} is out: run {}",
-                install.command().unwrap_or_default()
-            ));
+            tinsel::info(&install.news(&latest));
             true
         }
     }
@@ -307,6 +419,31 @@ mod tests {
         }
         assert_eq!(Install::Homebrew.command(), Some("brew upgrade tvim"));
         assert_eq!(Install::Cargo.command(), Some("cargo install tvim"));
+        assert_eq!(Install::Elsewhere.command(), None);
+        assert!(Install::Elsewhere.news("1.4.0").contains("the way you installed it"));
+    }
+
+    #[test]
+    fn the_archive_is_named_for_the_machine() {
+        assert_eq!(
+            archive("aarch64", "macos").as_deref(),
+            Some("tvim-aarch64-apple-darwin.tar.gz")
+        );
+        assert_eq!(
+            archive("x86_64", "linux").as_deref(),
+            Some("tvim-x86_64-unknown-linux-musl.tar.gz")
+        );
+        assert_eq!(archive("x86_64", "windows"), None);
+        assert_eq!(archive("riscv64", "linux"), None);
+    }
+
+    #[test]
+    fn a_folder_that_cant_be_written_to_isnt_updated_in() {
+        let dir = std::env::temp_dir().join(format!("tvim-writable-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(writable(&dir));
+        assert!(!writable(&dir.join("missing")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
