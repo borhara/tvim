@@ -1581,16 +1581,18 @@ impl Editor {
             Some(line) => starts[p.row] + crate::text::byte_at(line, p.col),
             None => text.len(),
         };
-        let mut spans: Vec<(usize, usize, &str)> = edits
+        let mut spans: Vec<(usize, usize, usize, &str)> = edits
             .iter()
-            .map(|e| (offset(e.start), offset(e.end), e.text.as_str()))
-            .filter(|(a, b, _)| a <= b)
+            .enumerate()
+            .map(|(i, e)| (offset(e.start), offset(e.end), i, e.text.as_str()))
+            .filter(|(a, b, _, _)| a <= b)
             .collect();
-        spans.sort_by_key(|&(a, b, _)| std::cmp::Reverse((a, b)));
+        // the last given goes in first, so text put at one place keeps the order it came in
+        spans.sort_by_key(|&(a, b, i, _)| std::cmp::Reverse((a, b, i)));
         let mut cursor = offset(self.cursor);
         // from the end, so places yet to come stay put; any overlapping one already made is skipped
         let mut done = usize::MAX;
-        for (from, to, new) in spans {
+        for (from, to, _, new) in spans {
             if to > done {
                 continue;
             }
@@ -5109,6 +5111,18 @@ mod tests {
             ["fn old() {}", "fn main() { old(); old(); }"],
             "undone at once"
         );
+    }
+
+    #[test]
+    fn text_put_at_one_place_keeps_its_order() {
+        let a = temp_file("ren-order.rs", "let x\n");
+        let mut e = Editor::open(&a).unwrap();
+        let files = vec![FileEdits {
+            path: a.clone(),
+            edits: vec![edit((0, 4), (0, 4), "A"), edit((0, 4), (0, 4), "B")],
+        }];
+        e.answered(answer(&e, Ask::Rename("x".into()), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["let ABx"]);
     }
 
     #[test]
