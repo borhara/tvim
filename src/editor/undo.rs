@@ -6,6 +6,17 @@ use crate::buffer::Pos;
 use crate::diff;
 
 impl Editor {
+    /// Whether the open file can't be changed, as a picture can't, saying so if not. Asked
+    /// before a change starts, so nothing it would do on the way happens, to registers or
+    /// marks; what gets past it is undone in [`end_change`](Self::end_change).
+    pub(crate) fn refuses_change(&mut self) -> bool {
+        if self.file.image.is_none() {
+            return false;
+        }
+        self.info("images can't be changed");
+        true
+    }
+
     pub(crate) fn touch(&mut self) {
         if !self.changing {
             self.undo.push(self.snapshot());
