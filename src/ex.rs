@@ -25,7 +25,11 @@ impl Editor {
     fn split_bar<'a>(&self, line: &'a str) -> Option<(String, &'a str)> {
         let after = self.parse_range(line).map_or(line, |(_, rest)| rest).trim_start();
         let name = &after[..after.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(after.len())];
+        // :r !cmd too, as the command is the shell's
+        let read_shell =
+            !name.is_empty() && "read".starts_with(name) && after[name.len()..].trim_start().starts_with('!');
         let whole = after.starts_with('!')
+            || read_shell
             || name == "s"
             || name.len() >= 2 && "substitute".starts_with(name)
             || name.len() >= 4 && "normal".starts_with(name)
@@ -75,7 +79,14 @@ impl Editor {
             if cmd.trim().is_empty() {
                 return self.error("E471: Argument required");
             }
-            self.push_effect(Effect::Shell(cmd.trim().to_string()));
+            match range {
+                Some(lines) => {
+                    self.filter(lines, cmd.trim());
+                    self.end_change();
+                    self.sync_windows();
+                }
+                None => self.push_effect(Effect::Shell(cmd.trim().to_string())),
+            }
             return;
         }
         let mut name_len = rest.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(rest.len());
@@ -195,7 +206,12 @@ impl Editor {
             } else {
                 range.map_or(self.cursor.row, |r| r.1) + 1
             };
-            self.read_file(arg, at);
+            // :r!cmd is :r !cmd, its ! read as a bang
+            match arg.strip_prefix('!') {
+                Some(cmd) => self.read_command(cmd.trim(), at),
+                None if force => self.read_command(arg, at),
+                None => self.read_file(arg, at),
+            }
         } else if name == "s" || is("substitute", 2) {
             self.substitute(
                 range.unwrap_or(current),
@@ -547,6 +563,48 @@ impl Editor {
             }
             Err(e) => self.error(format!("E484: Can't open file {path}: {e}")),
         }
+    }
+
+    // :{range}!cmd hands the lines to cmd, and puts what it prints in their place
+    fn filter(&mut self, (first, last): Lines, cmd: &str) {
+        let last = last.min(self.buf.last_row());
+        let mut input = self.buf.lines()[first..=last].join("\n");
+        input.push('\n');
+        let out = match run_shell(cmd, Some(input)) {
+            Ok(out) => out,
+            Err(e) => return self.error(e),
+        };
+        let lines = output_lines(&out);
+        let (old, new) = (last - first + 1, lines.len());
+        self.touch();
+        if lines.is_empty() {
+            self.buf.delete_lines(first, last);
+        } else {
+            self.buf.replace_lines(first, last, lines);
+        }
+        self.set_cursor(self.first_non_blank_pos(first.min(self.buf.last_row())));
+        if old > 2 || new > 2 {
+            self.info(format!("{old} lines filtered"));
+        }
+    }
+
+    // :r !cmd puts what cmd prints below the line
+    fn read_command(&mut self, cmd: &str, at: usize) {
+        if cmd.is_empty() {
+            return self.error("E471: Argument required");
+        }
+        let out = match run_shell(cmd, None) {
+            Ok(out) => out,
+            Err(e) => return self.error(e),
+        };
+        let lines = output_lines(&out);
+        if lines.is_empty() {
+            return;
+        }
+        self.touch();
+        let at = at.min(self.buf.len());
+        self.buf.insert_lines(at, lines);
+        self.set_cursor(self.first_non_blank_pos(at));
     }
 
     fn substitute(&mut self, (first, last): (usize, usize), arg: &str) {
@@ -957,6 +1015,52 @@ fn split_first_unescaped(s: &str, delim: char) -> (String, &str) {
         }
     }
     (first, "")
+}
+
+/// Runs `cmd` in the shell, giving it `input`, and gives back what it prints. A command that
+/// fails says why with the first line it wrote to stderr, and changes nothing.
+fn run_shell(cmd: &str, input: Option<String>) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
+    let mut child = Command::new(&shell)
+        .arg("-c")
+        .arg(cmd)
+        .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("E282: Can't run {shell}: {e}"))?;
+    // written from a thread of its own, so a command that prints as it reads can't stall
+    let writer = input.zip(child.stdin.take()).map(|(text, mut stdin)| {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(text.as_bytes());
+        })
+    });
+    let out = child.wait_with_output().map_err(|e| format!("E282: {cmd}: {e}"))?;
+    if let Some(w) = writer {
+        let _ = w.join();
+    }
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let why = err.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+        let code = out.status.code().map_or("a signal".to_string(), |c| c.to_string());
+        return Err(if why.is_empty() {
+            format!("shell returned {code}")
+        } else {
+            format!("shell returned {code}: {why}")
+        });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+// what a command printed, as lines, without the newline it ends with
+fn output_lines(out: &str) -> Vec<String> {
+    let out = out.replace("\r\n", "\n");
+    match out.strip_suffix('\n').unwrap_or(&out) {
+        "" if out.is_empty() => Vec::new(),
+        text => text.split('\n').map(str::to_string).collect(),
+    }
 }
 
 fn expand_replacement(rep: &str, line: &[char], groups: &[Option<Span>]) -> String {

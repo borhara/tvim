@@ -704,6 +704,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         "gU" => "uppercase",
         "g~" => "swap case",
         "gc" => "comment",
+        "!" => "filter",
         _ => "",
     };
     let s: String = rest.iter().collect();

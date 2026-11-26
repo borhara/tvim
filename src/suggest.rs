@@ -35,7 +35,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("set", "se", "change an option"),
     ("substitute", "s", "replace text"),
     ("nohlsearch", "noh", "clear search highlights"),
-    ("read", "r", "put a file's text below"),
+    ("read", "r", "put a file's text below, or a command's with :r !cmd"),
     ("registers", "reg", "show registers"),
     ("marks", "", "show marks"),
     ("normal", "norm", "run keys on each line"),

@@ -50,6 +50,7 @@ pub enum Op {
     Upper,
     ToggleCase,
     Comment,
+    Filter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -316,6 +317,7 @@ fn operator(keys: &[Key], visual: bool) -> Option<Result<(Op, usize), ()>> {
         Key::Char('y') => op(Op::Yank),
         Key::Char('>') => op(Op::Indent),
         Key::Char('<') => op(Op::Dedent),
+        Key::Char('!') => op(Op::Filter),
         Key::Char('u') if visual => op(Op::Lower),
         Key::Char('U') if visual => op(Op::Upper),
         Key::Char('~') if visual => op(Op::ToggleCase),
@@ -458,6 +460,11 @@ mod tests {
             Act::Operate(Op::Change, Target::Object { kind: '"', inner: true })
         );
         assert_eq!(cmd(">>").act, Act::Operate(Op::Indent, Target::Lines));
+        assert_eq!(cmd("!!").act, Act::Operate(Op::Filter, Target::Lines));
+        assert_eq!(
+            cmd("!ip").act,
+            Act::Operate(Op::Filter, Target::Object { kind: 'p', inner: true })
+        );
         assert_eq!(state("d"), Parse::More);
         assert_eq!(state("di"), Parse::More);
         assert_eq!(state("diz"), Parse::Invalid);

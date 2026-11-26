@@ -66,7 +66,7 @@ impl Editor {
 
     pub(super) fn is_change(cmd: &Cmd) -> bool {
         match cmd.act {
-            Act::Operate(op, _) => op != Op::Yank,
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Filter),
             Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
             Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') | Act::Hunk('r') => true,

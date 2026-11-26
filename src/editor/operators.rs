@@ -117,8 +117,12 @@ impl Editor {
                 self.range_to(to, kind)
             }
         };
-        // 3>> is three lines, not three shifts
-        let times = if matches!(op, Op::Indent | Op::Dedent) { 1 } else { n };
+        // 3>> is three lines, not three shifts, and 3!! three lines to filter
+        let times = if matches!(op, Op::Indent | Op::Dedent | Op::Filter) {
+            1
+        } else {
+            n
+        };
         self.apply(op, range, register, times);
     }
 
@@ -250,6 +254,16 @@ impl Editor {
                 self.buf.delete(from, to);
                 self.buf.insert(from, &changed);
                 self.cursor = from;
+            }
+            // asks for the command, with the lines filled in as vim does
+            Op::Filter => {
+                let (first, last) = (r.start.row, r.last_row().min(self.buf.last_row()));
+                self.cursor = self.first_non_blank_pos(first);
+                let lines = match last - first {
+                    0 => ".".to_string(),
+                    n => format!(".,.+{n}"),
+                };
+                self.begin_cmdline(':', format!("{lines}!"));
             }
             Op::Comment => {
                 let name = self

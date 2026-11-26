@@ -433,3 +433,44 @@ fn moving_lines_lands_on_them() {
     e.ex("%t$");
     assert_eq!(e.message().unwrap().text, "4 lines copied");
 }
+
+#[test]
+fn filtering_lines_through_a_command() {
+    assert_eq!(t("c\na\nb", ":%!sort<CR>"), "a\nb\nc");
+    assert_eq!(t("x\nc\na\ny", ":2,3!sort<CR>"), "x\na\nc\ny");
+    assert_eq!(t("a b", ":.!tr a-z A-Z<CR>"), "A B");
+    assert_eq!(t("a\nb\nc", ":%!grep -v b<CR>"), "a\nc");
+    assert_eq!(t("a\nb\nc", ":%!sort -r | head -2<CR>"), "c\nb", "the | is the shell's");
+    assert_eq!(t("a\nb", ":%!true<CR>"), "", "printing nothing takes the lines out");
+    assert_eq!(t("c\na\nb", ":%!sort<CR>u"), "c\na\nb", "one change");
+    assert_eq!(t("a", ":r !echo hi<CR>"), "a\nhi");
+    assert_eq!(t("a", ":r!echo hi<CR>"), "a\nhi", "with no space too");
+    assert_eq!(t("a", ":0r !printf 'x\\ny\\n'<CR>"), "x\ny\na");
+    assert_eq!(t("a\nb", ":r !echo 'p | q'<CR>"), "a\np | q\nb");
+}
+
+#[test]
+fn a_failing_filter_changes_nothing() {
+    let mut e = ed("a\nb");
+    e.ex("%!echo oops >&2; exit 3");
+    assert_eq!(e.text(), "a\nb");
+    assert_eq!(e.message().unwrap().text, "shell returned 3: oops");
+    e.ex("r !false");
+    assert_eq!(e.text(), "a\nb");
+    assert_eq!(e.message().unwrap().text, "shell returned 1");
+}
+
+#[test]
+fn the_filter_operator_asks_for_the_command() {
+    let mut e = ed("c\nb\na\n\nz");
+    e.keys(&parse("!ip"));
+    assert_eq!(e.cmdline().text, ".,.+2!");
+    e.keys(&parse("sort<CR>"));
+    assert_eq!(e.text(), "a\nb\nc\n\nz");
+    let mut e = ed("b\na");
+    e.keys(&parse("!!"));
+    assert_eq!(e.cmdline().text, ".!");
+    assert_eq!(t("b\na\nc", "2!!sort<CR>"), "a\nb\nc");
+    assert_eq!(t("x\nb\na", "jVj!sort<CR>"), "x\na\nb");
+    assert_eq!(t("c\nb\na", "G!ksort<CR>"), "c\na\nb", "upwards, from the top line");
+}
