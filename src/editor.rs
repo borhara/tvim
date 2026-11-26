@@ -494,6 +494,8 @@ pub struct Editor {
     saved: u64,
     versions: u64,
     changing: bool,
+    // above zero while :g runs, so the changes it makes undo as one
+    pub(crate) grouped: usize,
     pub(crate) cmd: CmdLine,
     cmd_history: Vec<String>,
     search_history: Vec<String>,
@@ -593,6 +595,7 @@ impl Editor {
             saved: 0,
             versions: 0,
             changing: false,
+            grouped: 0,
             cmd: CmdLine::default(),
             cmd_history: Vec::new(),
             search_history: Vec::new(),

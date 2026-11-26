@@ -333,3 +333,59 @@ fn choosing_language_servers() {
     e.ex("lsp restart");
     assert_eq!(said(&e).as_deref(), Some("language servers restarting"));
 }
+
+#[test]
+fn global() {
+    let src = "a1\nb\na2\nc\na3";
+    assert_eq!(t(src, ":g/a/d<CR>"), "b\nc");
+    assert_eq!(t(src, ":v/a/d<CR>"), "a1\na2\na3");
+    assert_eq!(t(src, ":g!/a/d<CR>"), "a1\na2\na3");
+    assert_eq!(t(src, ":g/^a/s/\\d/x/<CR>"), "ax\nb\nax\nc\nax");
+    assert_eq!(t(src, ":g/a/normal A;<CR>"), "a1;\nb\na2;\nc\na3;");
+    assert_eq!(t(src, ":2,4g/a/d<CR>"), "a1\nb\nc\na3", "a range limits the lines");
+    assert_eq!(
+        t("x\nx\ny", ":g/x/normal yyp<CR>"),
+        "x\nx\nx\nx\ny",
+        "lines put in aren't run on"
+    );
+    assert_eq!(t("a/b\nc", r":g#/#d<CR>"), "c");
+    assert_eq!(t("a/b\nc", r":g/\//d<CR>"), "c");
+    assert_eq!(
+        t("ab\nb\nab", ":g/a/> | s/a/z/<CR>"),
+        "    zb\nb\n    zb",
+        "the command takes in the |"
+    );
+    assert_eq!(
+        t("foo\nbar", "/bar<CR>:g//d<CR>"),
+        "foo",
+        "an empty pattern is the last search"
+    );
+}
+
+#[test]
+fn global_is_one_change() {
+    assert_eq!(t("a\nb\na\nb", ":g/a/d<CR>u"), "a\nb\na\nb");
+    assert_eq!(t("a\nb\na", ":g/a/normal Ax<CR>u"), "a\nb\na");
+}
+
+#[test]
+fn global_reports() {
+    let mut e = ed("a\nb");
+    e.ex("g/zzz/d");
+    assert_eq!(e.message().unwrap().text, "E486: Pattern not found: zzz");
+    let mut e = ed("a\nb\na");
+    e.ex("g/a");
+    assert_eq!(e.message().unwrap().text, "1: a  ·  3: a");
+    let mut e = ed("ab\na\nab");
+    e.ex("g/a/s/b/c/");
+    assert_eq!(e.text(), "ac\na\nac");
+    assert!(
+        e.message().is_none_or(|m| !m.error),
+        "lines without b are skipped quietly"
+    );
+    let mut e = ed("a\na\na\na\nb");
+    e.ex("g/a/d");
+    assert_eq!(e.message().unwrap().text, "4 fewer lines", "lines alike all go");
+    e.ex("g/b/g/b/d");
+    assert!(e.message().unwrap().text.starts_with("E147"));
+}

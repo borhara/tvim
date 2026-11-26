@@ -39,6 +39,8 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("registers", "reg", "show registers"),
     ("marks", "", "show marks"),
     ("normal", "norm", "run keys on each line"),
+    ("global", "g", "run a command on each line that matches"),
+    ("vglobal", "v", "run a command on each line that doesn't match"),
     ("nnoremap", "nn", "map keys in normal mode"),
     ("xnoremap", "xn", "map keys in visual mode"),
     ("inoremap", "ino", "map keys in insert mode"),

@@ -19,7 +19,7 @@ impl Editor {
     }
 
     pub(crate) fn end_change(&mut self) {
-        if self.changing {
+        if self.changing && self.grouped == 0 {
             self.changing = false;
             if self.undo.last().is_some_and(|s| s.lines == self.buf.lines()) {
                 let s = self.undo.pop().expect("just checked");

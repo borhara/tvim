@@ -44,13 +44,13 @@ Files reopen at the line you left them on.
 
 ## Coming from vim
 
-Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:e`, `:normal`, ranges and so on). A few things behave differently:
+Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:g`, `:e`, `:normal`, ranges and so on). A few things behave differently:
 
 - **Search** uses regular expressions the way most other tools write them, so `(a|b)+` and `\d{3}` work without extra backslashes. Search ignores case unless you type a capital. Use `\c` or `\C` in the pattern to force it either way.
 - **`Tab`** in normal mode moves between the file and the sidebar. Terminals send the same key for `Ctrl-i`, so straight after `Ctrl-o` it goes forward through jumps instead.
 - **Brackets and quotes** close themselves as you type. Turn this off with `:set noap`.
 - **Opening another file** never asks you to save first. Unsaved files stay open with a dot next to their name, and `:q` won't quit while any are left.
-- **`|`** runs one `:` command after another, as in `:w | bn`. `:s` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
+- **`|`** runs one `:` command after another, as in `:w | bn`. `:s`, `:g` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
 - **`gd`, `gr` and `K`** ask the file's language server, as they do in most Neovim setups, rather than searching the file, replacing characters or running `man`.
 - **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines.

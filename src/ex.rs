@@ -28,7 +28,8 @@ impl Editor {
         let whole = after.starts_with('!')
             || name == "s"
             || name.len() >= 2 && "substitute".starts_with(name)
-            || name.len() >= 4 && "normal".starts_with(name);
+            || name.len() >= 4 && "normal".starts_with(name)
+            || !name.is_empty() && ("global".starts_with(name) || "vglobal".starts_with(name));
         if whole {
             return None;
         }
@@ -229,6 +230,9 @@ impl Editor {
                 e.leave_visual_if_any();
             });
             self.noremap -= usize::from(force);
+        } else if is("global", 1) || is("vglobal", 1) {
+            let all = (0, self.buf.last_row());
+            return self.global(range.unwrap_or(all), arg, force || name.starts_with('v'));
         } else if is("set", 2) {
             self.set(arg);
         } else if is("nohlsearch", 3) {
@@ -270,6 +274,79 @@ impl Editor {
             }
         }
         self.buf.untrack(id);
+    }
+
+    // :g/pat/cmd runs cmd on each line that matches, and :v or :g! on each that doesn't
+    fn global(&mut self, (first, last): Lines, arg: &str, invert: bool) {
+        if self.grouped > 0 {
+            return self.error("E147: Cannot do :global recursive");
+        }
+        let mut chars = arg.chars();
+        let delim = match chars.next() {
+            None => return self.error("E35: No previous regular expression"),
+            Some(d) if d.is_alphanumeric() || "\\\"| ".contains(d) => {
+                return self.error("E146: Regular expressions can't be delimited by letters");
+            }
+            Some(d) => d,
+        };
+        let (pat, cmd) = split_first_unescaped(chars.as_str(), delim);
+        let pat = if pat.is_empty() {
+            match self.last_search.clone() {
+                Some(p) => p,
+                None => return self.error("E35: No previous regular expression"),
+            }
+        } else {
+            pat
+        };
+        let mut re = match Regex::new(&pat) {
+            Ok(re) => re,
+            Err(e) => return self.bad_pattern(&pat, &e),
+        };
+        re.set_case(self.options.ignore_case, self.options.smart_case);
+        self.last_search = Some(pat.clone());
+        let last = last.min(self.buf.last_row());
+        let rows: Vec<usize> = (first..=last)
+            .filter(|&row| {
+                let chars: Vec<char> = self.buf.line(row).chars().collect();
+                re.find_at(&chars, 0).is_some() != invert
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.error(format!("E486: Pattern not found: {pat}"));
+        }
+        let cmd = cmd.trim();
+        if cmd.is_empty() || cmd == "p" || cmd == "print" {
+            let shown: Vec<String> = rows
+                .iter()
+                .map(|&r| format!("{}: {}", r + 1, self.buf.line(r).trim()))
+                .collect();
+            return self.info(shown.join("  ·  "));
+        }
+        let lines = self.buf.len();
+        let mut failed = None;
+        let mut done = false;
+        self.grouped += 1;
+        self.each_line(rows, |e| {
+            e.ex(cmd);
+            // a line the command can't do, like :s on one without its pattern, is skipped
+            match e.message.take() {
+                Some(m) if m.error => failed = Some(m),
+                _ => done = true,
+            }
+        });
+        self.grouped -= 1;
+        self.end_change();
+        self.sync_windows();
+        if !done {
+            self.message = failed;
+        } else if self.buf.len().abs_diff(lines) > 2 {
+            let (n, how) = if self.buf.len() < lines {
+                (lines - self.buf.len(), "fewer")
+            } else {
+                (self.buf.len() - lines, "more")
+            };
+            self.info(format!("{n} {how} lines"));
+        }
     }
 
     fn parse_range<'a>(&self, line: &'a str) -> Result<(Option<Lines>, &'a str), String> {
@@ -809,6 +886,28 @@ fn split_unescaped(s: &str, delim: char) -> Vec<String> {
         }
     }
     parts
+}
+
+/// Splits at the first `delim` that isn't escaped, leaving `\delim` in the first part as
+/// `delim`, and the rest as it is.
+fn split_first_unescaped(s: &str, delim: char) -> (String, &str) {
+    let mut first = String::new();
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some((_, n)) if n == delim => first.push(n),
+                Some((_, n)) => {
+                    first.push('\\');
+                    first.push(n);
+                }
+                None => first.push('\\'),
+            },
+            c if c == delim => return (first, &s[i + c.len_utf8()..]),
+            c => first.push(c),
+        }
+    }
+    (first, "")
 }
 
 fn expand_replacement(rep: &str, line: &[char], groups: &[Option<Span>]) -> String {
