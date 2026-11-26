@@ -51,6 +51,9 @@ pub enum Op {
     ToggleCase,
     Comment,
     Filter,
+    Format,
+    // gw, which leaves the cursor where it was
+    FormatKeep,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -327,6 +330,8 @@ fn operator(keys: &[Key], visual: bool) -> Option<Result<(Op, usize), ()>> {
             Some(Key::Char('U')) => Some(Ok((Op::Upper, 2))),
             Some(Key::Char('~')) => Some(Ok((Op::ToggleCase, 2))),
             Some(Key::Char('c')) => Some(Ok((Op::Comment, 2))),
+            Some(Key::Char('q')) => Some(Ok((Op::Format, 2))),
+            Some(Key::Char('w')) => Some(Ok((Op::FormatKeep, 2))),
             _ => None,
         },
         _ => None,
@@ -461,6 +466,12 @@ mod tests {
         );
         assert_eq!(cmd(">>").act, Act::Operate(Op::Indent, Target::Lines));
         assert_eq!(cmd("!!").act, Act::Operate(Op::Filter, Target::Lines));
+        assert_eq!(cmd("gqq").act, Act::Operate(Op::Format, Target::Lines));
+        assert_eq!(cmd("gqgq").act, Act::Operate(Op::Format, Target::Lines));
+        assert_eq!(
+            cmd("gwip").act,
+            Act::Operate(Op::FormatKeep, Target::Object { kind: 'p', inner: true })
+        );
         assert_eq!(
             cmd("!ip").act,
             Act::Operate(Op::Filter, Target::Object { kind: 'p', inner: true })

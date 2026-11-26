@@ -265,13 +265,43 @@ impl Editor {
                 };
                 self.begin_cmdline(':', format!("{lines}!"));
             }
+            Op::Format | Op::FormatKeep => {
+                let (first, last) = (r.start.row, r.last_row().min(self.buf.last_row()));
+                let kind = self.format_kind();
+                let width = match self.options.text_width {
+                    0 => 79,
+                    n => n,
+                };
+                let lines = crate::format::wrap(&self.buf.lines()[first..=last], width, self.options.tab_stop, kind);
+                // gw keeps to the text the cursor was on
+                let at = self.cursor;
+                let word = (first..=last)
+                    .contains(&at.row)
+                    .then(|| {
+                        let p = Pos::new(at.row - first, at.col);
+                        crate::format::word_at(&self.buf.lines()[first..=last], kind, p)
+                    })
+                    .flatten();
+                let n = lines.len();
+                if lines != self.buf.lines()[first..=last] {
+                    self.touch();
+                    self.buf.replace_lines(first, last, lines);
+                }
+                if op == Op::FormatKeep {
+                    let found = word.and_then(|w| crate::format::place(&self.buf.lines()[first..first + n], kind, w));
+                    self.cursor = match found {
+                        Some(p) => Pos::new(first + p.row, p.col),
+                        None => {
+                            let row = at.row.min(self.buf.last_row());
+                            Pos::new(row, at.col.min(self.buf.line_len(row).saturating_sub(1)))
+                        }
+                    };
+                } else {
+                    self.cursor = self.first_non_blank_pos(first + n - 1);
+                }
+            }
             Op::Comment => {
-                let name = self
-                    .file
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.file_name()?.to_str())
-                    .unwrap_or("");
+                let name = self.file_name();
                 let (open, close) = crate::comment::markers(name);
                 let last = r.last_row().min(self.buf.last_row());
                 let lines = crate::comment::toggle(&self.buf.lines()[r.start.row..=last], open, close);
@@ -282,6 +312,24 @@ impl Editor {
                 self.cursor = self.first_non_blank_pos(r.start.row);
             }
         }
+    }
+
+    pub(super) fn format_kind(&self) -> crate::format::Kind<'static> {
+        let name = self.file_name();
+        let (open, close) = crate::comment::markers(name);
+        crate::format::Kind {
+            comment: close.is_empty().then_some(open),
+            markdown: matches!(crate::syntax::extension(name).as_str(), "md" | "markdown" | "mdx"),
+        }
+    }
+
+    // the open file's name, which says how its comments start
+    pub(super) fn file_name(&self) -> &str {
+        self.file
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name()?.to_str())
+            .unwrap_or("")
     }
 
     pub(super) fn char_span(&self, r: Range) -> (Pos, Pos) {

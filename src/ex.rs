@@ -814,6 +814,7 @@ impl Editor {
                 flag(o.auto_indent, "autoindent"),
                 format!("scrolloff={}", o.scroll_off),
                 format!("timeoutlen={}", o.timeout_len),
+                format!("textwidth={}", o.text_width),
                 flag(o.syntax, "syntax"),
                 flag(o.cursor_line, "cursorline"),
                 flag(o.indent_guides, "indentguides"),
@@ -854,6 +855,7 @@ impl Editor {
                 "shiftwidth" | "sw" if n > 0 => o.shift_width = n.min(32),
                 "scrolloff" | "so" => o.scroll_off = n,
                 "timeoutlen" | "tm" => o.timeout_len = n,
+                "textwidth" | "tw" => o.text_width = n,
                 "tabstop" | "ts" | "shiftwidth" | "sw" => {
                     return Err(format!("E487: Argument must be positive: {word}"));
                 }
@@ -867,6 +869,7 @@ impl Editor {
                 "shiftwidth" | "sw" => format!("shiftwidth={}", self.options.shift_width),
                 "scrolloff" | "so" => format!("scrolloff={}", self.options.scroll_off),
                 "timeoutlen" | "tm" => format!("timeoutlen={}", self.options.timeout_len),
+                "textwidth" | "tw" => format!("textwidth={}", self.options.text_width),
                 other => {
                     let (name, on) = self.options.flag_mut(other).ok_or_else(unknown)?;
                     if *on { name.to_string() } else { format!("no{name}") }

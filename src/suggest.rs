@@ -96,6 +96,11 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("zeropad", "", "line numbers start with zeros, as in 01"),
     ("wrap", "", "long lines carry on below"),
     ("linebreak", "", "wrap between words"),
+    (
+        "textwidth",
+        "=",
+        "how wide gq makes lines, and where typing breaks them",
+    ),
     ("updatecheck", "", "look for a newer tvim once a day"),
 ];
 

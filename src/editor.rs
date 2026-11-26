@@ -135,6 +135,8 @@ pub struct Options {
     pub zero_pad: bool,
     pub wrap: bool,
     pub linebreak: bool,
+    // how wide gq makes lines, and typing past it breaks them; 0 for 79 and no breaking
+    pub text_width: usize,
     pub update_check: bool,
 }
 
@@ -166,6 +168,7 @@ impl Default for Options {
             zero_pad: false,
             wrap: false,
             linebreak: false,
+            text_width: 0,
             update_check: true,
         }
     }

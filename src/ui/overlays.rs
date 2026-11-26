@@ -634,7 +634,7 @@ const G: &[(&str, &str)] = &[
     ("gj gk", "down, up a screen row"),
     ("gv", "select again"),
     ("gu gU g~", "lower, upper, swap"),
-    ("gc", "comment, uncomment"),
+    ("gc gq", "comment, rewrap"),
     ("gJ", "join, no spaces"),
     ("gp gP", "put, go past it"),
     ("gi", "type where you left off"),
@@ -705,6 +705,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         "g~" => "swap case",
         "gc" => "comment",
         "!" => "filter",
+        "gq" | "gw" => "rewrap",
         _ => "",
     };
     let s: String = rest.iter().collect();
