@@ -278,3 +278,19 @@ fn text_that_starts_like_a_picture_is_still_text() {
     assert!(e.image().is_none());
     assert_eq!(e.text(), "GIF8 notes on the formats");
 }
+
+#[test]
+fn a_picture_waits_for_the_palette_only_where_its_drawn() {
+    let mut e = open("small.png", &png(400, 300));
+    e.keys(&parse(":"));
+    let kitty = Support::Yes(Protocol::Kitty);
+    let frame = with_support(kitty, || {
+        tinsel::with_color_mode(tinsel::ColorMode::None, || {
+            // too short for the palette, so : is typed in the status line, clear of it
+            let mut frame = Frame::new(80, 7);
+            draw(&e, &mut frame);
+            frame
+        })
+    });
+    assert_eq!(frame.images().len(), 1);
+}

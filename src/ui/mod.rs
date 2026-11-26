@@ -496,9 +496,9 @@ pub fn draw(e: &Editor, frame: &mut Frame) {
 }
 
 thread_local! {
-    // whether something's drawn over the windows this frame: a picture, which sits above the
-    // text, would hide it, so pictures wait until it's gone
-    static COVERED: Cell<bool> = const { Cell::new(false) };
+    // the pictures this frame's windows show, put up once the frame's drawn and it's known
+    // whether anything's over them: a picture sits above the text, so would hide it
+    static PICTURES: RefCell<Vec<(Rect, tinsel::image::Image)>> = const { RefCell::new(Vec::new()) };
 }
 
 fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
@@ -506,12 +506,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let covered = e.mode() == Mode::Command
-        || e.finder().is_some()
-        || e.grep_picker().is_some()
-        || e.git_menu().is_some()
-        || hints && !e.explorer_focused() && overlays::hints_for(e).is_some();
-    COVERED.with(|c| c.set(covered));
+    PICTURES.with(|p| p.borrow_mut().clear());
     let c = colors();
     // the window's margin too, which tinsel sends again once the intro settles
     frame.set_background(c.app);
@@ -525,16 +520,19 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         frame.fade_outside(d.text);
     }
     let mut typing_at = d.typing_at;
-    if e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30 {
+    let palette = e.mode() == Mode::Command && d.panes.height >= 6 && d.panes.width >= 30;
+    if palette {
         typing_at = overlays::palette(e, frame, d.panes, &c);
     }
     if hints && !e.explorer_focused() {
         overlays::hint_strip(e, frame, d.text, &c);
     }
-    if let Some((x, y, _)) = text_cursor(e, e.mode(), d.body).filter(|_| e.completion().is_some()) {
+    let completion = text_cursor(e, e.mode(), d.body).filter(|_| e.completion().is_some());
+    if let Some((x, y, _)) = completion {
         overlays::completion(e, frame, d.panes, (x, y), &c);
     }
-    if let Some((x, y, _)) = text_cursor(e, e.mode(), d.body).filter(|_| e.hover().is_some()) {
+    let hover = text_cursor(e, e.mode(), d.body).filter(|_| e.hover().is_some());
+    if let Some((x, y, _)) = hover {
         overlays::hover(e, frame, d.panes, (x, y), &c);
     }
     if let Some(f) = e.finder() {
@@ -545,6 +543,18 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
     if let Some(m) = e.git_menu() {
         typing_at = gitmenu::draw(m, frame, &c);
+    }
+    let covered = palette
+        || completion.is_some()
+        || hover.is_some()
+        || e.finder().is_some()
+        || e.grep_picker().is_some()
+        || e.git_menu().is_some()
+        || hints && !e.explorer_focused() && overlays::hints_for(e).is_some();
+    for (room, image) in PICTURES.with(|p| std::mem::take(&mut *p.borrow_mut())) {
+        if !covered {
+            frame.image(room, &image);
+        }
     }
 
     let typing = e.git_menu().is_some()
@@ -731,8 +741,8 @@ fn draw_picture(frame: &mut Frame, area: Rect, path: Option<&Path>, image: &tins
                 area.width.saturating_sub(2),
                 area.height.saturating_sub(3),
             );
-            if !COVERED.with(Cell::get) && room.width > 0 && room.height > 0 {
-                frame.image(room, image);
+            if room.width > 0 && room.height > 0 {
+                PICTURES.with(|p| p.borrow_mut().push((room, image.clone())));
             }
             let last = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
             frame.print_center(last, 0, &paint(palette::MUTED, &about));
