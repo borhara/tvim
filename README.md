@@ -43,7 +43,7 @@ tvim docs/screenshot.png  # look at a picture
 
 Files reopen at the line you left them on.
 
-Pictures (PNG, and JPEG and GIF in iTerm2 and WezTerm) open at full resolution, fitted to the window, in kitty, Ghostty, Konsole, iTerm2 and WezTerm. Other terminals, and tmux, say they can't show them. Pictures are only for looking at: tvim won't change or write them.
+Pictures (PNG, JPEG and GIF) open at full resolution, fitted to the window, in kitty, Ghostty, Konsole, iTerm2 and WezTerm. Other terminals, and tmux, say they can't show them. Pictures are only for looking at: tvim won't change or write them.
 
 ## Coming from vim
 

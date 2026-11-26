@@ -123,23 +123,23 @@ fn other_terminals_say_they_cant() {
 }
 
 #[test]
-fn kitty_says_when_a_picture_isnt_a_png() {
-    // a JPEG's header up to the size in its frame header
-    let jpeg = b"\xff\xd8\xff\xc0\x00\x11\x08\x00\x10\x00\x20";
-    let e = open("photo.jpg", jpeg);
+fn kitty_shows_jpegs_too() {
+    let e = open("photo.jpg", include_bytes!("data/small.jpg"));
+    for protocol in [Protocol::Kitty, Protocol::Iterm] {
+        let frame = drawn(&e, Support::Yes(protocol));
+        assert_eq!(frame.images().len(), 1, "{protocol:?}");
+        assert!(frame.snapshot().plain().contains("photo.jpg · 37×23 JPEG"));
+    }
+}
+
+#[test]
+fn a_broken_jpeg_says_why_in_kitty() {
+    // a JPEG's header up to the size in its frame header, and nothing after
+    let e = open("broken.jpg", b"\xff\xd8\xff\xc0\x00\x11\x08\x00\x10\x00\x20");
     let frame = drawn(&e, Support::Yes(Protocol::Kitty));
     assert!(frame.images().is_empty());
-    assert!(
-        frame
-            .snapshot()
-            .plain()
-            .contains("shows PNG images, and this is a JPEG")
-    );
-    assert_eq!(
-        drawn(&e, Support::Yes(Protocol::Iterm)).images().len(),
-        1,
-        "iTerm2 reads it itself"
-    );
+    let screen = frame.snapshot().plain();
+    assert!(screen.contains("can't read it"), "{screen}");
 }
 
 #[test]
