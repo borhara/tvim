@@ -218,6 +218,28 @@ fn stage_unstage_and_commit() {
 }
 
 #[test]
+fn a_picture_git_changes_is_shown_again() {
+    let Some(dir) = repo("picture", "a\n") else { return };
+    let png = |w: u32| {
+        let mut b = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        b.extend(w.to_be_bytes());
+        b.extend(w.to_be_bytes());
+        b.extend([8, 6, 0, 0, 0]);
+        b
+    };
+    let file = dir.join("pic.png");
+    std::fs::write(&file, png(4)).unwrap();
+    git(&dir, &["add", "pic.png"]).unwrap();
+    git(&dir, &["commit", "-q", "-m", "picture"]).unwrap();
+    std::fs::write(&file, png(8)).unwrap();
+    let mut e = open(&file);
+    assert_eq!(e.image().map(|i| i.width()), Some(8));
+    menu(&mut e, "<Space>Gdy");
+    assert_eq!(std::fs::read(&file).unwrap(), png(4));
+    assert_eq!(e.image().map(|i| i.width()), Some(4), "the committed one");
+}
+
+#[test]
 fn discard_asks_first() {
     let Some(dir) = repo("discard", "a\n") else { return };
     let file = dir.join("a.txt");

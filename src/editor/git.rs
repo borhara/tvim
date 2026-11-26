@@ -128,10 +128,15 @@ impl Editor {
             return;
         }
         let Some(path) = self.file.path.clone() else { return };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return;
-        };
-        if text == self.contents(None) {
+        // a picture isn't text to compare, so is read again whenever it's still there
+        if self.file.image.is_none() {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                return;
+            };
+            if text == self.contents(None) {
+                return;
+            }
+        } else if !path.exists() {
             return;
         }
         let (cursor, top) = (self.cursor, self.top.get());
