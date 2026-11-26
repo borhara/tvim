@@ -804,7 +804,7 @@ fn draw_welcome(frame: &mut Frame, area: Rect, c: &Colors) {
     ];
     let key_width = menu.iter().map(|(k, _)| k.len()).max().unwrap_or(0) + 2;
     let menu_width = key_width + 2 + menu.iter().map(|(_, d)| d.len()).max().unwrap_or(0);
-    let tagline = "a vim for your terminal, with a little sparkle";
+    let tagline = "a starlit vim for your terminal";
     let version = format!("v{}  ·  drawn with tinsel", env!("CARGO_PKG_VERSION"));
     let height = LOGO.len() + 2 + 2 + 2 + 1 + menu.len();
     if area.height < height || area.width < tagline.len() + 4 {
