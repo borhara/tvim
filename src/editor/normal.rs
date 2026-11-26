@@ -70,6 +70,7 @@ impl Editor {
             Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
             Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') | Act::Hunk('r') => true,
+            Act::Surround(..) | Act::Unsurround(_) | Act::Resurround(..) => true,
             _ => false,
         }
     }
@@ -88,6 +89,9 @@ impl Editor {
         match cmd.act {
             Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::Operate(op, target) => self.operate(op, target, cmd.count, cmd.register),
+            Act::Surround(target, c) => self.surround_target(target, cmd.count, c),
+            Act::Unsurround(c) => self.unsurround(c),
+            Act::Resurround(old, new) => self.resurround(old, Some(new)),
             Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
             Act::With(c, ch) => self.normal_with(c, ch, n),
             Act::G('t') => match cmd.count {

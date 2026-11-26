@@ -47,10 +47,12 @@ mod operators;
 mod pickers;
 mod repeat;
 mod search;
+mod surround;
 mod undo;
 mod view;
 mod visual;
 pub use block::Block;
+pub(crate) use surround::{can_add as can_surround, can_find as can_unsurround};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {

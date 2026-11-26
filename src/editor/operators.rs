@@ -80,42 +80,15 @@ impl Editor {
 
     pub(super) fn operate(&mut self, op: Op, target: Target, count: Option<usize>, register: Option<char>) {
         let n = count.unwrap_or(1);
-        let range = match target {
-            Target::Lines => {
-                let last = self.cursor.row + n - 1;
-                if last > self.buf.last_row() && n > 1 && matches!(op, Op::Delete | Op::Change | Op::Yank) {
-                    return;
-                }
-                Range::lines(self.cursor.row, last.min(self.buf.last_row()))
+        // cw acts like ce, see :h cw
+        if let (Op::Change, Target::Motion(Motion::WordForward(big))) = (op, target) {
+            if self.buf.char_at(self.cursor).is_some_and(|c| !c.is_whitespace()) {
+                return self.change_word(big, n, register);
             }
-            Target::Object { kind, inner } => {
-                let Some(span) = object(&self.buf, self.cursor, kind, inner, n) else {
-                    return;
-                };
-                Range {
-                    start: span.start,
-                    end: span.end,
-                    linewise: span.linewise,
-                }
-            }
-            Target::Motion(m) => {
-                // cw acts like ce, see :h cw
-                let m = match (op, m) {
-                    (Op::Change, Motion::WordForward(big))
-                        if self.buf.char_at(self.cursor).is_some_and(|c| !c.is_whitespace()) =>
-                    {
-                        return self.change_word(big, n, register);
-                    }
-                    _ => m,
-                };
-                let Some((to, kind)) = self.target(m, count, true) else {
-                    return;
-                };
-                if Self::is_jump(m) {
-                    self.jump_from(self.cursor);
-                }
-                self.range_to(to, kind)
-            }
+        }
+        let strict = matches!(op, Op::Delete | Op::Change | Op::Yank);
+        let Some(range) = self.target_range(target, count, strict) else {
+            return;
         };
         // 3>> is three lines, not three shifts, and 3!! three lines to filter
         let times = if matches!(op, Op::Indent | Op::Dedent | Op::Filter) {
@@ -124,6 +97,36 @@ impl Editor {
             n
         };
         self.apply(op, range, register, times);
+    }
+
+    /// The text an operator's target covers from the cursor. With `strict`, a count of lines
+    /// running past the end covers nothing, as it does for d, c and y.
+    pub(super) fn target_range(&mut self, target: Target, count: Option<usize>, strict: bool) -> Option<Range> {
+        let n = count.unwrap_or(1);
+        Some(match target {
+            Target::Lines => {
+                let last = self.cursor.row + n - 1;
+                if last > self.buf.last_row() && n > 1 && strict {
+                    return None;
+                }
+                Range::lines(self.cursor.row, last.min(self.buf.last_row()))
+            }
+            Target::Object { kind, inner } => {
+                let span = object(&self.buf, self.cursor, kind, inner, n)?;
+                Range {
+                    start: span.start,
+                    end: span.end,
+                    linewise: span.linewise,
+                }
+            }
+            Target::Motion(m) => {
+                let (to, kind) = self.target(m, count, true)?;
+                if Self::is_jump(m) {
+                    self.jump_from(self.cursor);
+                }
+                self.range_to(to, kind)
+            }
+        })
     }
 
     pub(super) fn change_word(&mut self, big: bool, n: usize, register: Option<char>) {

@@ -11,6 +11,7 @@ impl Editor {
     pub(super) fn is_visual_change(cmd: &Cmd) -> bool {
         match cmd.act {
             Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment | Op::Filter),
+            Act::Surround(..) => true,
             Act::Key(Key::Char(c)) => "xXDsSCRJpPIA".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::With('r', _) => true,
             _ => false,
@@ -159,6 +160,11 @@ impl Editor {
                         visual: None,
                     });
                 }
+            }
+            Act::Surround(_, c) => {
+                let r = self.visual_range();
+                self.leave_visual();
+                self.surround(r, c);
             }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
             Act::Key(Key::Ctrl('v' | 'q')) => self.switch_visual(Mode::VisualBlock),

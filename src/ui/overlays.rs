@@ -770,6 +770,15 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             let mut v = vec![(doubled, "the whole line".to_string())];
             v.extend(owned(MOTIONS));
             v.push(("i a".into(), "inside, around".into()));
+            let pair = match op {
+                "y" => "put a pair around, as ysiw)",
+                "d" => "the pair around, as ds(",
+                "c" => "the pair around, as cs\"'",
+                _ => "",
+            };
+            if !pair.is_empty() {
+                v.push(("s".into(), pair.into()));
+            }
             (format!("{} …", op_name(op)), v)
         }
         _ => {

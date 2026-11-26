@@ -75,6 +75,11 @@ pub enum Act {
     Leader(char),
     Hunk(char),
     Window(Key),
+    // ys, yss and visual S: put a pair around the target
+    Surround(Target, char),
+    // ds and cs: take away or change the pair around the cursor
+    Unsurround(char),
+    Resurround(char, char),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,6 +157,24 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
             })
         };
         let Some(&next) = keys.get(i) else { return Parse::More };
+        if op_len == 1 && next == Key::Char('s') && matches!(op, Op::Yank | Op::Delete | Op::Change) {
+            return surround(keys, i + 1, op, |act, end, more, digits| {
+                // a count after ys, as in ys2w, counts with the others, and so isn't typed
+                let count = match (total, more) {
+                    (None, None) => None,
+                    (a, b) => Some(a.unwrap_or(1) * b.unwrap_or(1)),
+                };
+                let mut typed: Vec<Key> = keys[start..count2_at].to_vec();
+                typed.extend_from_slice(&keys[count2_at + used..digits.start]);
+                typed.extend_from_slice(&keys[digits.end..end]);
+                Parse::Done(Cmd {
+                    register,
+                    count,
+                    act,
+                    keys: typed,
+                })
+            });
+        }
         let last = *op_keys.last().unwrap_or(&next);
         if next == last {
             return finish(Act::Operate(op, Target::Lines), i + 1);
@@ -172,6 +195,16 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
             MotionParse::More => Parse::More,
             MotionParse::Invalid => Parse::Invalid,
             MotionParse::Done(m, len) => finish(Act::Operate(op, Target::Motion(m)), i + len),
+        };
+    }
+
+    if visual && key == Key::Char('S') {
+        return match keys.get(i + 1) {
+            None => Parse::More,
+            Some(Key::Char(c)) if crate::editor::can_surround(*c) => {
+                done(Act::Surround(Target::Lines, *c), i + 2, count1)
+            }
+            _ => Parse::Invalid,
         };
     }
 
@@ -283,6 +316,61 @@ pub fn awaits_motion(keys: &[Key]) -> bool {
 
 pub fn is_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || "\"-_+*/.".contains(c)
+}
+
+/// What follows the s of ys, ds or cs, from `at`: for ys, a count, a target and the pair to
+/// put around it; for ds, the pair to take away; and for cs, that and the one to put instead.
+/// `make` gets the act, where its keys end, and the count after ys with where its digits are.
+fn surround(
+    keys: &[Key],
+    at: usize,
+    op: Op,
+    make: impl FnOnce(Act, usize, Option<usize>, std::ops::Range<usize>) -> Parse,
+) -> Parse {
+    use crate::editor::{can_surround, can_unsurround};
+    let char_at = |i: usize, ok: fn(char) -> bool| match keys.get(i) {
+        None => Err(Parse::More),
+        Some(Key::Char(c)) if ok(*c) => Ok(*c),
+        _ => Err(Parse::Invalid),
+    };
+    match op {
+        Op::Delete => match char_at(at, can_unsurround) {
+            Ok(c) => make(Act::Unsurround(c), at + 1, None, at..at),
+            Err(p) => p,
+        },
+        Op::Change => match (char_at(at, can_unsurround), char_at(at + 1, can_surround)) {
+            (Ok(old), Ok(new)) => make(Act::Resurround(old, new), at + 2, None, at..at),
+            (Err(p), _) | (_, Err(p)) => p,
+        },
+        _ => {
+            let (count, used) = count(&keys[at..]);
+            let i = at + used;
+            let (target, len) = match keys.get(i) {
+                None => return Parse::More,
+                Some(Key::Char('s')) => (Target::Lines, 1),
+                Some(Key::Char(c @ ('i' | 'a'))) => match keys.get(i + 1) {
+                    None => return Parse::More,
+                    Some(Key::Char(k)) if is_object(*k) => (
+                        Target::Object {
+                            kind: *k,
+                            inner: *c == 'i',
+                        },
+                        2,
+                    ),
+                    _ => return Parse::Invalid,
+                },
+                _ => match motion(&keys[i..]) {
+                    MotionParse::More => return Parse::More,
+                    MotionParse::Invalid => return Parse::Invalid,
+                    MotionParse::Done(m, len) => (Target::Motion(m), len),
+                },
+            };
+            match char_at(i + len, can_surround) {
+                Ok(c) => make(Act::Surround(target, c), i + len + 1, count, at..i),
+                Err(p) => p,
+            }
+        }
+    }
 }
 
 fn text_object(keys: &[Key], make: impl FnOnce(char, bool) -> Parse) -> Option<Parse> {
@@ -467,6 +555,26 @@ mod tests {
         assert_eq!(cmd(">>").act, Act::Operate(Op::Indent, Target::Lines));
         assert_eq!(cmd("!!").act, Act::Operate(Op::Filter, Target::Lines));
         assert_eq!(cmd("gqq").act, Act::Operate(Op::Format, Target::Lines));
+        assert_eq!(
+            cmd("ysiw)").act,
+            Act::Surround(Target::Object { kind: 'w', inner: true }, ')')
+        );
+        assert_eq!(cmd("yss\"").act, Act::Surround(Target::Lines, '"'));
+        let c = cmd("2ys3w]");
+        assert_eq!(
+            (c.count, c.act),
+            (Some(6), Act::Surround(Target::Motion(Motion::WordForward(false)), ']'))
+        );
+        assert_eq!(c.keys, k("ysw]"));
+        let c = cmd("ys2f0)");
+        assert_eq!(c.keys, k("ysf0)"), "only the count's digits are left out");
+        assert_eq!(cmd("ds(").act, Act::Unsurround('('));
+        assert_eq!(cmd("cs\"'").act, Act::Resurround('"', '\''));
+        assert_eq!(state("ys"), Parse::More);
+        assert_eq!(state("ysiw"), Parse::More);
+        assert_eq!(state("ysiwx"), Parse::Invalid);
+        assert_eq!(state("cs("), Parse::More);
+        assert_eq!(state("dsx"), Parse::Invalid);
         assert_eq!(cmd("gqgq").act, Act::Operate(Op::Format, Target::Lines));
         assert_eq!(
             cmd("gwip").act,
