@@ -711,6 +711,15 @@ fn draw_picture(frame: &mut Frame, area: Rect, path: Option<&Path>, image: &tins
         image.format().name()
     );
     match tinsel::image::support().check(image) {
+        // a big photo decoding for kitty: the night sky the start screen shows, until it's ready
+        Ok(_) if image.pending() => {
+            if color_mode() != ColorMode::None {
+                sparkles(frame, area, frame.ambient_time(), 0.012);
+            }
+            frame.animate();
+            let last = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+            frame.print_center(last, 0, &paint(palette::MUTED, &format!("loading {about}")));
+        }
         Ok(_) => {
             let room = Rect::new(
                 area.x + 1,

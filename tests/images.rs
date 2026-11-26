@@ -158,3 +158,41 @@ fn a_picture_in_another_window_shows_too() {
     e.keys(&parse(":vnew<CR>"));
     assert_eq!(drawn(&e, Support::Yes(Protocol::Kitty)).images().len(), 1);
 }
+
+#[test]
+fn a_big_photo_shows_the_night_sky_until_its_decoded() {
+    // the small JPEG with a megabyte of comment segments before its picture
+    let small = include_bytes!("data/small.jpg");
+    let mut big = small[..2].to_vec();
+    for _ in 0..17 {
+        big.extend([0xff, 0xfe, 0xff, 0xff]);
+        big.extend([b'x'; 0xfffd]);
+    }
+    big.extend(&small[2..]);
+    let e = open("big.jpg", &big);
+    let kitty = Support::Yes(Protocol::Kitty);
+    // decoding goes on another thread, so it may be done by the first frame or a few later
+    let started = std::time::Instant::now();
+    loop {
+        let frame = drawn(&e, kitty);
+        if !frame.images().is_empty() {
+            break;
+        }
+        let screen = frame.snapshot().plain();
+        assert!(screen.contains("loading big.jpg · 37×23 JPEG"), "{screen}");
+        assert!(started.elapsed().as_secs() < 10, "never decoded");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_photo_from_a_phone_stands_the_way_it_was_taken() {
+    let e = open("portrait.jpg", include_bytes!("data/rotated.jpg"));
+    let image = e.image().unwrap();
+    assert_eq!((image.width(), image.height()), (23, 37));
+    let frame = drawn(&e, Support::Yes(Protocol::Kitty));
+    assert!(frame.snapshot().plain().contains("portrait.jpg · 23×37 JPEG"));
+    // tinsel fits it to the area by this size, so it goes up portrait
+    let (_, shown) = &frame.images()[0];
+    assert_eq!((shown.width(), shown.height()), (23, 37));
+}
