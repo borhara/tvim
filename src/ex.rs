@@ -233,6 +233,8 @@ impl Editor {
         } else if is("global", 1) || is("vglobal", 1) {
             let all = (0, self.buf.last_row());
             return self.global(range.unwrap_or(all), arg, force || name.starts_with('v'));
+        } else if is("move", 1) || is("copy", 2) || name == "t" {
+            self.move_lines(range.unwrap_or(current), arg, name.starts_with('m'));
         } else if is("set", 2) {
             self.set(arg);
         } else if is("nohlsearch", 3) {
@@ -376,6 +378,12 @@ impl Editor {
     }
 
     fn address<'a>(&self, s: &'a str) -> Result<(Option<usize>, &'a str), String> {
+        let (row, rest) = self.address_from_zero(s)?;
+        Ok((row.map(|r| r.max(0) as usize), rest))
+    }
+
+    /// An address as a row, where 0 is the line before the first, as :m0 and :t0 want.
+    fn address_from_zero<'a>(&self, s: &'a str) -> Result<(Option<isize>, &'a str), String> {
         let digits = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
         let (mut row, mut rest): (Option<isize>, &str) = if digits > 0 {
             let n: isize = s[..digits].parse().map_err(|_| "E16: Invalid range".to_string())?;
@@ -404,7 +412,48 @@ impl Editor {
             row = Some(row.unwrap_or(self.cursor.row as isize) + sign * n);
             rest = &after[d..];
         }
-        Ok((row.map(|r| r.max(0) as usize), rest))
+        Ok((row, rest))
+    }
+
+    // :m moves lines to below the line given, and :t or :co copies them there
+    fn move_lines(&mut self, (first, last): Lines, arg: &str, cut: bool) {
+        let to = match self.address_from_zero(arg) {
+            Ok((Some(row), "")) if (-1..self.buf.len() as isize).contains(&row) => row,
+            Ok((None, _)) => return self.error("E14: Invalid address"),
+            Ok((_, rest)) if !rest.trim().is_empty() => {
+                return self.error(format!("E488: Trailing characters: {rest}"));
+            }
+            Ok(_) => return self.error("E16: Invalid range"),
+            Err(e) => return self.error(e),
+        };
+        let last = last.min(self.buf.last_row());
+        let lines = self.buf.lines()[first..=last].to_vec();
+        let n = lines.len();
+        // below the line before them, or one of their own, they stay where they are
+        let below = (to + 1) as usize;
+        if cut && (first..=last + 1).contains(&below) {
+            if below <= last {
+                return self.error("E134: Cannot move a range of lines into itself");
+            }
+            self.set_cursor(self.first_non_blank_pos(last));
+            return;
+        }
+        self.touch();
+        let at = if cut && below > last {
+            self.buf.delete_lines(first, last);
+            below - n
+        } else {
+            if cut {
+                self.buf.delete_lines(first, last);
+            }
+            below
+        };
+        self.buf.insert_lines(at, lines);
+        self.set_cursor(self.first_non_blank_pos(at + n - 1));
+        if n > 2 {
+            let how = if cut { "moved" } else { "copied" };
+            self.info(format!("{n} lines {how}"));
+        }
     }
 
     fn edit(&mut self, path: Option<&str>, force: bool) {

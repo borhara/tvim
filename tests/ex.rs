@@ -389,3 +389,47 @@ fn global_reports() {
     e.ex("g/b/g/b/d");
     assert!(e.message().unwrap().text.starts_with("E147"));
 }
+
+#[test]
+fn moving_and_copying_lines() {
+    let src = "a\nb\nc\nd";
+    assert_eq!(t(src, ":m$<CR>"), "b\nc\nd\na");
+    assert_eq!(t(src, ":m0<CR>"), "a\nb\nc\nd");
+    assert_eq!(t(src, "G:m0<CR>"), "d\na\nb\nc");
+    assert_eq!(t(src, ":m+1<CR>"), "b\na\nc\nd");
+    assert_eq!(t(src, "jj:m-2<CR>"), "a\nc\nb\nd");
+    assert_eq!(t(src, ":1,2m3<CR>"), "c\na\nb\nd");
+    assert_eq!(t(src, ":3,4m 0<CR>"), "c\nd\na\nb");
+    assert_eq!(t(src, ":move 2<CR>"), "b\na\nc\nd");
+    assert_eq!(t(src, ":t.<CR>"), "a\na\nb\nc\nd");
+    assert_eq!(t(src, ":t0<CR>"), "a\na\nb\nc\nd");
+    assert_eq!(t(src, ":1,2t$<CR>"), "a\nb\nc\nd\na\nb");
+    assert_eq!(t(src, ":2,3co1<CR>"), "a\nb\nc\nb\nc\nd");
+    assert_eq!(t(src, ":3t2<CR>"), "a\nb\nc\nc\nd");
+    assert_eq!(t(src, ":2,3t2<CR>"), "a\nb\nb\nc\nc\nd", "copied into themselves");
+    assert_eq!(t(src, ":m$<CR>u"), src, "one change");
+    assert_eq!(t("a\nb\nc", ":g/^/m0<CR>"), "c\nb\na", "reverses the file");
+    assert_eq!(t("a\nb", ":g/./t.<CR>"), "a\na\nb\nb");
+}
+
+#[test]
+fn moving_lines_lands_on_them() {
+    assert_eq!(at("a\nb\n  c\nd", ":1,3m$<CR>"), (3, 2));
+    assert_eq!(at("a\nb\nc", ":t$<CR>"), (3, 0));
+    let mut e = ed("a\nb\nc\nd");
+    e.ex("1,2m3");
+    assert!(e.message().is_none());
+    e.ex("1,3m2");
+    assert!(e.message().unwrap().text.starts_with("E134"));
+    e.ex("m");
+    assert!(e.message().unwrap().text.starts_with("E14"));
+    e.ex("m9");
+    assert!(e.message().unwrap().text.starts_with("E16"));
+    e.ex("2");
+    e.ex("m-9");
+    assert!(e.message().unwrap().text.starts_with("E16"), "past the top too");
+    e.ex("m2x");
+    assert!(e.message().unwrap().text.starts_with("E488"));
+    e.ex("%t$");
+    assert_eq!(e.message().unwrap().text, "4 lines copied");
+}
