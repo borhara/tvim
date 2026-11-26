@@ -18,6 +18,20 @@ impl Editor {
         self.noremap -= 1;
     }
 
+    /// Whether alt and `key` comes to the editor as it is, rather than as esc and the key:
+    /// Alt-j and Alt-k move lines in the text in normal and visual mode, with nothing typed
+    /// before them, and everywhere else alt is esc as usual.
+    pub fn takes_alt(&self, key: Key) -> bool {
+        matches!(key, Key::Alt('j' | 'k'))
+            && (self.mode == Mode::Normal || self.mode.is_visual())
+            && self.pending.is_empty()
+            && self.git_menu.is_none()
+            && self.finder.is_none()
+            && self.grep.is_none()
+            && !self.explorer_focused()
+            && !self.previews.contains_key(&self.focus)
+    }
+
     pub fn key(&mut self, key: Key) {
         self.input(Input::Key(key));
     }

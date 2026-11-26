@@ -317,6 +317,24 @@ impl Editor {
         }
     }
 
+    /// Alt-j and Alt-k: moves lines `first..=last` down or up `n` lines, or as far as they'll
+    /// go, quietly, as a key pressed again and again shouldn't fail at the end. Gives how far.
+    pub(super) fn shift_lines(&mut self, first: usize, last: usize, down: bool, n: usize) -> usize {
+        let by = if down {
+            n.min(self.buf.last_row() - last)
+        } else {
+            n.min(first)
+        };
+        if by == 0 {
+            return 0;
+        }
+        self.touch();
+        let lines = self.buf.lines()[first..=last].to_vec();
+        self.buf.delete_lines(first, last);
+        self.buf.insert_lines(if down { first + by } else { first - by }, lines);
+        by
+    }
+
     pub(super) fn format_kind(&self) -> crate::format::Kind<'static> {
         let name = self.file_name();
         let (open, close) = crate::comment::markers(name);

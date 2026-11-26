@@ -93,7 +93,11 @@ impl App for Tvim {
     fn event(&mut self, event: &Event) -> Flow {
         match event {
             Event::Key(k) => {
-                let (esc, k) = crate::keys::as_vim(*k);
+                let (esc, k) = if self.editor.takes_alt(*k) {
+                    (None, *k)
+                } else {
+                    crate::keys::as_vim(*k)
+                };
                 if let Some(esc) = esc {
                     self.editor.key(esc);
                 }

@@ -53,6 +53,7 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 - **`|`** runs one `:` command after another, as in `:w | bn`. `:s`, `:g` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
 - **`!`** with a motion, or `:{range}!cmd`, runs the lines through a shell command and puts what it prints in their place, as in `!ip sort` or `:%!jq .`. `:r !cmd` puts what a command prints below the cursor. A command that fails leaves the text as it was and shows its error.
 - **`gq`** rewraps lines to `textwidth`, or 79 columns when it's 0, keeping comment markers and list bullets, and `gw` does the same without moving the cursor. With `textwidth` set, typing past it breaks the line: any line in Markdown and plain text, and only comments in code.
+- **`Alt-j` and `Alt-k`** move the line down and up, or the selected lines in visual mode, as in LazyVim. In insert mode Alt still works as Esc, so `Alt-j` there leaves insert mode and moves down.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
 - **`gd`, `gr` and `K`** ask the file's language server, as they do in most Neovim setups, rather than searching the file, replacing characters or running `man`.
 - **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines.

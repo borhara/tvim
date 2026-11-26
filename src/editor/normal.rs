@@ -128,6 +128,11 @@ impl Editor {
         let n = count.unwrap_or(1);
         let op = |e: &mut Self, op: Op, m: Motion| e.operate(op, Target::Motion(m), count, register);
         match key {
+            Key::Alt(c) => {
+                let row = self.cursor.row;
+                let by = self.shift_lines(row, row, c == 'j', n);
+                self.cursor.row = if c == 'j' { row + by } else { row - by };
+            }
             Key::Char('K') => self.ask_server(Ask::Hover),
             Key::Char('x') | Key::Delete => {
                 if self.buf.line_len(self.cursor.row) > 0 {

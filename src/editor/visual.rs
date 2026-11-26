@@ -166,6 +166,17 @@ impl Editor {
                 self.leave_visual();
                 self.surround(r, c);
             }
+            // the lines selected move, and stay selected
+            Act::Key(Key::Alt(c)) => {
+                let (top, bottom) = (
+                    self.anchor.row.min(self.cursor.row),
+                    self.anchor.row.max(self.cursor.row),
+                );
+                let by = self.shift_lines(top, bottom, c == 'j', n);
+                for p in [&mut self.anchor, &mut self.cursor] {
+                    p.row = if c == 'j' { p.row + by } else { p.row - by };
+                }
+            }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
             Act::Key(Key::Ctrl('v' | 'q')) => self.switch_visual(Mode::VisualBlock),
             Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {

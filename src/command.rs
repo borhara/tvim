@@ -318,6 +318,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
         Key::Ctrl(c) if "dufbey".contains(c) || ctrl.contains(c) => done(Act::Key(key), i + 1, count1),
         Key::Delete | Key::PageUp | Key::PageDown => done(Act::Key(key), i + 1, count1),
         Key::Tab if !visual => done(Act::Key(key), i + 1, count1),
+        Key::Alt('j' | 'k') => done(Act::Key(key), i + 1, count1),
         _ => Parse::Invalid,
     }
 }
