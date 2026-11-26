@@ -66,10 +66,11 @@ impl Editor {
 
     pub(super) fn is_change(cmd: &Cmd) -> bool {
         match cmd.act {
-            Act::Operate(op, _) => op != Op::Yank,
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Filter),
             Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
             Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') | Act::Hunk('r') => true,
+            Act::Surround(..) | Act::Unsurround(_) | Act::Resurround(..) => true,
             _ => false,
         }
     }
@@ -91,6 +92,9 @@ impl Editor {
         match cmd.act {
             Act::Move(m) => self.move_cursor(m, cmd.count),
             Act::Operate(op, target) => self.operate(op, target, cmd.count, cmd.register),
+            Act::Surround(target, c) => self.surround_target(target, cmd.count, c),
+            Act::Unsurround(c) => self.unsurround(c),
+            Act::Resurround(old, new) => self.resurround(old, Some(new)),
             Act::Key(k) => self.normal_key(k, cmd.count, cmd.register),
             Act::With(c, ch) => self.normal_with(c, ch, n),
             Act::G('t') => match cmd.count {
@@ -127,6 +131,11 @@ impl Editor {
         let n = count.unwrap_or(1);
         let op = |e: &mut Self, op: Op, m: Motion| e.operate(op, Target::Motion(m), count, register);
         match key {
+            Key::Alt(c) => {
+                let row = self.cursor.row;
+                let by = self.shift_lines(row, row, c == 'j', n);
+                self.cursor.row = if c == 'j' { row + by } else { row - by };
+            }
             Key::Char('K') => self.ask_server(Ask::Hover),
             Key::Char('x') | Key::Delete => {
                 if self.buf.line_len(self.cursor.row) > 0 {

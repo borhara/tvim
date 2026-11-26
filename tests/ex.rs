@@ -66,6 +66,13 @@ fn deleting_yanking_and_shifting_ranges() {
         ":normal runs on the lines it was given, wherever lines put in push them"
     );
     assert_eq!(t("a\nb\nc", ":%norm Ox<CR>"), "x\na\nx\nb\nx\nc");
+    assert_eq!(t("a\na\na\na", ":%norm dd<CR>"), "", "lines alike are told apart");
+    assert_eq!(t("x\nx", ":%norm yyp<CR>"), "x\nx\nx\nx");
+    assert_eq!(
+        t("a\na\na\na", ":%norm J<CR>"),
+        "a a\na a",
+        "a line joined on isn't run on"
+    );
     assert_eq!(t("a\nb\nc\nd", ":%norm dd<CR>"), "");
     assert_eq!(
         t("a\nb\nc\nd\ne\nf", ":%norm jdd<CR>"),
@@ -325,4 +332,264 @@ fn choosing_language_servers() {
     );
     e.ex("lsp restart");
     assert_eq!(said(&e).as_deref(), Some("language servers restarting"));
+}
+
+#[test]
+fn global() {
+    let src = "a1\nb\na2\nc\na3";
+    assert_eq!(t(src, ":g/a/d<CR>"), "b\nc");
+    assert_eq!(t(src, ":v/a/d<CR>"), "a1\na2\na3");
+    assert_eq!(t(src, ":g!/a/d<CR>"), "a1\na2\na3");
+    assert_eq!(t(src, ":g/^a/s/\\d/x/<CR>"), "ax\nb\nax\nc\nax");
+    assert_eq!(t(src, ":g/a/normal A;<CR>"), "a1;\nb\na2;\nc\na3;");
+    assert_eq!(t(src, ":2,4g/a/d<CR>"), "a1\nb\nc\na3", "a range limits the lines");
+    assert_eq!(
+        t("x\nx\ny", ":g/x/normal yyp<CR>"),
+        "x\nx\nx\nx\ny",
+        "lines put in aren't run on"
+    );
+    assert_eq!(t("a/b\nc", r":g#/#d<CR>"), "c");
+    assert_eq!(t("a/b\nc", r":g/\//d<CR>"), "c");
+    assert_eq!(
+        t("ab\nb\nab", ":g/a/> | s/a/z/<CR>"),
+        "    zb\nb\n    zb",
+        "the command takes in the |"
+    );
+    assert_eq!(
+        t("foo\nbar", "/bar<CR>:g//d<CR>"),
+        "foo",
+        "an empty pattern is the last search"
+    );
+}
+
+#[test]
+fn global_is_one_change() {
+    assert_eq!(t("a\nb\na\nb", ":g/a/d<CR>u"), "a\nb\na\nb");
+    assert_eq!(t("a\nb\na", ":g/a/normal Ax<CR>u"), "a\nb\na");
+}
+
+#[test]
+fn global_reports() {
+    let mut e = ed("a\nb");
+    e.ex("g/zzz/d");
+    assert_eq!(e.message().unwrap().text, "E486: Pattern not found: zzz");
+    let mut e = ed("a\nb\na");
+    e.ex("g/a");
+    assert_eq!(e.message().unwrap().text, "1: a  ·  3: a");
+    let mut e = ed("ab\na\nab");
+    e.ex("g/a/s/b/c/");
+    assert_eq!(e.text(), "ac\na\nac");
+    assert!(
+        e.message().is_none_or(|m| !m.error),
+        "lines without b are skipped quietly"
+    );
+    let mut e = ed("a\na\na\na\nb");
+    e.ex("g/a/d");
+    assert_eq!(e.message().unwrap().text, "4 fewer lines", "lines alike all go");
+    e.ex("g/b/g/b/d");
+    assert!(e.message().unwrap().text.starts_with("E147"));
+}
+
+#[test]
+fn moving_and_copying_lines() {
+    let src = "a\nb\nc\nd";
+    assert_eq!(t(src, ":m$<CR>"), "b\nc\nd\na");
+    assert_eq!(t(src, ":m0<CR>"), "a\nb\nc\nd");
+    assert_eq!(t(src, "G:m0<CR>"), "d\na\nb\nc");
+    assert_eq!(t(src, ":m+1<CR>"), "b\na\nc\nd");
+    assert_eq!(t(src, "jj:m-2<CR>"), "a\nc\nb\nd");
+    assert_eq!(t(src, ":1,2m3<CR>"), "c\na\nb\nd");
+    assert_eq!(t(src, ":3,4m 0<CR>"), "c\nd\na\nb");
+    assert_eq!(t(src, ":move 2<CR>"), "b\na\nc\nd");
+    assert_eq!(t(src, ":t.<CR>"), "a\na\nb\nc\nd");
+    assert_eq!(t(src, ":t0<CR>"), "a\na\nb\nc\nd");
+    assert_eq!(t(src, ":1,2t$<CR>"), "a\nb\nc\nd\na\nb");
+    assert_eq!(t(src, ":2,3co1<CR>"), "a\nb\nc\nb\nc\nd");
+    assert_eq!(t(src, ":3t2<CR>"), "a\nb\nc\nc\nd");
+    assert_eq!(t(src, ":2,3t2<CR>"), "a\nb\nb\nc\nc\nd", "copied into themselves");
+    assert_eq!(t(src, ":m$<CR>u"), src, "one change");
+    assert_eq!(t("a\nb\nc", ":g/^/m0<CR>"), "c\nb\na", "reverses the file");
+    assert_eq!(t("a\nb", ":g/./t.<CR>"), "a\na\nb\nb");
+}
+
+#[test]
+fn moving_lines_lands_on_them() {
+    assert_eq!(at("a\nb\n  c\nd", ":1,3m$<CR>"), (3, 2));
+    assert_eq!(at("a\nb\nc", ":t$<CR>"), (3, 0));
+    let mut e = ed("a\nb\nc\nd");
+    e.ex("1,2m3");
+    assert!(e.message().is_none());
+    e.ex("1,3m2");
+    assert!(e.message().unwrap().text.starts_with("E134"));
+    e.ex("m");
+    assert!(e.message().unwrap().text.starts_with("E14"));
+    e.ex("m9");
+    assert!(e.message().unwrap().text.starts_with("E16"));
+    e.ex("2");
+    e.ex("m-9");
+    assert!(e.message().unwrap().text.starts_with("E16"), "past the top too");
+    e.ex("m2x");
+    assert!(e.message().unwrap().text.starts_with("E488"));
+    e.ex("%t$");
+    assert_eq!(e.message().unwrap().text, "4 lines copied");
+}
+
+#[test]
+fn filtering_lines_through_a_command() {
+    assert_eq!(t("c\na\nb", ":%!sort<CR>"), "a\nb\nc");
+    assert_eq!(t("x\nc\na\ny", ":2,3!sort<CR>"), "x\na\nc\ny");
+    assert_eq!(t("a b", ":.!tr a-z A-Z<CR>"), "A B");
+    assert_eq!(t("a\nb\nc", ":%!grep -v b<CR>"), "a\nc");
+    assert_eq!(t("a\nb\nc", ":%!sort -r | head -2<CR>"), "c\nb", "the | is the shell's");
+    assert_eq!(t("a\nb", ":%!true<CR>"), "", "printing nothing takes the lines out");
+    assert_eq!(t("c\na\nb", ":%!sort<CR>u"), "c\na\nb", "one change");
+    assert_eq!(t("a", ":r !echo hi<CR>"), "a\nhi");
+    assert_eq!(t("a", ":r!echo hi<CR>"), "a\nhi", "with no space too");
+    assert_eq!(t("a", ":0r !printf 'x\\ny\\n'<CR>"), "x\ny\na");
+    assert_eq!(t("a\nb", ":r !echo 'p | q'<CR>"), "a\np | q\nb");
+}
+
+#[test]
+fn a_failing_filter_changes_nothing() {
+    let mut e = ed("a\nb");
+    e.ex("%!echo oops >&2; exit 3");
+    assert_eq!(e.text(), "a\nb");
+    assert_eq!(e.message().unwrap().text, "shell returned 3: oops");
+    e.ex("r !false");
+    assert_eq!(e.text(), "a\nb");
+    assert_eq!(e.message().unwrap().text, "shell returned 1");
+}
+
+#[test]
+fn the_filter_operator_asks_for_the_command() {
+    let mut e = ed("c\nb\na\n\nz");
+    e.keys(&parse("!ip"));
+    assert_eq!(e.cmdline().text, ".,.+2!");
+    e.keys(&parse("sort<CR>"));
+    assert_eq!(e.text(), "a\nb\nc\n\nz");
+    let mut e = ed("b\na");
+    e.keys(&parse("!!"));
+    assert_eq!(e.cmdline().text, ".!");
+    assert_eq!(t("b\na\nc", "2!!sort<CR>"), "a\nb\nc");
+    assert_eq!(t("x\nb\na", "jVj!sort<CR>"), "x\na\nb");
+    assert_eq!(t("c\nb\na", "G!ksort<CR>"), "c\na\nb", "upwards, from the top line");
+}
+
+#[test]
+fn sorting_lines() {
+    assert_eq!(t("c\na\nb", ":sort<CR>"), "a\nb\nc");
+    assert_eq!(t("c\na\nb", ":sort!<CR>"), "c\nb\na");
+    assert_eq!(t("x\nc\na\nb\nw", ":2,4sort<CR>"), "x\na\nb\nc\nw");
+    assert_eq!(t("b\nA\nB\na", ":sort<CR>"), "A\nB\na\nb");
+    assert_eq!(
+        t("b\nA\nB\na", ":sort i<CR>"),
+        "A\na\nb\nB",
+        "alike under i keep their order"
+    );
+    assert_eq!(t("x10\nx9\nx-2\nnone\nx100", ":sort n<CR>"), "none\nx-2\nx9\nx10\nx100");
+    assert_eq!(t("b\na\nb\na\nc", ":sort u<CR>"), "a\nb\nc");
+    assert_eq!(t("a\nA\nb", ":sort ui<CR>"), "a\nb");
+    assert_eq!(t("3 x\n1 y\n2 x", ":sort n u<CR>"), "1 y\n2 x\n3 x");
+    assert_eq!(
+        t("a3 z\nb1 y\nc2 x", ":sort /\\w+ /<CR>"),
+        "c2 x\nb1 y\na3 z",
+        "by what follows"
+    );
+    assert_eq!(
+        t("a3 z\nb1 y\nc2 x", ":sort /\\d/ r<CR>"),
+        "b1 y\nc2 x\na3 z",
+        "by what matched"
+    );
+    assert_eq!(
+        t("k=2\nnone\nk=1", ":sort /k=/<CR>"),
+        "none\nk=1\nk=2",
+        "missed lines first"
+    );
+    assert_eq!(t("c\na\nb", ":sort<CR>u"), "c\na\nb", "one change");
+    let mut e = ed("b\na");
+    e.ex("sort q");
+    assert!(e.message().unwrap().text.starts_with("E474"));
+}
+
+#[test]
+fn global_and_sort_refuse_bad_patterns() {
+    let error = |text: &str, cmd: &str| {
+        let mut e = ed(text);
+        e.ex(cmd);
+        e.message()
+            .filter(|m| m.error)
+            .map(|m| m.text.clone())
+            .unwrap_or_default()
+    };
+    assert!(error("a", "g").starts_with("E35"));
+    assert!(
+        error("a", "g//d").starts_with("E35"),
+        "an empty pattern with no search before"
+    );
+    assert!(error("a", "g\"a\"d").starts_with("E146"));
+    assert!(error("a", "g/(/d").contains("("), "a pattern that doesn't parse");
+    assert!(error("b\na", "sort //").starts_with("E35"));
+    assert!(error("b\na", "sort /(/").contains("("));
+    assert!(error("b\na", "sort \"").starts_with("E474"));
+    assert_eq!(
+        t("x2 b\nx1 a", "/x<CR>:sort //<CR>"),
+        "x1 a\nx2 b",
+        "// is the last search"
+    );
+}
+
+#[test]
+fn global_stops_when_a_command_quits() {
+    let mut e = ed("a\nb\na");
+    e.ex("g/a/q");
+    assert!(e.should_quit());
+}
+
+#[test]
+fn global_says_how_many_lines_it_put_in() {
+    let mut e = ed("a\na\na\nb");
+    e.ex("g/a/t.");
+    assert_eq!(e.text(), "a\na\na\na\na\na\nb");
+    assert_eq!(e.message().unwrap().text, "3 more lines");
+}
+
+#[test]
+fn moving_lines_to_where_they_are_changes_nothing() {
+    assert_eq!(at("a\nb\nc", "j:m.<CR>"), (1, 0));
+    assert_eq!(t("a\nb\nc", "j:m.<CR>"), "a\nb\nc");
+    assert_eq!(
+        t("a\nb\nc", "j:m-1<CR>"),
+        "a\nb\nc",
+        "below the line above is where it is"
+    );
+    assert_eq!(t("a\nb\nc", "j:m.<CR>u"), "a\nb\nc");
+    let mut e = ed("a\nb");
+    e.ex("m'z");
+    assert!(e.message().unwrap().text.starts_with("E20"), "a mark that isn't set");
+}
+
+#[test]
+fn filters_and_reading_need_a_command() {
+    let mut e = ed("a");
+    e.ex(".!");
+    assert!(e.message().unwrap().text.starts_with("E471"));
+    e.ex("r !");
+    assert!(e.message().unwrap().text.starts_with("E471"));
+    assert_eq!(
+        t("a", ":r !true<CR>"),
+        "a",
+        "a command that prints nothing puts in nothing"
+    );
+    assert_eq!(t("a", ":r !true<CR>u"), "a");
+}
+
+#[test]
+fn textwidth_is_an_option() {
+    let mut e = ed("");
+    e.ex("set tw=72");
+    e.ex("set tw?");
+    assert_eq!(e.message().unwrap().text, "textwidth=72");
+    e.ex("set");
+    assert!(e.message().unwrap().text.contains("textwidth=72"));
+    assert!(e.message().unwrap().text.contains("undofile"));
 }

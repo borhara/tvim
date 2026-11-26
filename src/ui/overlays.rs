@@ -634,7 +634,7 @@ const G: &[(&str, &str)] = &[
     ("gj gk", "down, up a screen row"),
     ("gv", "select again"),
     ("gu gU g~", "lower, upper, swap"),
-    ("gc", "comment, uncomment"),
+    ("gc gq", "comment, rewrap"),
     ("gJ", "join, no spaces"),
     ("gp gP", "put, go past it"),
     ("gi", "type where you left off"),
@@ -704,6 +704,8 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         "gU" => "uppercase",
         "g~" => "swap case",
         "gc" => "comment",
+        "!" => "filter",
+        "gq" | "gw" => "rewrap",
         _ => "",
     };
     let s: String = rest.iter().collect();
@@ -734,6 +736,14 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             owned(&[("c", "the previous change"), ("d", "the previous problem")]),
         ),
         "g" => ("g".into(), owned(G)),
+        "gs" if !visual => (
+            "surround".into(),
+            owned(&[
+                ("a", "put a pair around, as gsaiw)"),
+                ("d", "the pair around, as gsd("),
+                ("r", "swap the pair around, as gsr\"'"),
+            ]),
+        ),
         "z" => ("z".into(), owned(Z)),
         "Z" => (
             "Z".into(),
@@ -768,6 +778,15 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             let mut v = vec![(doubled, "the whole line".to_string())];
             v.extend(owned(MOTIONS));
             v.push(("i a".into(), "inside, around".into()));
+            let pair = match op {
+                "y" => "put a pair around, as ysiw)",
+                "d" => "the pair around, as ds(",
+                "c" => "the pair around, as cs\"'",
+                _ => "",
+            };
+            if !pair.is_empty() {
+                v.push(("s".into(), pair.into()));
+            }
             (format!("{} …", op_name(op)), v)
         }
         _ => {

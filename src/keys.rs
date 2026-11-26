@@ -6,7 +6,8 @@ pub fn parse(spec: &str) -> Vec<Key> {
 }
 
 /// A key as vim takes it: alt and a key is esc then the key, as terminals have always sent
-/// it (so alt-j leaves insert mode and moves down), and any other modifier is let go.
+/// it (so alt-j leaves insert mode and moves down), and any other modifier is let go. Alt-j
+/// and Alt-k in normal and visual mode are the exception, as `Editor::takes_alt` says.
 pub fn as_vim(key: Key) -> (Option<Key>, Key) {
     match key {
         Key::Alt(c) => (Some(Key::Esc), Key::Char(c)),

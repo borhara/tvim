@@ -47,10 +47,12 @@ mod operators;
 mod pickers;
 mod repeat;
 mod search;
+mod surround;
 mod undo;
 mod view;
 mod visual;
 pub use block::Block;
+pub(crate) use surround::{can_add as can_surround, can_find as can_unsurround};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -135,6 +137,9 @@ pub struct Options {
     pub zero_pad: bool,
     pub wrap: bool,
     pub linebreak: bool,
+    // how wide gq makes lines, and typing past it breaks them; 0 for 79 and no breaking
+    pub text_width: usize,
+    pub undo_file: bool,
     pub update_check: bool,
 }
 
@@ -166,6 +171,8 @@ impl Default for Options {
             zero_pad: false,
             wrap: false,
             linebreak: false,
+            text_width: 0,
+            undo_file: true,
             update_check: true,
         }
     }
@@ -199,6 +206,7 @@ impl Options {
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
             "linebreak" | "lbr" => ("linebreak", &mut self.linebreak),
+            "undofile" | "udf" => ("undofile", &mut self.undo_file),
             "updatecheck" | "uc" => ("updatecheck", &mut self.update_check),
             _ => return None,
         })
@@ -497,6 +505,10 @@ pub struct Editor {
     saved: u64,
     versions: u64,
     changing: bool,
+    // above zero while :g runs, so the changes it makes undo as one
+    pub(crate) grouped: usize,
+    // where undo history is kept between runs, if anywhere
+    undo_dir: Option<PathBuf>,
     pub(crate) cmd: CmdLine,
     cmd_history: Vec<String>,
     search_history: Vec<String>,
@@ -596,6 +608,8 @@ impl Editor {
             saved: 0,
             versions: 0,
             changing: false,
+            grouped: 0,
+            undo_dir: None,
             cmd: CmdLine::default(),
             cmd_history: Vec::new(),
             search_history: Vec::new(),

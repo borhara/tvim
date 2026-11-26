@@ -80,7 +80,12 @@ impl Editor {
         }
         match key {
             Key::Esc | Key::Ctrl('c') => self.leave_insert(),
-            Key::Char(c) => self.type_paired(c),
+            Key::Char(c) => {
+                self.type_paired(c);
+                if !c.is_whitespace() {
+                    self.break_long_line();
+                }
+            }
             Key::Tab => {
                 if self.options.expand_tab {
                     let v = vcol(self.buf.line(self.cursor.row), self.cursor.col, self.options.tab_stop);
@@ -268,6 +273,44 @@ impl Editor {
         if matches!(c, '}' | ']' | ')') && self.options.auto_indent && self.mode == Mode::Insert {
             self.outdent_closer(c);
         }
+    }
+
+    /// With textwidth set, typing past it moves the word to a line of its own: in prose, any
+    /// line, and in code only comments.
+    pub(super) fn break_long_line(&mut self) {
+        let (tw, ts) = (self.options.text_width, self.options.tab_stop);
+        let row = self.cursor.row;
+        let line = self.buf.line(row).to_string();
+        if tw == 0 || self.mode != Mode::Insert || vcol(&line, self.cursor.col, ts) <= tw {
+            return;
+        }
+        let kind = self.format_kind();
+        let (leader, rest) = crate::format::split_leader(&line, kind);
+        let prose = kind.markdown || crate::syntax::Syntax::detect(self.file_name()).is_none();
+        let comment = kind.comment.is_some_and(|m| leader.trim_start().starts_with(m));
+        if !prose && !comment {
+            return;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        // never between a bullet and its text
+        let lead = leader.chars().count() + crate::format::bullet_len(rest);
+        let Some(blank) = (lead..self.cursor.col.min(chars.len()))
+            .rev()
+            .find(|&i| chars[i].is_whitespace() && vcol(&line, i, ts) <= tw)
+        else {
+            return;
+        };
+        let mut start = blank;
+        while start > lead && chars[start - 1].is_whitespace() {
+            start -= 1;
+        }
+        if start == lead {
+            return;
+        }
+        let prefix = crate::format::continuation(&line, kind);
+        self.buf.delete(Pos::new(row, start), Pos::new(row, blank + 1));
+        self.buf.insert(Pos::new(row, start), &format!("\n{prefix}"));
+        self.cursor = Pos::new(row + 1, prefix.chars().count() + self.cursor.col - (blank + 1));
     }
 
     pub(super) fn type_paired(&mut self, c: char) {

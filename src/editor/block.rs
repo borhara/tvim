@@ -1,6 +1,6 @@
 use tinsel::app::Key;
 
-use super::{Editor, Mode, Register, single, toggle};
+use super::{Editor, Mode, Range, Register, single, toggle};
 use crate::buffer::Pos;
 use crate::command::{Act, Cmd, Op};
 use crate::text::{cell_width, char_count, col_at, vcol};
@@ -190,6 +190,21 @@ impl Editor {
             Act::Operate(op @ (Op::Indent | Op::Dedent), _) => {
                 let b = self.take_block();
                 self.shift_block(&b, op == Op::Indent, cmd.n());
+                true
+            }
+            // each row's part of the block gets a pair of its own
+            Act::Surround(_, c) => {
+                let b = self.take_block();
+                for row in b.top..=b.bottom {
+                    let (from, to) = self.block_cols(row, &b);
+                    let r = Range {
+                        start: Pos::new(row, from),
+                        end: Pos::new(row, to),
+                        linewise: false,
+                    };
+                    self.surround(r, c);
+                }
+                self.cursor = Pos::new(b.top, self.block_cols(b.top, &b).0);
                 true
             }
             Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {

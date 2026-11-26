@@ -1,8 +1,5 @@
-use std::collections::VecDeque;
-
 use crate::buffer::Pos;
 use crate::command::Op;
-use crate::diff;
 use crate::editor::{Editor, Effect, Range, expand_home, listed};
 use crate::mapping::{self, MapMode, Mapping};
 use crate::regex::{Regex, Span};
@@ -28,10 +25,15 @@ impl Editor {
     fn split_bar<'a>(&self, line: &'a str) -> Option<(String, &'a str)> {
         let after = self.parse_range(line).map_or(line, |(_, rest)| rest).trim_start();
         let name = &after[..after.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(after.len())];
+        // :r !cmd too, as the command is the shell's
+        let read_shell =
+            !name.is_empty() && "read".starts_with(name) && after[name.len()..].trim_start().starts_with('!');
         let whole = after.starts_with('!')
+            || read_shell
             || name == "s"
             || name.len() >= 2 && "substitute".starts_with(name)
-            || name.len() >= 4 && "normal".starts_with(name);
+            || name.len() >= 4 && "normal".starts_with(name)
+            || !name.is_empty() && ("global".starts_with(name) || "vglobal".starts_with(name));
         if whole {
             return None;
         }
@@ -77,7 +79,14 @@ impl Editor {
             if cmd.trim().is_empty() {
                 return self.error("E471: Argument required");
             }
-            self.push_effect(Effect::Shell(cmd.trim().to_string()));
+            match range {
+                Some(lines) => {
+                    self.filter(lines, cmd.trim());
+                    self.end_change();
+                    self.sync_windows();
+                }
+                None => self.push_effect(Effect::Shell(cmd.trim().to_string())),
+            }
             return;
         }
         let mut name_len = rest.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(rest.len());
@@ -197,7 +206,12 @@ impl Editor {
             } else {
                 range.map_or(self.cursor.row, |r| r.1) + 1
             };
-            self.read_file(arg, at);
+            // :r!cmd is :r !cmd, its ! read as a bang
+            match arg.strip_prefix('!') {
+                Some(cmd) => self.read_command(cmd.trim(), at),
+                None if force => self.read_command(arg, at),
+                None => self.read_file(arg, at),
+            }
         } else if name == "s" || is("substitute", 2) {
             self.substitute(
                 range.unwrap_or(current),
@@ -223,24 +237,23 @@ impl Editor {
             let keys = crate::keys::parse(arg);
             // :normal! leaves mappings out
             self.noremap += usize::from(force);
-            // the lines it was given, followed as the keys put in and take out lines, so each
-            // runs once and one taken out isn't run at all, as vim does by marking them first
-            let mut rows: VecDeque<usize> = (a..=b.min(self.buf.last_row())).collect();
-            while let Some(row) = rows.pop_front() {
-                let before = self.buf.lines().to_vec();
-                self.set_cursor(Pos::new(row, 0));
-                self.keys(&keys);
-                self.flush_mapping();
-                if matches!(self.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
-                    self.key(tinsel::app::Key::Esc);
+            self.each_line(a..=b.min(self.buf.last_row()), |e| {
+                e.keys(&keys);
+                e.flush_mapping();
+                if matches!(e.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
+                    e.key(tinsel::app::Key::Esc);
                 }
-                self.leave_visual_if_any();
-                if before != self.buf.lines() {
-                    let hunks = diff::hunks(&before, self.buf.lines());
-                    rows = rows.into_iter().filter_map(|r| diff::follow(&hunks, r).ok()).collect();
-                }
-            }
+                e.leave_visual_if_any();
+            });
             self.noremap -= usize::from(force);
+        } else if is("global", 1) || is("vglobal", 1) {
+            let all = (0, self.buf.last_row());
+            return self.global(range.unwrap_or(all), arg, force || name.starts_with('v'));
+        } else if is("move", 1) || is("copy", 2) || name == "t" {
+            self.move_lines(range.unwrap_or(current), arg, name.starts_with('m'));
+        } else if is("sort", 3) {
+            let all = (0, self.buf.last_row());
+            self.sort(range.unwrap_or(all), arg, force);
         } else if is("set", 2) {
             self.set(arg);
         } else if is("nohlsearch", 3) {
@@ -267,6 +280,94 @@ impl Editor {
         }
         self.end_change();
         self.sync_windows();
+    }
+
+    /// Runs `run` with the cursor on each of `rows` in turn, following them as it puts in and
+    /// takes out lines, so each runs once and one taken out isn't run at all, as vim does by
+    /// marking them first.
+    fn each_line(&mut self, rows: impl IntoIterator<Item = usize>, mut run: impl FnMut(&mut Self)) {
+        let id = self.buf.track(rows);
+        while let Some(row) = self.buf.next_tracked(id) {
+            self.set_cursor(Pos::new(row, 0));
+            run(self);
+            if self.should_quit() {
+                break;
+            }
+        }
+        self.buf.untrack(id);
+    }
+
+    // :g/pat/cmd runs cmd on each line that matches, and :v or :g! on each that doesn't
+    fn global(&mut self, (first, last): Lines, arg: &str, invert: bool) {
+        if self.grouped > 0 {
+            return self.error("E147: Cannot do :global recursive");
+        }
+        let mut chars = arg.chars();
+        let delim = match chars.next() {
+            None => return self.error("E35: No previous regular expression"),
+            Some(d) if d.is_alphanumeric() || "\\\"| ".contains(d) => {
+                return self.error("E146: Regular expressions can't be delimited by letters");
+            }
+            Some(d) => d,
+        };
+        let (pat, cmd) = split_first_unescaped(chars.as_str(), delim);
+        let pat = if pat.is_empty() {
+            match self.last_search.clone() {
+                Some(p) => p,
+                None => return self.error("E35: No previous regular expression"),
+            }
+        } else {
+            pat
+        };
+        let mut re = match Regex::new(&pat) {
+            Ok(re) => re,
+            Err(e) => return self.bad_pattern(&pat, &e),
+        };
+        re.set_case(self.options.ignore_case, self.options.smart_case);
+        self.last_search = Some(pat.clone());
+        let last = last.min(self.buf.last_row());
+        let rows: Vec<usize> = (first..=last)
+            .filter(|&row| {
+                let chars: Vec<char> = self.buf.line(row).chars().collect();
+                re.find_at(&chars, 0).is_some() != invert
+            })
+            .collect();
+        if rows.is_empty() {
+            return self.error(format!("E486: Pattern not found: {pat}"));
+        }
+        let cmd = cmd.trim();
+        if cmd.is_empty() || cmd == "p" || cmd == "print" {
+            let shown: Vec<String> = rows
+                .iter()
+                .map(|&r| format!("{}: {}", r + 1, self.buf.line(r).trim()))
+                .collect();
+            return self.info(shown.join("  ·  "));
+        }
+        let lines = self.buf.len();
+        let mut failed = None;
+        let mut done = false;
+        self.grouped += 1;
+        self.each_line(rows, |e| {
+            e.ex(cmd);
+            // a line the command can't do, like :s on one without its pattern, is skipped
+            match e.message.take() {
+                Some(m) if m.error => failed = Some(m),
+                _ => done = true,
+            }
+        });
+        self.grouped -= 1;
+        self.end_change();
+        self.sync_windows();
+        if !done {
+            self.message = failed;
+        } else if self.buf.len().abs_diff(lines) > 2 {
+            let (n, how) = if self.buf.len() < lines {
+                (lines - self.buf.len(), "fewer")
+            } else {
+                (self.buf.len() - lines, "more")
+            };
+            self.info(format!("{n} {how} lines"));
+        }
     }
 
     fn parse_range<'a>(&self, line: &'a str) -> Result<(Option<Lines>, &'a str), String> {
@@ -296,6 +397,12 @@ impl Editor {
     }
 
     fn address<'a>(&self, s: &'a str) -> Result<(Option<usize>, &'a str), String> {
+        let (row, rest) = self.address_from_zero(s)?;
+        Ok((row.map(|r| r.max(0) as usize), rest))
+    }
+
+    /// An address as a row, where 0 is the line before the first, as :m0 and :t0 want.
+    fn address_from_zero<'a>(&self, s: &'a str) -> Result<(Option<isize>, &'a str), String> {
         let digits = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
         let (mut row, mut rest): (Option<isize>, &str) = if digits > 0 {
             let n: isize = s[..digits].parse().map_err(|_| "E16: Invalid range".to_string())?;
@@ -324,7 +431,48 @@ impl Editor {
             row = Some(row.unwrap_or(self.cursor.row as isize) + sign * n);
             rest = &after[d..];
         }
-        Ok((row.map(|r| r.max(0) as usize), rest))
+        Ok((row, rest))
+    }
+
+    // :m moves lines to below the line given, and :t or :co copies them there
+    fn move_lines(&mut self, (first, last): Lines, arg: &str, cut: bool) {
+        let to = match self.address_from_zero(arg) {
+            Ok((Some(row), "")) if (-1..self.buf.len() as isize).contains(&row) => row,
+            Ok((None, _)) => return self.error("E14: Invalid address"),
+            Ok((_, rest)) if !rest.trim().is_empty() => {
+                return self.error(format!("E488: Trailing characters: {rest}"));
+            }
+            Ok(_) => return self.error("E16: Invalid range"),
+            Err(e) => return self.error(e),
+        };
+        let last = last.min(self.buf.last_row());
+        let lines = self.buf.lines()[first..=last].to_vec();
+        let n = lines.len();
+        // below the line before them, or one of their own, they stay where they are
+        let below = (to + 1) as usize;
+        if cut && (first..=last + 1).contains(&below) {
+            if below <= last {
+                return self.error("E134: Cannot move a range of lines into itself");
+            }
+            self.set_cursor(self.first_non_blank_pos(last));
+            return;
+        }
+        self.touch();
+        let at = if cut && below > last {
+            self.buf.delete_lines(first, last);
+            below - n
+        } else {
+            if cut {
+                self.buf.delete_lines(first, last);
+            }
+            below
+        };
+        self.buf.insert_lines(at, lines);
+        self.set_cursor(self.first_non_blank_pos(at + n - 1));
+        if n > 2 {
+            let how = if cut { "moved" } else { "copied" };
+            self.info(format!("{n} lines {how}"));
+        }
     }
 
     fn edit(&mut self, path: Option<&str>, force: bool) {
@@ -418,6 +566,137 @@ impl Editor {
             }
             Err(e) => self.error(format!("E484: Can't open file {path}: {e}")),
         }
+    }
+
+    // :{range}!cmd hands the lines to cmd, and puts what it prints in their place
+    fn filter(&mut self, (first, last): Lines, cmd: &str) {
+        let last = last.min(self.buf.last_row());
+        let mut input = self.buf.lines()[first..=last].join("\n");
+        input.push('\n');
+        let out = match run_shell(cmd, Some(input)) {
+            Ok(out) => out,
+            Err(e) => return self.error(e),
+        };
+        let lines = output_lines(&out);
+        let (old, new) = (last - first + 1, lines.len());
+        self.touch();
+        if lines.is_empty() {
+            self.buf.delete_lines(first, last);
+        } else {
+            self.buf.replace_lines(first, last, lines);
+        }
+        self.set_cursor(self.first_non_blank_pos(first.min(self.buf.last_row())));
+        if old > 2 || new > 2 {
+            self.info(format!("{old} lines filtered"));
+        }
+    }
+
+    // :r !cmd puts what cmd prints below the line
+    fn read_command(&mut self, cmd: &str, at: usize) {
+        if cmd.is_empty() {
+            return self.error("E471: Argument required");
+        }
+        let out = match run_shell(cmd, None) {
+            Ok(out) => out,
+            Err(e) => return self.error(e),
+        };
+        let lines = output_lines(&out);
+        if lines.is_empty() {
+            return;
+        }
+        self.touch();
+        let at = at.min(self.buf.len());
+        self.buf.insert_lines(at, lines);
+        self.set_cursor(self.first_non_blank_pos(at));
+    }
+
+    // :sort, backwards with !, with i for any case, n by the first number, u leaving out
+    // lines alike, and /pat/ by what comes after it, or with r by what it matched
+    fn sort(&mut self, (first, last): Lines, arg: &str, reverse: bool) {
+        let mut flags = String::new();
+        let mut pat = None;
+        let mut chars = arg.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                c if c.is_ascii_alphabetic() => flags.push(c),
+                ' ' => {}
+                d if d != '"' && d != '\\' => {
+                    let (p, rest) = split_first_unescaped(chars.as_str(), d);
+                    pat = Some(p);
+                    chars = rest.chars();
+                }
+                _ => return self.error(format!("E474: Invalid argument: {arg}")),
+            }
+        }
+        if let Some(bad) = flags.chars().find(|c| !"inur".contains(*c)) {
+            return self.error(format!("E474: Invalid argument: {bad}"));
+        }
+        let re = match pat {
+            Some(p) => {
+                let p = if p.is_empty() {
+                    match self.last_search.clone() {
+                        Some(p) => p,
+                        None => return self.error("E35: No previous regular expression"),
+                    }
+                } else {
+                    p
+                };
+                match Regex::new(&p) {
+                    Ok(mut re) => {
+                        re.set_case(self.options.ignore_case, self.options.smart_case);
+                        Some(re)
+                    }
+                    Err(e) => return self.bad_pattern(&p, &e),
+                }
+            }
+            None => None,
+        };
+        let (fold, numeric, unique, matched) = (
+            flags.contains('i'),
+            flags.contains('n'),
+            flags.contains('u'),
+            flags.contains('r'),
+        );
+        let last = last.min(self.buf.last_row());
+        // each line with what it sorts by; lines the pattern misses stay first, as they were
+        let mut missed = Vec::new();
+        let mut keyed: Vec<(SortKey, String)> = Vec::new();
+        for line in &self.buf.lines()[first..=last] {
+            let chars: Vec<char> = line.chars().collect();
+            let key: String = match &re {
+                None => line.clone(),
+                Some(re) => match re.find_at(&chars, 0).and_then(|g| g[0]) {
+                    Some((a, b)) if matched => chars[a..b].iter().collect(),
+                    Some((_, b)) => chars[b..].iter().collect(),
+                    None => {
+                        missed.push(line.clone());
+                        continue;
+                    }
+                },
+            };
+            let key = if numeric {
+                SortKey::Number(first_number(&key))
+            } else if fold {
+                SortKey::Text(key.to_lowercase())
+            } else {
+                SortKey::Text(key)
+            };
+            keyed.push((key, line.clone()));
+        }
+        keyed.sort_by(|a, b| a.0.cmp(&b.0));
+        if unique {
+            keyed.dedup_by(|b, a| a.0 == b.0);
+        }
+        let mut lines = missed;
+        lines.extend(keyed.into_iter().map(|(_, l)| l));
+        if reverse {
+            lines.reverse();
+        }
+        if lines != self.buf.lines()[first..=last] {
+            self.touch();
+            self.buf.replace_lines(first, last, lines);
+        }
+        self.set_cursor(self.first_non_blank_pos(first));
     }
 
     fn substitute(&mut self, (first, last): (usize, usize), arg: &str) {
@@ -535,6 +814,7 @@ impl Editor {
                 flag(o.auto_indent, "autoindent"),
                 format!("scrolloff={}", o.scroll_off),
                 format!("timeoutlen={}", o.timeout_len),
+                format!("textwidth={}", o.text_width),
                 flag(o.syntax, "syntax"),
                 flag(o.cursor_line, "cursorline"),
                 flag(o.indent_guides, "indentguides"),
@@ -548,6 +828,7 @@ impl Editor {
                 flag(o.zero_pad, "zeropad"),
                 flag(o.wrap, "wrap"),
                 flag(o.linebreak, "linebreak"),
+                flag(o.undo_file, "undofile"),
                 flag(o.update_check, "updatecheck"),
             ];
             return self.info(all.join("  "));
@@ -575,6 +856,7 @@ impl Editor {
                 "shiftwidth" | "sw" if n > 0 => o.shift_width = n.min(32),
                 "scrolloff" | "so" => o.scroll_off = n,
                 "timeoutlen" | "tm" => o.timeout_len = n,
+                "textwidth" | "tw" => o.text_width = n,
                 "tabstop" | "ts" | "shiftwidth" | "sw" => {
                     return Err(format!("E487: Argument must be positive: {word}"));
                 }
@@ -588,6 +870,7 @@ impl Editor {
                 "shiftwidth" | "sw" => format!("shiftwidth={}", self.options.shift_width),
                 "scrolloff" | "so" => format!("scrolloff={}", self.options.scroll_off),
                 "timeoutlen" | "tm" => format!("timeoutlen={}", self.options.timeout_len),
+                "textwidth" | "tw" => format!("textwidth={}", self.options.text_width),
                 other => {
                     let (name, on) = self.options.flag_mut(other).ok_or_else(unknown)?;
                     if *on { name.to_string() } else { format!("no{name}") }
@@ -770,7 +1053,7 @@ pub(crate) fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKi
 
 fn is_known(word: &str) -> bool {
     [
-        "set", "se", "shell", "sh", "stop", "st", "suspend", "sus", "sp", "spl", "spli", "split",
+        "set", "se", "shell", "sh", "stop", "st", "suspend", "sus", "sp", "spl", "spli", "split", "sor", "sort",
     ]
     .contains(&word)
 }
@@ -806,6 +1089,90 @@ fn split_unescaped(s: &str, delim: char) -> Vec<String> {
         }
     }
     parts
+}
+
+/// Splits at the first `delim` that isn't escaped, leaving `\delim` in the first part as
+/// `delim`, and the rest as it is.
+fn split_first_unescaped(s: &str, delim: char) -> (String, &str) {
+    let mut first = String::new();
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some((_, n)) if n == delim => first.push(n),
+                Some((_, n)) => {
+                    first.push('\\');
+                    first.push(n);
+                }
+                None => first.push('\\'),
+            },
+            c if c == delim => return (first, &s[i + c.len_utf8()..]),
+            c => first.push(c),
+        }
+    }
+    (first, "")
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum SortKey {
+    // lines without a number come first
+    Number(Option<i128>),
+    Text(String),
+}
+
+// the first number in `s`, with a - just before it making it negative
+fn first_number(s: &str) -> Option<i128> {
+    let start = s.find(|c: char| c.is_ascii_digit())?;
+    let digits = &s[start..];
+    let end = digits.find(|c: char| !c.is_ascii_digit()).unwrap_or(digits.len());
+    let n: i128 = digits[..end].parse().unwrap_or(i128::MAX);
+    Some(if s[..start].ends_with('-') { -n } else { n })
+}
+
+/// Runs `cmd` in the shell, giving it `input`, and gives back what it prints. A command that
+/// fails says why with the first line it wrote to stderr, and changes nothing.
+fn run_shell(cmd: &str, input: Option<String>) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
+    let mut child = Command::new(&shell)
+        .arg("-c")
+        .arg(cmd)
+        .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("E282: Can't run {shell}: {e}"))?;
+    // written from a thread of its own, so a command that prints as it reads can't stall
+    let writer = input.zip(child.stdin.take()).map(|(text, mut stdin)| {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(text.as_bytes());
+        })
+    });
+    let out = child.wait_with_output().map_err(|e| format!("E282: {cmd}: {e}"))?;
+    if let Some(w) = writer {
+        let _ = w.join();
+    }
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let why = err.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+        let code = out.status.code().map_or("a signal".to_string(), |c| c.to_string());
+        return Err(if why.is_empty() {
+            format!("shell returned {code}")
+        } else {
+            format!("shell returned {code}: {why}")
+        });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+// what a command printed, as lines, without the newline it ends with
+fn output_lines(out: &str) -> Vec<String> {
+    let out = out.replace("\r\n", "\n");
+    match out.strip_suffix('\n').unwrap_or(&out) {
+        "" if out.is_empty() => Vec::new(),
+        text => text.split('\n').map(str::to_string).collect(),
+    }
 }
 
 fn expand_replacement(rep: &str, line: &[char], groups: &[Option<Span>]) -> String {

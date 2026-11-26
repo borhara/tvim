@@ -80,18 +80,39 @@ impl Editor {
 
     pub(super) fn operate(&mut self, op: Op, target: Target, count: Option<usize>, register: Option<char>) {
         let n = count.unwrap_or(1);
-        let range = match target {
+        // cw acts like ce, see :h cw
+        if let (Op::Change, Target::Motion(Motion::WordForward(big))) = (op, target) {
+            if self.buf.char_at(self.cursor).is_some_and(|c| !c.is_whitespace()) {
+                return self.change_word(big, n, register);
+            }
+        }
+        let strict = matches!(op, Op::Delete | Op::Change | Op::Yank);
+        let Some(range) = self.target_range(target, count, strict) else {
+            return;
+        };
+        // 3>> is three lines, not three shifts, and 3!! three lines to filter
+        let times = if matches!(op, Op::Indent | Op::Dedent | Op::Filter) {
+            1
+        } else {
+            n
+        };
+        self.apply(op, range, register, times);
+    }
+
+    /// The text an operator's target covers from the cursor. With `strict`, a count of lines
+    /// running past the end covers nothing, as it does for d, c and y.
+    pub(super) fn target_range(&mut self, target: Target, count: Option<usize>, strict: bool) -> Option<Range> {
+        let n = count.unwrap_or(1);
+        Some(match target {
             Target::Lines => {
                 let last = self.cursor.row + n - 1;
-                if last > self.buf.last_row() && n > 1 && matches!(op, Op::Delete | Op::Change | Op::Yank) {
-                    return;
+                if last > self.buf.last_row() && n > 1 && strict {
+                    return None;
                 }
                 Range::lines(self.cursor.row, last.min(self.buf.last_row()))
             }
             Target::Object { kind, inner } => {
-                let Some(span) = object(&self.buf, self.cursor, kind, inner, n) else {
-                    return;
-                };
+                let span = object(&self.buf, self.cursor, kind, inner, n)?;
                 Range {
                     start: span.start,
                     end: span.end,
@@ -99,27 +120,13 @@ impl Editor {
                 }
             }
             Target::Motion(m) => {
-                // cw acts like ce, see :h cw
-                let m = match (op, m) {
-                    (Op::Change, Motion::WordForward(big))
-                        if self.buf.char_at(self.cursor).is_some_and(|c| !c.is_whitespace()) =>
-                    {
-                        return self.change_word(big, n, register);
-                    }
-                    _ => m,
-                };
-                let Some((to, kind)) = self.target(m, count, true) else {
-                    return;
-                };
+                let (to, kind) = self.target(m, count, true)?;
                 if Self::is_jump(m) {
                     self.jump_from(self.cursor);
                 }
                 self.range_to(to, kind)
             }
-        };
-        // 3>> is three lines, not three shifts
-        let times = if matches!(op, Op::Indent | Op::Dedent) { 1 } else { n };
-        self.apply(op, range, register, times);
+        })
     }
 
     pub(super) fn change_word(&mut self, big: bool, n: usize, register: Option<char>) {
@@ -251,13 +258,53 @@ impl Editor {
                 self.buf.insert(from, &changed);
                 self.cursor = from;
             }
+            // asks for the command, with the lines filled in as vim does
+            Op::Filter => {
+                let (first, last) = (r.start.row, r.last_row().min(self.buf.last_row()));
+                self.cursor = self.first_non_blank_pos(first);
+                let lines = match last - first {
+                    0 => ".".to_string(),
+                    n => format!(".,.+{n}"),
+                };
+                self.begin_cmdline(':', format!("{lines}!"));
+            }
+            Op::Format | Op::FormatKeep => {
+                let (first, last) = (r.start.row, r.last_row().min(self.buf.last_row()));
+                let kind = self.format_kind();
+                let width = match self.options.text_width {
+                    0 => 79,
+                    n => n,
+                };
+                let lines = crate::format::wrap(&self.buf.lines()[first..=last], width, self.options.tab_stop, kind);
+                // gw keeps to the text the cursor was on
+                let at = self.cursor;
+                let word = (first..=last)
+                    .contains(&at.row)
+                    .then(|| {
+                        let p = Pos::new(at.row - first, at.col);
+                        crate::format::word_at(&self.buf.lines()[first..=last], kind, p)
+                    })
+                    .flatten();
+                let n = lines.len();
+                if lines != self.buf.lines()[first..=last] {
+                    self.touch();
+                    self.buf.replace_lines(first, last, lines);
+                }
+                if op == Op::FormatKeep {
+                    let found = word.and_then(|w| crate::format::place(&self.buf.lines()[first..first + n], kind, w));
+                    self.cursor = match found {
+                        Some(p) => Pos::new(first + p.row, p.col),
+                        None => {
+                            let row = at.row.min(self.buf.last_row());
+                            Pos::new(row, at.col.min(self.buf.line_len(row).saturating_sub(1)))
+                        }
+                    };
+                } else {
+                    self.cursor = self.first_non_blank_pos(first + n - 1);
+                }
+            }
             Op::Comment => {
-                let name = self
-                    .file
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.file_name()?.to_str())
-                    .unwrap_or("");
+                let name = self.file_name();
                 let (open, close) = crate::comment::markers(name);
                 let last = r.last_row().min(self.buf.last_row());
                 let lines = crate::comment::toggle(&self.buf.lines()[r.start.row..=last], open, close);
@@ -268,6 +315,42 @@ impl Editor {
                 self.cursor = self.first_non_blank_pos(r.start.row);
             }
         }
+    }
+
+    /// Alt-j and Alt-k: moves lines `first..=last` down or up `n` lines, or as far as they'll
+    /// go, quietly, as a key pressed again and again shouldn't fail at the end. Gives how far.
+    pub(super) fn shift_lines(&mut self, first: usize, last: usize, down: bool, n: usize) -> usize {
+        let by = if down {
+            n.min(self.buf.last_row() - last)
+        } else {
+            n.min(first)
+        };
+        if by == 0 {
+            return 0;
+        }
+        self.touch();
+        let lines = self.buf.lines()[first..=last].to_vec();
+        self.buf.delete_lines(first, last);
+        self.buf.insert_lines(if down { first + by } else { first - by }, lines);
+        by
+    }
+
+    pub(super) fn format_kind(&self) -> crate::format::Kind<'static> {
+        let name = self.file_name();
+        let (open, close) = crate::comment::markers(name);
+        crate::format::Kind {
+            comment: close.is_empty().then_some(open),
+            markdown: matches!(crate::syntax::extension(name).as_str(), "md" | "markdown" | "mdx"),
+        }
+    }
+
+    // the open file's name, which says how its comments start
+    pub(super) fn file_name(&self) -> &str {
+        self.file
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name()?.to_str())
+            .unwrap_or("")
     }
 
     pub(super) fn char_span(&self, r: Range) -> (Pos, Pos) {

@@ -183,6 +183,19 @@ fn hints_for_what_comes_next() {
     let mut e = ed("abc");
     e.keys(&parse("g"));
     assert!(screen_with_hints(&e, 60, 20).contains("gv"));
+    for (keys, shown) in [
+        ("!", "filter …"),
+        ("gq", "rewrap …"),
+        ("gs", "put a pair around"),
+        ("y", "ysiw)"),
+        ("d", "ds("),
+        ("c", "cs\"'"),
+    ] {
+        let mut e = ed("abc");
+        e.keys(&parse(keys));
+        let screen = screen_with_hints(&e, 80, 24);
+        assert!(screen.contains(shown), "{keys}: {screen}");
+    }
     let mut e = ed("abc");
     e.keys(&parse("d"));
     assert!(!screen(e, 60, 20).contains("delete …"), "not until there's a pause");

@@ -41,19 +41,22 @@ tvim +/TODO src/lib.rs    # start on the first TODO
 tvim docs/screenshot.png  # look at a picture
 ```
 
-Files reopen at the line you left them on.
+Files reopen at the line you left them on, and `u` still undoes the changes you saved last time, as long as the file hasn't been changed outside tvim since. A very big file keeps only its most recent changes, so it still opens quickly.
 
 Pictures (PNG, JPEG and GIF) open at full resolution, fitted to the window, in kitty, Ghostty, Konsole, iTerm2 and WezTerm. Other terminals, and tmux, say they can't show them. Pictures are only for looking at: tvim won't change or write them.
 
 ## Coming from vim
 
-Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:e`, `:normal`, ranges and so on). A few things behave differently:
+Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:g`, `:m`, `:t`, `:sort`, `:e`, `:normal`, ranges and so on). A few things behave differently:
 
 - **Search** uses regular expressions the way most other tools write them, so `(a|b)+` and `\d{3}` work without extra backslashes. Search ignores case unless you type a capital. Use `\c` or `\C` in the pattern to force it either way.
 - **`Tab`** in normal mode moves between the file and the sidebar. Terminals send the same key for `Ctrl-i`, so straight after `Ctrl-o` it goes forward through jumps instead.
 - **Brackets and quotes** close themselves as you type. Turn this off with `:set noap`.
 - **Opening another file** never asks you to save first. Unsaved files stay open with a dot next to their name, and `:q` won't quit while any are left.
-- **`|`** runs one `:` command after another, as in `:w | bn`. `:s` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
+- **`|`** runs one `:` command after another, as in `:w | bn`. `:s`, `:g` and `:normal` take the rest of the line as it is, so patterns such as `(a|b)` still work.
+- **`!`** with a motion, or `:{range}!cmd`, runs the lines through a shell command and puts what it prints in their place, as in `!ip sort` or `:%!jq .`. `:r !cmd` puts what a command prints below the cursor. A command that fails leaves the text as it was and shows its error.
+- **`gq`** rewraps lines to `textwidth`, or 79 columns when it's 0, keeping comment markers and list bullets, and `gw` does the same without moving the cursor. With `textwidth` set, typing past it breaks the line: any line in Markdown and plain text, and only comments in code.
+- **`Alt-j` and `Alt-k`** move the line down and up, or the selected lines in visual mode, as in LazyVim. In insert mode Alt still works as Esc, so `Alt-j` there leaves insert mode and moves down.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
 - **`gd`, `gr` and `K`** ask the file's language server, as they do in most Neovim setups, rather than searching the file, replacing characters or running `man`.
 - **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines.
@@ -72,6 +75,8 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 | `Space m` | Markdown preview |
 | `Space n` | Rename what's under the cursor, with a language server |
 | `Space z` | Zen mode: just the text, centred |
+
+**Surround.** `ys` with a motion or text object and then a bracket or quote puts that pair around the text, so `ysiw)` turns `foo` into `(foo)`. `yss` does the whole line, and `S` does a selection in visual mode, each row on its own in block mode. `ds"` takes away the quotes around the cursor, and `cs"'` swaps them for single quotes. An opening bracket, as in `ysiw(`, puts spaces inside, and with `ds(` or `cs(` it takes them away. LazyVim's names work too: `gsa` for `ys`, `gsd` for `ds` and `gsr` for `cs`.
 
 **Sidebar.** `tvim .`, `Tab` or `:Lex` opens a folder tree beside the text. Use `j`/`k` to move, `Enter` to open, and `l`/`h` to open and close folders. `-` goes up a folder, `.` shows hidden files, `/` filters, and `q` hides the sidebar.
 
@@ -147,6 +152,8 @@ nnoremap <leader>w :w<CR>
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
 | `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
 | `linebreak` | `lbr` | off | with `wrap`, break lines between words |
+| `textwidth` | `tw` | 0 | how wide `gq` makes lines, and where typing breaks them |
+| `undofile` | `udf` | on | keep undo history when you save, to undo after reopening |
 | `updatecheck` | `uc` | on | look for a newer tvim once a day, and offer it when tvim starts |
 
 ### Key mappings

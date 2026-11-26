@@ -323,6 +323,7 @@ impl Editor {
         self.marks.clear();
         self.explorer_focused = false;
         self.mode = Mode::Normal;
+        self.read_undo();
         self.follow_file();
         Ok(())
     }
@@ -401,6 +402,10 @@ impl Editor {
             target.display(),
             contents.len()
         ));
+        // after saying it's written, so a history that can't be kept says so
+        if (ours || named) && rows.is_none() {
+            self.write_undo();
+        }
         true
     }
 

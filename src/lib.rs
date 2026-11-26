@@ -9,6 +9,7 @@ pub mod editor;
 mod ex;
 pub mod explorer;
 pub mod finder;
+pub mod format;
 pub mod git;
 pub mod gitmenu;
 pub mod grep;
@@ -31,6 +32,7 @@ pub mod syntax;
 pub mod text;
 mod time;
 pub mod ui;
+pub mod undofile;
 pub mod update;
 mod window;
 

@@ -102,6 +102,7 @@ fn main() -> ExitCode {
     if let Some(start) = start {
         go_to(&mut editor, &start);
     }
+    editor.set_undo_dir(state.as_ref().map(|d| d.join("undo")));
     if let Some(problem) = problem {
         editor.show_error(&problem);
     }

@@ -35,10 +35,19 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("set", "se", "change an option"),
     ("substitute", "s", "replace text"),
     ("nohlsearch", "noh", "clear search highlights"),
-    ("read", "r", "put a file's text below"),
+    ("read", "r", "put a file's text below, or a command's with :r !cmd"),
     ("registers", "reg", "show registers"),
     ("marks", "", "show marks"),
     ("normal", "norm", "run keys on each line"),
+    ("global", "g", "run a command on each line that matches"),
+    ("vglobal", "v", "run a command on each line that doesn't match"),
+    ("move", "m", "move lines to below another"),
+    ("copy", "co", "copy lines to below another, as :t does"),
+    (
+        "sort",
+        "sor",
+        "sort lines: ! backwards, i any case, n by number, u no repeats",
+    ),
     ("nnoremap", "nn", "map keys in normal mode"),
     ("xnoremap", "xn", "map keys in visual mode"),
     ("inoremap", "ino", "map keys in insert mode"),
@@ -87,6 +96,16 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("zeropad", "", "line numbers start with zeros, as in 01"),
     ("wrap", "", "long lines carry on below"),
     ("linebreak", "", "wrap between words"),
+    (
+        "textwidth",
+        "=",
+        "how wide gq makes lines, and where typing breaks them",
+    ),
+    (
+        "undofile",
+        "",
+        "keep undo history when you save, to undo after reopening",
+    ),
     ("updatecheck", "", "look for a newer tvim once a day"),
 ];
 

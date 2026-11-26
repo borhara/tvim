@@ -93,7 +93,11 @@ impl App for Tvim {
     fn event(&mut self, event: &Event) -> Flow {
         match event {
             Event::Key(k) => {
-                let (esc, k) = crate::keys::as_vim(*k);
+                let (esc, k) = if self.editor.takes_alt(*k) {
+                    (None, *k)
+                } else {
+                    crate::keys::as_vim(*k)
+                };
                 if let Some(esc) = esc {
                     self.editor.key(esc);
                 }
@@ -867,7 +871,7 @@ fn draw_welcome(frame: &mut Frame, area: Rect, c: &Colors) {
     ];
     let key_width = menu.iter().map(|(k, _)| k.len()).max().unwrap_or(0) + 2;
     let menu_width = key_width + 2 + menu.iter().map(|(_, d)| d.len()).max().unwrap_or(0);
-    let tagline = "a vim for your terminal, with a little sparkle";
+    let tagline = "a starlit vim for your terminal";
     let version = format!("v{}  ·  drawn with tinsel", env!("CARGO_PKG_VERSION"));
     let height = LOGO.len() + 2 + 2 + 2 + 1 + menu.len();
     if area.height < height || area.width < tagline.len() + 4 {

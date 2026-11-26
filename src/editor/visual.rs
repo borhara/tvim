@@ -10,7 +10,8 @@ impl Editor {
     // gc repeats as gcc, and so isn't here
     pub(super) fn is_visual_change(cmd: &Cmd) -> bool {
         match cmd.act {
-            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment),
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment | Op::Filter),
+            Act::Surround(..) => true,
             Act::Key(Key::Char(c)) => "xXDsSCRJpPIA".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::With('r', _) => true,
             _ => false,
@@ -158,6 +159,22 @@ impl Editor {
                         inputs: crate::keys::parse("gcc").into_iter().map(Input::Key).collect(),
                         visual: None,
                     });
+                }
+            }
+            Act::Surround(_, c) => {
+                let r = self.visual_range();
+                self.leave_visual();
+                self.surround(r, c);
+            }
+            // the lines selected move, and stay selected
+            Act::Key(Key::Alt(c)) => {
+                let (top, bottom) = (
+                    self.anchor.row.min(self.cursor.row),
+                    self.anchor.row.max(self.cursor.row),
+                );
+                let by = self.shift_lines(top, bottom, c == 'j', n);
+                for p in [&mut self.anchor, &mut self.cursor] {
+                    p.row = if c == 'j' { p.row + by } else { p.row - by };
                 }
             }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
