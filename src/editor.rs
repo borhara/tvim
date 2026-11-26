@@ -223,6 +223,9 @@ pub struct FileInfo {
     pub blank_line: bool,
     // a picture, shown rather than edited; the buffer is left empty
     pub image: Option<tinsel::image::Image>,
+    // when it was last changed on disk, as of reading or writing it, to see when something
+    // else changes it
+    pub mtime: Option<std::time::SystemTime>,
 }
 
 #[derive(Clone, Debug, Default)]

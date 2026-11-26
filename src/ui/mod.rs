@@ -92,7 +92,10 @@ impl App for Tvim {
 
     fn event(&mut self, event: &Event) -> Flow {
         match event {
+            // back to the window, after something else may have changed the file
+            Event::Focus(true) => self.editor.check_disk(),
             Event::Key(k) => {
+                self.editor.check_disk();
                 let (esc, k) = if self.editor.takes_alt(*k) {
                     (None, *k)
                 } else {

@@ -1,5 +1,5 @@
 mod common;
-use common::temp;
+use common::{rewrite, temp};
 use tvim::{Editor, keys::parse};
 
 fn open(name: &str, contents: &[u8]) -> (Editor, std::path::PathBuf) {
@@ -170,4 +170,31 @@ fn the_language_comes_from_the_name() {
     assert_eq!(e.syntax(), Some(tvim::syntax::Syntax::Rust));
     let (e, _) = open("notes.txt", b"");
     assert_eq!(e.syntax(), None);
+}
+
+#[test]
+fn a_file_changed_on_disk_is_read_again_where_the_cursor_was() {
+    let (mut e, path) = open("changed.txt", b"one\ntwo\nthree\n");
+    e.keys(&parse("j"));
+    rewrite(&path, b"one\nTWO\nthree\n");
+    e.check_disk();
+    assert_eq!(e.text(), "one\nTWO\nthree");
+    assert_eq!(e.cursor().row, 1);
+    assert!(!e.is_modified());
+}
+
+#[test]
+fn unsaved_changes_arent_lost_to_a_change_on_disk() {
+    let (mut e, path) = open("both.txt", b"one\n");
+    e.keys(&parse("Ax<Esc>"));
+    rewrite(&path, b"two\n");
+    e.check_disk();
+    assert_eq!(e.text(), "onex", "kept");
+    assert_eq!(
+        e.message().unwrap().text,
+        format!(
+            "W11: Warning: File \"{}\" has changed since editing started",
+            path.display()
+        )
+    );
 }

@@ -127,25 +127,7 @@ impl Editor {
         if self.is_modified() {
             return;
         }
-        let Some(path) = self.file.path.clone() else { return };
-        // a picture isn't text to compare, so is read again whenever it's still there
-        if self.file.image.is_none() {
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                return;
-            };
-            if text == self.contents(None) {
-                return;
-            }
-        } else if !path.exists() {
-            return;
-        }
-        let (cursor, top) = (self.cursor, self.top.get());
-        if self.load(&path).is_ok() {
-            self.cursor = cursor;
-            self.top.set(top);
-            self.clamp();
-            self.message = None;
-        }
+        self.read_again();
     }
 
     pub(super) fn git_menu_input(&mut self, input: Input) {

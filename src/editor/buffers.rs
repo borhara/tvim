@@ -249,6 +249,8 @@ impl Editor {
             return Ok(());
         }
         let display = path.display().to_string();
+        // before it's read, so a change made while it's being read is seen next time
+        let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
         match std::fs::read(path) {
             // text that starts the way a picture does, "GIF8 notes" say, is still text; a real
             // one isn't UTF-8 from its first few bytes
@@ -287,6 +289,7 @@ impl Editor {
                     new: false,
                     blank_line: text == "\n",
                     image: None,
+                    mtime: None,
                 };
                 let lines = if text.is_empty() { 0 } else { self.buf.len() };
                 let mut notes = String::new();
@@ -307,11 +310,13 @@ impl Editor {
                     new: true,
                     blank_line: false,
                     image: None,
+                    mtime: None,
                 };
                 self.info(format!("\"{display}\" [New]"));
             }
             Err(e) => return Err(e),
         }
+        self.file.mtime = mtime;
         self.cursor = Pos::default();
         self.saved_lines = self.buf.lines().to_vec();
         self.git.probe(self.file.path.as_deref());
@@ -390,6 +395,7 @@ impl Editor {
             self.saved_lines = self.buf.lines().to_vec();
             *self.marks_cache.borrow_mut() = None;
             self.file.new = false;
+            self.file.mtime = std::fs::metadata(&target).and_then(|m| m.modified()).ok();
             self.git.probe(self.file.path.as_deref());
         }
         self.refresh_tree();
@@ -420,6 +426,51 @@ impl Editor {
             self.name(),
             if lines == 1 { "" } else { "s" }
         ));
+    }
+
+    // The file changed on disk since it was read or written, by something else: read again,
+    // as vim's autoread does, if there's nothing unsaved to lose, and said if there is.
+    pub fn check_disk(&mut self) {
+        let Some(path) = self.file.path.clone() else { return };
+        let Some(seen) = self.file.mtime else { return };
+        let Ok(now) = std::fs::metadata(&path).and_then(|m| m.modified()) else {
+            return;
+        };
+        if now == seen {
+            return;
+        }
+        self.file.mtime = Some(now);
+        if self.is_modified() {
+            self.error(format!(
+                "W11: Warning: File \"{}\" has changed since editing started",
+                self.name()
+            ));
+            return;
+        }
+        self.read_again();
+    }
+
+    // the file as it is on disk now, if that's not what's shown, where the cursor was
+    pub(super) fn read_again(&mut self) {
+        let Some(path) = self.file.path.clone() else { return };
+        // a picture isn't text to compare, so is read again whenever it's still there
+        if self.file.image.is_none() {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                return;
+            };
+            if text == self.contents(None) {
+                return;
+            }
+        } else if !path.exists() {
+            return;
+        }
+        let (cursor, top) = (self.cursor, self.top.get());
+        if self.load(&path).is_ok() {
+            self.cursor = cursor;
+            self.top.set(top);
+            self.clamp();
+            self.message = None;
+        }
     }
 
     pub(crate) fn reset_after_reload(&mut self) {

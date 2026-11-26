@@ -1,5 +1,5 @@
 mod common;
-use common::temp;
+use common::{rewrite, temp};
 use tinsel::app::Frame;
 use tinsel::image::{Protocol, Support, with_support};
 use tvim::Editor;
@@ -293,4 +293,17 @@ fn a_picture_waits_for_the_palette_only_where_its_drawn() {
         })
     });
     assert_eq!(frame.images().len(), 1);
+}
+
+#[test]
+fn a_picture_changed_on_disk_is_shown_again() {
+    let path = temp("changed.png");
+    std::fs::write(&path, png(4, 4)).unwrap();
+    let mut e = Editor::open(&path).unwrap();
+    assert_eq!(e.image().map(|i| i.width()), Some(4));
+    e.check_disk();
+    assert_eq!(e.image().map(|i| i.width()), Some(4), "nothing changed");
+    rewrite(&path, &png(8, 8));
+    e.check_disk();
+    assert_eq!(e.image().map(|i| i.width()), Some(8), "the new one");
 }

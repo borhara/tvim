@@ -37,3 +37,16 @@ pub fn temp(name: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir.join(name)
 }
+
+/// `path` rewritten as something else would, changed later than it was, however coarsely the
+/// file system keeps the time.
+pub fn rewrite(path: &std::path::Path, contents: &[u8]) {
+    std::fs::write(path, contents).unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+}
