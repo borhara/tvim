@@ -80,6 +80,7 @@ impl Editor {
                 return self.error("E471: Argument required");
             }
             match range {
+                Some(_) if self.refuses_change() => {}
                 Some(lines) => {
                     self.filter(lines, cmd.trim());
                     self.end_change();
@@ -95,6 +96,9 @@ impl Editor {
             name_len = 1;
         }
         if name_len == 0 && rest.starts_with(['>', '<']) {
+            if self.refuses_change() {
+                return;
+            }
             let c = rest.chars().next().unwrap_or('>');
             let times = rest.chars().take_while(|&x| x == c).count();
             let (a, b) = range.unwrap_or((self.cursor.row, self.cursor.row));
@@ -115,6 +119,19 @@ impl Editor {
         let arg = arg.trim();
         let current = (self.cursor.row, self.cursor.row);
         let is = |full: &str, min: usize| name.len() >= min && full.starts_with(name);
+        // turned away before they start, as :d would yank first; :g, :normal and :join go
+        // through commands that are
+        let changes = is("read", 1)
+            || name == "s"
+            || is("substitute", 2)
+            || is("delete", 1)
+            || is("move", 1)
+            || is("copy", 2)
+            || name == "t"
+            || is("sort", 3);
+        if changes && self.refuses_change() {
+            return;
+        }
 
         if let Some((modes, kind)) = map_command(name, force) {
             return self.map_ex(&modes, kind, arg);

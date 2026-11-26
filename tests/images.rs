@@ -245,3 +245,17 @@ fn visual_mode_leaves_a_picture_and_the_registers_alone() {
         assert_eq!(e.register('"').unwrap().text, "kept", "{keys}");
     }
 }
+
+#[test]
+fn ex_commands_that_would_change_a_picture_leave_the_registers_alone() {
+    let mut e = open("ex.png", &png(4, 4));
+    let text = temp("ex-yanked.txt");
+    std::fs::write(&text, "kept\n").unwrap();
+    e.keys(&parse(&format!(":e {}<CR>yy:bp<CR>", text.display())));
+    for keys in [":d<CR>", ":g/^/d<CR>", ":m0<CR>", ":><CR>", ":1!sort<CR>"] {
+        e.keys(&parse(keys));
+        assert_eq!(e.text(), "", "{keys}");
+        assert_eq!(e.register('"').unwrap().text, "kept", "{keys}");
+        assert_eq!(e.register('1').map(|r| r.text.as_str()), None, "{keys}");
+    }
+}
