@@ -44,6 +44,13 @@ impl Editor {
             Parse::Done(cmd) => {
                 self.pending.clear();
                 if self.mode.is_visual() {
+                    // commenting and moving lines change them too, though they repeat their own way
+                    let changes = Self::is_visual_change(&cmd)
+                        || matches!(cmd.act, Act::Operate(Op::Comment, _) | Act::Key(Key::Alt(_)));
+                    if changes && self.refuses_change() {
+                        self.mode = Mode::Normal;
+                        return;
+                    }
                     let change = Self::is_visual_change(&cmd) && !self.replaying;
                     if change {
                         self.building = Some(Dot {

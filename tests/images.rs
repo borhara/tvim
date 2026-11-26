@@ -215,3 +215,33 @@ fn the_newer_ways_of_changing_text_leave_a_picture_alone_too() {
         assert!(!e.is_modified(), "{keys}");
     }
 }
+
+#[test]
+fn visual_mode_leaves_a_picture_and_the_registers_alone() {
+    let mut e = open("chosen.png", &png(4, 4));
+    let text = temp("yanked.txt");
+    std::fs::write(&text, "kept\n").unwrap();
+    e.keys(&parse(&format!(":e {}<CR>yy:bp<CR>", text.display())));
+    assert!(e.image().is_some());
+    for keys in [
+        "vx",
+        "Vd",
+        "vD",
+        "vs",
+        "vI",
+        "vA",
+        "v<C-a>",
+        "vrx",
+        "vJ",
+        "vp",
+        "vgc",
+        "V<A-j>",
+        "<C-v>Ihi<Esc>",
+    ] {
+        e.keys(&parse(keys));
+        assert_eq!(e.mode(), tvim::editor::Mode::Normal, "{keys}");
+        assert_eq!(e.text(), "", "{keys}");
+        assert!(!e.is_modified(), "{keys}");
+        assert_eq!(e.register('"').unwrap().text, "kept", "{keys}");
+    }
+}
