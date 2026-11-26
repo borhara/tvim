@@ -1,8 +1,5 @@
-use std::collections::VecDeque;
-
 use crate::buffer::Pos;
 use crate::command::Op;
-use crate::diff;
 use crate::editor::{Editor, Effect, Range, expand_home, listed};
 use crate::mapping::{self, MapMode, Mapping};
 use crate::regex::{Regex, Span};
@@ -223,23 +220,14 @@ impl Editor {
             let keys = crate::keys::parse(arg);
             // :normal! leaves mappings out
             self.noremap += usize::from(force);
-            // the lines it was given, followed as the keys put in and take out lines, so each
-            // runs once and one taken out isn't run at all, as vim does by marking them first
-            let mut rows: VecDeque<usize> = (a..=b.min(self.buf.last_row())).collect();
-            while let Some(row) = rows.pop_front() {
-                let before = self.buf.lines().to_vec();
-                self.set_cursor(Pos::new(row, 0));
-                self.keys(&keys);
-                self.flush_mapping();
-                if matches!(self.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
-                    self.key(tinsel::app::Key::Esc);
+            self.each_line(a..=b.min(self.buf.last_row()), |e| {
+                e.keys(&keys);
+                e.flush_mapping();
+                if matches!(e.mode(), crate::editor::Mode::Insert | crate::editor::Mode::Replace) {
+                    e.key(tinsel::app::Key::Esc);
                 }
-                self.leave_visual_if_any();
-                if before != self.buf.lines() {
-                    let hunks = diff::hunks(&before, self.buf.lines());
-                    rows = rows.into_iter().filter_map(|r| diff::follow(&hunks, r).ok()).collect();
-                }
-            }
+                e.leave_visual_if_any();
+            });
             self.noremap -= usize::from(force);
         } else if is("set", 2) {
             self.set(arg);
@@ -267,6 +255,21 @@ impl Editor {
         }
         self.end_change();
         self.sync_windows();
+    }
+
+    /// Runs `run` with the cursor on each of `rows` in turn, following them as it puts in and
+    /// takes out lines, so each runs once and one taken out isn't run at all, as vim does by
+    /// marking them first.
+    fn each_line(&mut self, rows: impl IntoIterator<Item = usize>, mut run: impl FnMut(&mut Self)) {
+        let id = self.buf.track(rows);
+        while let Some(row) = self.buf.next_tracked(id) {
+            self.set_cursor(Pos::new(row, 0));
+            run(self);
+            if self.should_quit() {
+                break;
+            }
+        }
+        self.buf.untrack(id);
     }
 
     fn parse_range<'a>(&self, line: &'a str) -> Result<(Option<Lines>, &'a str), String> {

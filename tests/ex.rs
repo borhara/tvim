@@ -66,6 +66,13 @@ fn deleting_yanking_and_shifting_ranges() {
         ":normal runs on the lines it was given, wherever lines put in push them"
     );
     assert_eq!(t("a\nb\nc", ":%norm Ox<CR>"), "x\na\nx\nb\nx\nc");
+    assert_eq!(t("a\na\na\na", ":%norm dd<CR>"), "", "lines alike are told apart");
+    assert_eq!(t("x\nx", ":%norm yyp<CR>"), "x\nx\nx\nx");
+    assert_eq!(
+        t("a\na\na\na", ":%norm J<CR>"),
+        "a a\na a",
+        "a line joined on isn't run on"
+    );
     assert_eq!(t("a\nb\nc\nd", ":%norm dd<CR>"), "");
     assert_eq!(
         t("a\nb\nc\nd\ne\nf", ":%norm jdd<CR>"),
