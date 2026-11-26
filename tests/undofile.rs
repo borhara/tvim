@@ -80,3 +80,48 @@ fn only_you_can_read_the_history() {
     let kept = std::fs::read_dir(&undo).unwrap().next().unwrap().unwrap().path();
     assert_eq!(mode(&kept), 0o600);
 }
+
+#[test]
+fn files_the_session_reopened_get_theirs_too() {
+    let (a, b, undo) = (temp("session-a.txt"), temp("session-b.txt"), temp("undo-session"));
+    std::fs::write(&a, "a\n").unwrap();
+    std::fs::write(&b, "b\n").unwrap();
+    let mut e = open(&b, &undo);
+    e.keys(&parse("ob2<Esc>:w<CR>"));
+    // as main does: files opened first, and the undo folder given after
+    let mut e = Editor::open(&b).unwrap();
+    e.ex(&format!("e {}", a.display()));
+    e.set_undo_dir(Some(undo.clone()));
+    e.ex("bn");
+    assert_eq!(e.text(), "b\nb2");
+    e.keys(&parse("u"));
+    assert_eq!(e.text(), "b", "the file that wasn't showing got its history");
+}
+
+#[test]
+fn saving_with_no_history_clears_what_was_kept() {
+    let (file, undo) = (temp("cleared.txt"), temp("undo-cleared"));
+    std::fs::write(&file, "one\n").unwrap();
+    let mut e = open(&file, &undo);
+    e.keys(&parse("otwo<Esc>:w<CR>"));
+    assert_eq!(std::fs::read_dir(&undo).unwrap().count(), 1);
+    std::fs::write(&file, "changed\n").unwrap();
+    let mut e = open(&file, &undo);
+    e.ex("w");
+    assert_eq!(std::fs::read_dir(&undo).unwrap().count(), 0);
+}
+
+#[test]
+fn history_that_cant_be_kept_says_so() {
+    let (file, undo) = (temp("unkept.txt"), temp("undo-is-a-file"));
+    std::fs::write(&file, "one\n").unwrap();
+    std::fs::write(&undo, "not a folder").unwrap();
+    let mut e = open(&file, &undo);
+    e.keys(&parse("otwo<Esc>:w<CR>"));
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "one\ntwo\n",
+        "the file is still written"
+    );
+    assert!(e.message().unwrap().text.starts_with("E828"));
+}

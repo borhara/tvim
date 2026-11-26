@@ -281,6 +281,7 @@ mod tests {
             [1, 2],
             "whole lines taken out charwise take their mark"
         );
+        assert_eq!(b, Buffer::from_lines(b.lines().to_vec()), "marks don't count as text");
     }
 
     #[test]

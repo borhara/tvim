@@ -96,3 +96,23 @@ fn typing_past_textwidth_breaks_the_line() {
     e.keys(&parse(":set tw=10<CR>iaaa bbb ccc ddd"));
     assert_eq!(e.cursor(), tvim::Pos::new(1, 7), "the cursor goes along");
 }
+
+#[test]
+fn breaking_lines_odd_cases() {
+    assert_eq!(
+        t("", ":set tw=8<CR>iaaa   bbbbbb<Esc>"),
+        "aaa\nbbbbbb",
+        "a run of blanks goes"
+    );
+    assert_eq!(
+        after("h.rs", "", ":set tw=6<CR>i//   aaaaaa<Esc>"),
+        "//   aaaaaa",
+        "nowhere to break past the marker"
+    );
+    assert_eq!(at("\n\n", "jgwj"), (1, 0), "gw on blank lines stays put");
+    assert_eq!(
+        after("i.md", "", ":set tw=5<CR>i-  verylongword<Esc>"),
+        "-  verylongword",
+        "nor in the blanks after a bullet"
+    );
+}

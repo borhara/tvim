@@ -510,3 +510,86 @@ fn sorting_lines() {
     e.ex("sort q");
     assert!(e.message().unwrap().text.starts_with("E474"));
 }
+
+#[test]
+fn global_and_sort_refuse_bad_patterns() {
+    let error = |text: &str, cmd: &str| {
+        let mut e = ed(text);
+        e.ex(cmd);
+        e.message()
+            .filter(|m| m.error)
+            .map(|m| m.text.clone())
+            .unwrap_or_default()
+    };
+    assert!(error("a", "g").starts_with("E35"));
+    assert!(
+        error("a", "g//d").starts_with("E35"),
+        "an empty pattern with no search before"
+    );
+    assert!(error("a", "g\"a\"d").starts_with("E146"));
+    assert!(error("a", "g/(/d").contains("("), "a pattern that doesn't parse");
+    assert!(error("b\na", "sort //").starts_with("E35"));
+    assert!(error("b\na", "sort /(/").contains("("));
+    assert!(error("b\na", "sort \"").starts_with("E474"));
+    assert_eq!(
+        t("x2 b\nx1 a", "/x<CR>:sort //<CR>"),
+        "x1 a\nx2 b",
+        "// is the last search"
+    );
+}
+
+#[test]
+fn global_stops_when_a_command_quits() {
+    let mut e = ed("a\nb\na");
+    e.ex("g/a/q");
+    assert!(e.should_quit());
+}
+
+#[test]
+fn global_says_how_many_lines_it_put_in() {
+    let mut e = ed("a\na\na\nb");
+    e.ex("g/a/t.");
+    assert_eq!(e.text(), "a\na\na\na\na\na\nb");
+    assert_eq!(e.message().unwrap().text, "3 more lines");
+}
+
+#[test]
+fn moving_lines_to_where_they_are_changes_nothing() {
+    assert_eq!(at("a\nb\nc", "j:m.<CR>"), (1, 0));
+    assert_eq!(t("a\nb\nc", "j:m.<CR>"), "a\nb\nc");
+    assert_eq!(
+        t("a\nb\nc", "j:m-1<CR>"),
+        "a\nb\nc",
+        "below the line above is where it is"
+    );
+    assert_eq!(t("a\nb\nc", "j:m.<CR>u"), "a\nb\nc");
+    let mut e = ed("a\nb");
+    e.ex("m'z");
+    assert!(e.message().unwrap().text.starts_with("E20"), "a mark that isn't set");
+}
+
+#[test]
+fn filters_and_reading_need_a_command() {
+    let mut e = ed("a");
+    e.ex(".!");
+    assert!(e.message().unwrap().text.starts_with("E471"));
+    e.ex("r !");
+    assert!(e.message().unwrap().text.starts_with("E471"));
+    assert_eq!(
+        t("a", ":r !true<CR>"),
+        "a",
+        "a command that prints nothing puts in nothing"
+    );
+    assert_eq!(t("a", ":r !true<CR>u"), "a");
+}
+
+#[test]
+fn textwidth_is_an_option() {
+    let mut e = ed("");
+    e.ex("set tw=72");
+    e.ex("set tw?");
+    assert_eq!(e.message().unwrap().text, "textwidth=72");
+    e.ex("set");
+    assert!(e.message().unwrap().text.contains("textwidth=72"));
+    assert!(e.message().unwrap().text.contains("undofile"));
+}

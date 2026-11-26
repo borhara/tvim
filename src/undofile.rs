@@ -145,6 +145,10 @@ mod tests {
         assert_eq!(read("garbage", file, "now"), None);
         let cut = &text[..text.len() - 3];
         assert_eq!(read(cut, file, "now"), None, "a file cut short");
+        let bad = text.replace("hunk 0 1 1", "hunk 5 1 1");
+        assert_eq!(read(&bad, file, "now"), None, "a change past the end");
+        let short = text.replace("then\nend\n", "");
+        assert_eq!(read(&short, file, "now"), None, "fewer lines than it says");
     }
 
     #[test]

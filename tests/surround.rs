@@ -78,3 +78,23 @@ fn visual_s_puts_a_pair_around_the_selection() {
     assert_eq!(t("ab\ncd", "<C-v>jlS)u"), "ab\ncd", "as one change");
     assert_eq!(at("foo bar", "wysiw)"), (0, 4));
 }
+
+#[test]
+fn surround_odd_cases() {
+    assert_eq!(t("foo", "ysiw{"), "{ foo }");
+    assert_eq!(t("", "yss)"), "", "an empty line has nothing to surround");
+    assert_eq!(
+        t("a b\n\nc", "ys})"),
+        "(a b)\n\nc",
+        "up to the paragraph's end, not the line after"
+    );
+    assert_eq!(t("ab\ncd", "lvj0S)"), "a(b\nc)d");
+    assert_eq!(
+        t("a b\nc", "wv$S)"),
+        "a (b)\nc",
+        "a selection to the end leaves the line break out"
+    );
+    assert_eq!(t("foo bar", "veSx"), "foo bar", "S with a letter does nothing");
+    assert_eq!(t("foo", "vgsax"), "foo");
+    assert_eq!(t("foo bar", "ysizb"), "foo bar", "nor with an object that isn't one");
+}

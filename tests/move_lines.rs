@@ -45,3 +45,19 @@ fn alt_is_still_esc_elsewhere() {
     e.keys(&parse("<Esc>d"));
     assert!(!e.takes_alt(Key::Alt('j')), "as does an operator waiting");
 }
+
+#[test]
+fn the_terminal_sends_alt_j_on_as_it_should() {
+    use tinsel::app::{App, Event};
+    use tvim::ui::Tvim;
+    let mut app = Tvim::new(ed("a\nb\nc"));
+    app.event(&Event::Key(Key::Alt('j')));
+    assert_eq!(app.editor.text(), "b\na\nc", "in normal mode it moves the line");
+    for k in parse("ggix") {
+        app.event(&Event::Key(k));
+    }
+    app.event(&Event::Key(Key::Alt('j')));
+    assert_eq!(app.editor.text(), "xb\na\nc", "in insert mode it's esc and j");
+    assert_eq!(app.editor.mode(), tvim::Mode::Normal);
+    assert_eq!(app.editor.cursor().row, 1);
+}
