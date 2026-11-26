@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0](https://github.com/borhara/tvim/compare/v1.4.1...v1.5.0) - 2026-11-26
+
+### Added
+
+- a big photo shows the night sky while it loads, and phone photos stand the way they were taken
+- JPEG and GIF pictures open in kitty too, decoded by tinsel
+- pictures open at full resolution in terminals that can show them, and say so in those that can't
+- the start screen says tvim is a starlit vim for your terminal
+- Alt-j and Alt-k move the line, or the selected lines, down and up, while Alt stays Esc in insert mode
+- gsa, gsd and gsr surround as ys, ds and cs do, by the names LazyVim gives them
+- ys puts a pair around text, ds takes the pair around the cursor away, cs changes it, and S surrounds a selection
+- undo history is kept when a file is saved, so u undoes it after reopening, unless the file changed meanwhile
+- gq and gw rewrap lines to textwidth, keeping comment markers and bullets, and typing past it breaks the line
+- :sort sorts lines, backwards with !, ignoring case with i, by number with n, without repeats with u, and by a /pattern/
+- ! and :{range}!cmd run lines through a shell command, and :r !cmd puts its output below
+- :m moves lines to below another, and :t or :co copies them there
+- :g runs a command on each line that matches a pattern, and :v on each that doesn't, as one change
+
+### Fixed
+
+- a picture waits only for what's really drawn over it: the palette where it fits, and completion and hover
+- a picture git changes is shown again, as a text file is read again
+- a text file that starts the way a GIF does opens as text
+- :wq closes a picture, which has nothing to write
+- ex commands that would change a picture stop before they run, so :d leaves the registers alone
+- visual mode can't change a picture either, nor overwrite the registers trying
+- :normal over a range tells lines alike apart, running once on each and not on one joined or deleted
+
+### Other
+
+- one check says a picture can't be changed, asked before a change starts
+- tinsel 1.2, which shows pictures
+- :g, filters, :sort, gq, Alt-j and surround leave a picture alone too
+- Merge branch 'main' into image-view
+- authors is borhara
+- error paths for :g, :sort, :m and filters, undo kept for every reopened file, the hint strip and Alt-j from the terminal
+
 ## [1.4.1](https://github.com/borhara/tvim/compare/v1.4.0...v1.4.1) - 2026-11-25
 
 ### Fixed
