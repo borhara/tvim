@@ -43,6 +43,11 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("vglobal", "v", "run a command on each line that doesn't match"),
     ("move", "m", "move lines to below another"),
     ("copy", "co", "copy lines to below another, as :t does"),
+    (
+        "sort",
+        "sor",
+        "sort lines: ! backwards, i any case, n by number, u no repeats",
+    ),
     ("nnoremap", "nn", "map keys in normal mode"),
     ("xnoremap", "xn", "map keys in visual mode"),
     ("inoremap", "ino", "map keys in insert mode"),

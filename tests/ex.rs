@@ -474,3 +474,39 @@ fn the_filter_operator_asks_for_the_command() {
     assert_eq!(t("x\nb\na", "jVj!sort<CR>"), "x\na\nb");
     assert_eq!(t("c\nb\na", "G!ksort<CR>"), "c\na\nb", "upwards, from the top line");
 }
+
+#[test]
+fn sorting_lines() {
+    assert_eq!(t("c\na\nb", ":sort<CR>"), "a\nb\nc");
+    assert_eq!(t("c\na\nb", ":sort!<CR>"), "c\nb\na");
+    assert_eq!(t("x\nc\na\nb\nw", ":2,4sort<CR>"), "x\na\nb\nc\nw");
+    assert_eq!(t("b\nA\nB\na", ":sort<CR>"), "A\nB\na\nb");
+    assert_eq!(
+        t("b\nA\nB\na", ":sort i<CR>"),
+        "A\na\nb\nB",
+        "alike under i keep their order"
+    );
+    assert_eq!(t("x10\nx9\nx-2\nnone\nx100", ":sort n<CR>"), "none\nx-2\nx9\nx10\nx100");
+    assert_eq!(t("b\na\nb\na\nc", ":sort u<CR>"), "a\nb\nc");
+    assert_eq!(t("a\nA\nb", ":sort ui<CR>"), "a\nb");
+    assert_eq!(t("3 x\n1 y\n2 x", ":sort n u<CR>"), "1 y\n2 x\n3 x");
+    assert_eq!(
+        t("a3 z\nb1 y\nc2 x", ":sort /\\w+ /<CR>"),
+        "c2 x\nb1 y\na3 z",
+        "by what follows"
+    );
+    assert_eq!(
+        t("a3 z\nb1 y\nc2 x", ":sort /\\d/ r<CR>"),
+        "b1 y\nc2 x\na3 z",
+        "by what matched"
+    );
+    assert_eq!(
+        t("k=2\nnone\nk=1", ":sort /k=/<CR>"),
+        "none\nk=1\nk=2",
+        "missed lines first"
+    );
+    assert_eq!(t("c\na\nb", ":sort<CR>u"), "c\na\nb", "one change");
+    let mut e = ed("b\na");
+    e.ex("sort q");
+    assert!(e.message().unwrap().text.starts_with("E474"));
+}

@@ -44,7 +44,7 @@ Files reopen at the line you left them on.
 
 ## Coming from vim
 
-Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:g`, `:m`, `:t`, `:e`, `:normal`, ranges and so on). A few things behave differently:
+Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:g`, `:m`, `:t`, `:sort`, `:e`, `:normal`, ranges and so on). A few things behave differently:
 
 - **Search** uses regular expressions the way most other tools write them, so `(a|b)+` and `\d{3}` work without extra backslashes. Search ignores case unless you type a capital. Use `\c` or `\C` in the pattern to force it either way.
 - **`Tab`** in normal mode moves between the file and the sidebar. Terminals send the same key for `Ctrl-i`, so straight after `Ctrl-o` it goes forward through jumps instead.

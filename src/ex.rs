@@ -251,6 +251,9 @@ impl Editor {
             return self.global(range.unwrap_or(all), arg, force || name.starts_with('v'));
         } else if is("move", 1) || is("copy", 2) || name == "t" {
             self.move_lines(range.unwrap_or(current), arg, name.starts_with('m'));
+        } else if is("sort", 3) {
+            let all = (0, self.buf.last_row());
+            self.sort(range.unwrap_or(all), arg, force);
         } else if is("set", 2) {
             self.set(arg);
         } else if is("nohlsearch", 3) {
@@ -607,6 +610,95 @@ impl Editor {
         self.set_cursor(self.first_non_blank_pos(at));
     }
 
+    // :sort, backwards with !, with i for any case, n by the first number, u leaving out
+    // lines alike, and /pat/ by what comes after it, or with r by what it matched
+    fn sort(&mut self, (first, last): Lines, arg: &str, reverse: bool) {
+        let mut flags = String::new();
+        let mut pat = None;
+        let mut chars = arg.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                c if c.is_ascii_alphabetic() => flags.push(c),
+                ' ' => {}
+                d if d != '"' && d != '\\' => {
+                    let (p, rest) = split_first_unescaped(chars.as_str(), d);
+                    pat = Some(p);
+                    chars = rest.chars();
+                }
+                _ => return self.error(format!("E474: Invalid argument: {arg}")),
+            }
+        }
+        if let Some(bad) = flags.chars().find(|c| !"inur".contains(*c)) {
+            return self.error(format!("E474: Invalid argument: {bad}"));
+        }
+        let re = match pat {
+            Some(p) => {
+                let p = if p.is_empty() {
+                    match self.last_search.clone() {
+                        Some(p) => p,
+                        None => return self.error("E35: No previous regular expression"),
+                    }
+                } else {
+                    p
+                };
+                match Regex::new(&p) {
+                    Ok(mut re) => {
+                        re.set_case(self.options.ignore_case, self.options.smart_case);
+                        Some(re)
+                    }
+                    Err(e) => return self.bad_pattern(&p, &e),
+                }
+            }
+            None => None,
+        };
+        let (fold, numeric, unique, matched) = (
+            flags.contains('i'),
+            flags.contains('n'),
+            flags.contains('u'),
+            flags.contains('r'),
+        );
+        let last = last.min(self.buf.last_row());
+        // each line with what it sorts by; lines the pattern misses stay first, as they were
+        let mut missed = Vec::new();
+        let mut keyed: Vec<(SortKey, String)> = Vec::new();
+        for line in &self.buf.lines()[first..=last] {
+            let chars: Vec<char> = line.chars().collect();
+            let key: String = match &re {
+                None => line.clone(),
+                Some(re) => match re.find_at(&chars, 0).and_then(|g| g[0]) {
+                    Some((a, b)) if matched => chars[a..b].iter().collect(),
+                    Some((_, b)) => chars[b..].iter().collect(),
+                    None => {
+                        missed.push(line.clone());
+                        continue;
+                    }
+                },
+            };
+            let key = if numeric {
+                SortKey::Number(first_number(&key))
+            } else if fold {
+                SortKey::Text(key.to_lowercase())
+            } else {
+                SortKey::Text(key)
+            };
+            keyed.push((key, line.clone()));
+        }
+        keyed.sort_by(|a, b| a.0.cmp(&b.0));
+        if unique {
+            keyed.dedup_by(|b, a| a.0 == b.0);
+        }
+        let mut lines = missed;
+        lines.extend(keyed.into_iter().map(|(_, l)| l));
+        if reverse {
+            lines.reverse();
+        }
+        if lines != self.buf.lines()[first..=last] {
+            self.touch();
+            self.buf.replace_lines(first, last, lines);
+        }
+        self.set_cursor(self.first_non_blank_pos(first));
+    }
+
     fn substitute(&mut self, (first, last): (usize, usize), arg: &str) {
         let mut chars = arg.chars();
         let (pat, rep, flags) = match chars.next() {
@@ -957,7 +1049,7 @@ pub(crate) fn map_command(name: &str, bang: bool) -> Option<(Vec<MapMode>, MapKi
 
 fn is_known(word: &str) -> bool {
     [
-        "set", "se", "shell", "sh", "stop", "st", "suspend", "sus", "sp", "spl", "spli", "split",
+        "set", "se", "shell", "sh", "stop", "st", "suspend", "sus", "sp", "spl", "spli", "split", "sor", "sort",
     ]
     .contains(&word)
 }
@@ -1015,6 +1107,22 @@ fn split_first_unescaped(s: &str, delim: char) -> (String, &str) {
         }
     }
     (first, "")
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum SortKey {
+    // lines without a number come first
+    Number(Option<i128>),
+    Text(String),
+}
+
+// the first number in `s`, with a - just before it making it negative
+fn first_number(s: &str) -> Option<i128> {
+    let start = s.find(|c: char| c.is_ascii_digit())?;
+    let digits = &s[start..];
+    let end = digits.find(|c: char| !c.is_ascii_digit()).unwrap_or(digits.len());
+    let n: i128 = digits[..end].parse().unwrap_or(i128::MAX);
+    Some(if s[..start].ends_with('-') { -n } else { n })
 }
 
 /// Runs `cmd` in the shell, giving it `input`, and gives back what it prints. A command that
