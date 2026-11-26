@@ -736,6 +736,14 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             owned(&[("c", "the previous change"), ("d", "the previous problem")]),
         ),
         "g" => ("g".into(), owned(G)),
+        "gs" if !visual => (
+            "surround".into(),
+            owned(&[
+                ("a", "put a pair around, as gsaiw)"),
+                ("d", "the pair around, as gsd("),
+                ("r", "swap the pair around, as gsr\"'"),
+            ]),
+        ),
         "z" => ("z".into(), owned(Z)),
         "Z" => (
             "Z".into(),

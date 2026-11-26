@@ -55,6 +55,16 @@ fn cs_changes_a_pair() {
 }
 
 #[test]
+fn lazyvims_names_do_the_same() {
+    assert_eq!(t("foo bar", "gsaiw)"), "(foo) bar");
+    assert_eq!(t("foo bar baz", "gsa2w\""), "\"foo bar\" baz");
+    assert_eq!(t("(foo)", "lgsd)"), "foo");
+    assert_eq!(t("\"foo\"", "lgsr\"'"), "'foo'");
+    assert_eq!(t("foo bar", "vegsa]"), "[foo] bar");
+    assert_eq!(t("a b", "gsaiw)W."), "(a) (b)", "and . does it again");
+}
+
+#[test]
 fn visual_s_puts_a_pair_around_the_selection() {
     assert_eq!(t("foo bar", "veS)"), "(foo) bar");
     assert_eq!(t("foo bar", "veS\""), "\"foo\" bar");

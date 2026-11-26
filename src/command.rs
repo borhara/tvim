@@ -208,6 +208,40 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
         };
     }
 
+    // gsa, gsd and gsr, the names LazyVim gives ys, ds and cs
+    if key == Key::Char('g') && keys.get(i + 1) == Some(&Key::Char('s')) {
+        let op = match keys.get(i + 2) {
+            None => return Parse::More,
+            Some(Key::Char('a')) => Op::Yank,
+            Some(Key::Char('d')) if !visual => Op::Delete,
+            Some(Key::Char('r')) if !visual => Op::Change,
+            _ => return Parse::Invalid,
+        };
+        if visual {
+            return match keys.get(i + 3) {
+                None => Parse::More,
+                Some(Key::Char(c)) if crate::editor::can_surround(*c) => {
+                    done(Act::Surround(Target::Lines, *c), i + 4, count1)
+                }
+                _ => Parse::Invalid,
+            };
+        }
+        return surround(keys, i + 3, op, |act, end, more, digits| {
+            let count = match (count1, more) {
+                (None, None) => None,
+                (a, b) => Some(a.unwrap_or(1) * b.unwrap_or(1)),
+            };
+            let mut typed: Vec<Key> = keys[start..digits.start].to_vec();
+            typed.extend_from_slice(&keys[digits.end..end]);
+            Parse::Done(Cmd {
+                register,
+                count,
+                act,
+                keys: typed,
+            })
+        });
+    }
+
     if visual {
         if let Some(p) = text_object(&keys[i..], |kind, inner| {
             done(Act::Select { kind, inner }, i + 2, count1)
@@ -575,6 +609,16 @@ mod tests {
         assert_eq!(state("ysiwx"), Parse::Invalid);
         assert_eq!(state("cs("), Parse::More);
         assert_eq!(state("dsx"), Parse::Invalid);
+        assert_eq!(
+            cmd("gsaiw)").act,
+            Act::Surround(Target::Object { kind: 'w', inner: true }, ')')
+        );
+        let c = cmd("gsa2w]");
+        assert_eq!((c.count, c.keys), (Some(2), k("gsaw]")));
+        assert_eq!(cmd("gsd(").act, Act::Unsurround('('));
+        assert_eq!(cmd("gsr\"'").act, Act::Resurround('"', '\''));
+        assert_eq!(state("gs"), Parse::More);
+        assert_eq!(state("gsx"), Parse::Invalid);
         assert_eq!(cmd("gqgq").act, Act::Operate(Op::Format, Target::Lines));
         assert_eq!(
             cmd("gwip").act,
