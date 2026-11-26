@@ -259,3 +259,15 @@ fn ex_commands_that_would_change_a_picture_leave_the_registers_alone() {
         assert_eq!(e.register('1').map(|r| r.text.as_str()), None, "{keys}");
     }
 }
+
+#[test]
+fn wq_closes_a_picture() {
+    for keys in [":wq<CR>", ":wq!<CR>", ":x<CR>"] {
+        let mut e = open("closed.png", &png(4, 4));
+        e.keys(&parse(keys));
+        assert!(e.should_quit(), "{keys}: {:?}", e.message());
+    }
+    let mut e = open("named.png", &png(4, 4));
+    e.keys(&parse(&format!(":wq {}<CR>", temp("copy.png").display())));
+    assert!(!e.should_quit(), "nor written under another name");
+}

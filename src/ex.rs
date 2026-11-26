@@ -149,7 +149,8 @@ impl Editor {
         } else if is("wall", 2) {
             self.write_all();
         } else if is("wq", 2) || is("xit", 1) || is("exit", 3) {
-            let needed = is("wq", 2) || self.is_modified() || non_empty(arg).is_some();
+            // a picture has nothing to write, so :wq just closes it
+            let needed = (is("wq", 2) && self.file.image.is_none()) || self.is_modified() || non_empty(arg).is_some();
             if (!needed || self.write(non_empty(arg), force, range)) && !self.close_window() && self.others_saved(force)
             {
                 self.set_quit();
