@@ -271,3 +271,10 @@ fn wq_closes_a_picture() {
     e.keys(&parse(&format!(":wq {}<CR>", temp("copy.png").display())));
     assert!(!e.should_quit(), "nor written under another name");
 }
+
+#[test]
+fn text_that_starts_like_a_picture_is_still_text() {
+    let e = open("notes.txt", b"GIF8 notes on the formats\n");
+    assert!(e.image().is_none());
+    assert_eq!(e.text(), "GIF8 notes on the formats");
+}

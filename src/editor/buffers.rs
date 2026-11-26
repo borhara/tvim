@@ -250,7 +250,9 @@ impl Editor {
         }
         let display = path.display().to_string();
         match std::fs::read(path) {
-            Ok(bytes) if tinsel::image::Image::looks_like(&bytes) => {
+            // text that starts the way a picture does, "GIF8 notes" say, is still text; a real
+            // one isn't UTF-8 from its first few bytes
+            Ok(bytes) if tinsel::image::Image::looks_like(&bytes) && std::str::from_utf8(&bytes).is_err() => {
                 let image = tinsel::image::Image::new(bytes)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
                 self.info(format!(
