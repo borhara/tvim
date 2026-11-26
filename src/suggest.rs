@@ -101,6 +101,11 @@ const OPTIONS: &[(&str, &str, &str)] = &[
         "=",
         "how wide gq makes lines, and where typing breaks them",
     ),
+    (
+        "undofile",
+        "",
+        "keep undo history when you save, to undo after reopening",
+    ),
     ("updatecheck", "", "look for a newer tvim once a day"),
 ];
 

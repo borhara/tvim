@@ -32,6 +32,7 @@ pub mod syntax;
 pub mod text;
 mod time;
 pub mod ui;
+pub mod undofile;
 pub mod update;
 mod window;
 

@@ -828,6 +828,7 @@ impl Editor {
                 flag(o.zero_pad, "zeropad"),
                 flag(o.wrap, "wrap"),
                 flag(o.linebreak, "linebreak"),
+                flag(o.undo_file, "undofile"),
                 flag(o.update_check, "updatecheck"),
             ];
             return self.info(all.join("  "));

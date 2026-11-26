@@ -40,7 +40,7 @@ tvim +42 src/main.rs      # start on line 42
 tvim +/TODO src/lib.rs    # start on the first TODO
 ```
 
-Files reopen at the line you left them on.
+Files reopen at the line you left them on, and `u` still undoes the changes you saved last time, as long as the file hasn't been changed outside tvim since. A very big file keeps only its most recent changes, so it still opens quickly.
 
 ## Coming from vim
 
@@ -147,6 +147,7 @@ nnoremap <leader>w :w<CR>
 | `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
 | `linebreak` | `lbr` | off | with `wrap`, break lines between words |
 | `textwidth` | `tw` | 0 | how wide `gq` makes lines, and where typing breaks them |
+| `undofile` | `udf` | on | keep undo history when you save, to undo after reopening |
 | `updatecheck` | `uc` | on | look for a newer tvim once a day, and offer it when tvim starts |
 
 ### Key mappings
