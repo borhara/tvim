@@ -196,3 +196,22 @@ fn a_photo_from_a_phone_stands_the_way_it_was_taken() {
     let (_, shown) = &frame.images()[0];
     assert_eq!((shown.width(), shown.height()), (23, 37));
 }
+
+#[test]
+fn the_newer_ways_of_changing_text_leave_a_picture_alone_too() {
+    let mut e = open("untouched.png", &png(4, 4));
+    for keys in [
+        ":g/^/normal ihi<CR>",
+        ":%!echo hi<CR>",
+        ":r !echo hi<CR>",
+        ":sort<CR>",
+        ":t.<CR>",
+        "gqq",
+        "<A-j>",
+        "yss)",
+    ] {
+        e.keys(&parse(keys));
+        assert_eq!(e.text(), "", "{keys}");
+        assert!(!e.is_modified(), "{keys}");
+    }
+}
