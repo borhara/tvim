@@ -4,6 +4,7 @@ version = "1.4.1"
 edition = "2024"
 rust-version = "1.85"
 description = "A vim-like terminal text editor written in Rust."
+authors = ["borhara"]
 license = "MIT"
 repository = "https://github.com/borhara/tvim"
 keywords = ["editor", "vim", "terminal", "tui"]
