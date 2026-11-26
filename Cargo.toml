@@ -11,4 +11,4 @@ keywords = ["editor", "vim", "terminal", "tui"]
 categories = ["text-editors", "command-line-utilities"]
 
 [dependencies]
-tinsel = { version = "1", features = ["decode"] }
+tinsel = { version = "1.2", features = ["decode"] }

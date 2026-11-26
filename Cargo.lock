@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "tinsel"
-version = "1.0.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4020efd47a819f7ce102b0640688abbe7f510c72d53576d86c8ba64b11b7e2a8"
+checksum = "2a39c2357b2e2f08f354e853b050a575d3cef5c79202d809959a0f4e93c4eb4c"
 
 [[package]]
 name = "tvim"
