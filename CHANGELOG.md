@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1](https://github.com/borhara/tvim/compare/v1.5.0...v1.5.1) - 2026-11-26
+
+### Fixed
+
+- a file changed on disk by something else is read again, as vim's autoread does, and a picture shows the new one
+
 ## [1.5.0](https://github.com/borhara/tvim/compare/v1.4.1...v1.5.0) - 2026-11-26
 
 ### Added
