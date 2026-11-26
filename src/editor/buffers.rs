@@ -250,11 +250,28 @@ impl Editor {
         }
         let display = path.display().to_string();
         match std::fs::read(path) {
+            Ok(bytes) if tinsel::image::Image::looks_like(&bytes) => {
+                let image = tinsel::image::Image::new(bytes)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                self.info(format!(
+                    "\"{display}\" {}×{} {}",
+                    image.width(),
+                    image.height(),
+                    image.format().name()
+                ));
+                self.buf = Buffer::new();
+                self.file = FileInfo {
+                    path: Some(path.to_path_buf()),
+                    final_newline: true,
+                    image: Some(image),
+                    ..FileInfo::default()
+                };
+            }
             Ok(bytes) => {
                 let size = bytes.len();
-                let text = String::from_utf8(bytes).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{display} isn't UTF-8 text"))
-                })?;
+                // the path goes before it, as the caller says which file
+                let text = String::from_utf8(bytes)
+                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "isn't UTF-8 text"))?;
                 let lf = text.matches('\n').count();
                 let crlf = lf > 0 && text.matches("\r\n").count() == lf;
                 let text = if crlf { text.replace("\r\n", "\n") } else { text };
@@ -267,6 +284,7 @@ impl Editor {
                     final_newline,
                     new: false,
                     blank_line: text == "\n",
+                    image: None,
                 };
                 let lines = if text.is_empty() { 0 } else { self.buf.len() };
                 let mut notes = String::new();
@@ -286,6 +304,7 @@ impl Editor {
                     final_newline: true,
                     new: true,
                     blank_line: false,
+                    image: None,
                 };
                 self.info(format!("\"{display}\" [New]"));
             }
@@ -334,6 +353,13 @@ impl Editor {
                 }
             },
         };
+        if self.file.image.is_some() {
+            self.error(format!(
+                "\"{}\" is an image, which tvim shows but doesn't write",
+                self.name()
+            ));
+            return false;
+        }
         // in full, so ./a.txt is the a.txt that's open
         let full = crate::paths::absolute(&target);
         let ours = self.file.path.as_deref().map(crate::paths::absolute) == Some(full);

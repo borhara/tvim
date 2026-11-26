@@ -19,6 +19,17 @@ impl Editor {
     }
 
     pub(crate) fn end_change(&mut self) {
+        // a picture's empty buffer stays empty, whatever tried to change it
+        if self.changing && self.file.image.is_some() {
+            self.changing = false;
+            if let Some(s) = self.undo.pop() {
+                self.buf.replace_all(s.lines);
+                self.version = s.version;
+                self.cursor = Pos::default();
+            }
+            self.redo.clear();
+            return self.info("images can't be changed");
+        }
         if self.changing {
             self.changing = false;
             if self.undo.last().is_some_and(|s| s.lines == self.buf.lines()) {

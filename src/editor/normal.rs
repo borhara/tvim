@@ -75,6 +75,9 @@ impl Editor {
     }
 
     pub(super) fn run(&mut self, cmd: Cmd) {
+        if self.file.image.is_some() && Self::is_change(&cmd) {
+            return self.info("images can't be changed");
+        }
         let change = Self::is_change(&cmd) && !self.replaying;
         if change {
             self.building = Some(Dot {

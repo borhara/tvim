@@ -213,6 +213,8 @@ pub struct FileInfo {
     pub new: bool,
     // read as one empty line, which a buffer with nothing in it still writes back
     pub blank_line: bool,
+    // a picture, shown rather than edited; the buffer is left empty
+    pub image: Option<tinsel::image::Image>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -360,6 +362,7 @@ pub(crate) struct Text<'a> {
     pub id: usize,
     pub buf: &'a Buffer,
     pub path: Option<&'a Path>,
+    pub image: Option<&'a tinsel::image::Image>,
     pub modified: bool,
     pub version: u64,
     git: &'a Git,
@@ -756,6 +759,7 @@ impl Editor {
             id: self.buffer_id,
             buf: &self.buf,
             path: self.file.path.as_deref(),
+            image: self.file.image.as_ref(),
             modified: self.is_modified(),
             version: self.version,
             git: &self.git,
@@ -771,6 +775,7 @@ impl Editor {
                 id: d.id,
                 buf: &d.buf,
                 path: d.file.path.as_deref(),
+                image: d.file.image.as_ref(),
                 modified: d.modified(),
                 version: d.version,
                 git: &d.git,
@@ -826,6 +831,11 @@ impl Editor {
 
     pub(crate) fn version(&self) -> u64 {
         self.version
+    }
+
+    /// The picture the open file is, if it's one.
+    pub fn image(&self) -> Option<&tinsel::image::Image> {
+        self.file.image.as_ref()
     }
 
     pub fn is_blank_slate(&self) -> bool {

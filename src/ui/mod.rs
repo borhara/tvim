@@ -491,11 +491,23 @@ pub fn draw(e: &Editor, frame: &mut Frame) {
     draw_with(e, frame, true);
 }
 
+thread_local! {
+    // whether something's drawn over the windows this frame: a picture, which sits above the
+    // text, would hide it, so pictures wait until it's gone
+    static COVERED: Cell<bool> = const { Cell::new(false) };
+}
+
 fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     let area = frame.area();
     if area.width == 0 || area.height == 0 {
         return;
     }
+    let covered = e.mode() == Mode::Command
+        || e.finder().is_some()
+        || e.grep_picker().is_some()
+        || e.git_menu().is_some()
+        || hints && !e.explorer_focused() && overlays::hints_for(e).is_some();
+    COVERED.with(|c| c.set(covered));
     let c = colors();
     // the window's margin too, which tinsel sends again once the intro settles
     frame.set_background(c.app);
@@ -538,7 +550,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
         || e.explorer_focused();
     let cursor = if typing {
         typing_at.map(|(x, y)| (x, y, CursorShape::Bar))
-    } else if e.is_blank_slate() || d.body.width == 0 || e.preview_focused() {
+    } else if e.is_blank_slate() || d.body.width == 0 || e.preview_focused() || e.image().is_some() {
         None
     } else {
         text_cursor(e, e.mode(), d.body).filter(|_| bar_on_guide(e).is_none())
@@ -594,7 +606,9 @@ fn text_area(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors, focused: boo
     e.anim.follow(e, frame);
     let (gutter, body) = split_gutter(area, e.gutter());
     e.anim.text_at(body.x);
-    if e.is_blank_slate() && e.mode() == Mode::Normal {
+    if let Some(image) = e.image() {
+        draw_picture(frame, area, e.shown_text().path, image);
+    } else if e.is_blank_slate() && e.mode() == Mode::Normal {
         draw_welcome(frame, area, c);
     } else {
         let v = View {
@@ -672,11 +686,55 @@ fn split_gutter(area: Rect, gutter: usize) -> (Rect, Rect) {
 }
 
 fn other_window(e: &Editor, v: &View, frame: &mut Frame, area: Rect, c: &Colors) {
+    if let Some(image) = v.text.image {
+        return draw_picture(frame, area, v.text.path, image);
+    }
     let (gutter, body) = split_gutter(area, e.gutter_for(v.text.buf.len()));
     draw_text(e, v, frame, gutter, body, c, false);
     if area.width > 0 {
         let bar = Rect::new(area.x + area.width - 1, area.y, 1, area.height);
         draw_scrollbar(e, v, frame, bar, c, false);
+    }
+}
+
+/// A picture file: the picture, fitted to the window with a line under it saying what it
+/// is, or where the terminal can't show it at full resolution, why not.
+fn draw_picture(frame: &mut Frame, area: Rect, path: Option<&Path>, image: &tinsel::image::Image) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let about = format!(
+        "{} · {}×{} {}",
+        file_name(path, "image"),
+        image.width(),
+        image.height(),
+        image.format().name()
+    );
+    match tinsel::image::support().check(image) {
+        Ok(_) => {
+            let room = Rect::new(
+                area.x + 1,
+                area.y + 1,
+                area.width.saturating_sub(2),
+                area.height.saturating_sub(3),
+            );
+            if !COVERED.with(Cell::get) && room.width > 0 && room.height > 0 {
+                frame.image(room, image);
+            }
+            let last = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+            frame.print_center(last, 0, &paint(palette::MUTED, &about));
+        }
+        Err(why) => {
+            let mid = area.y + area.height.saturating_sub(2) / 2;
+            frame.print_center(Rect::new(area.x, mid, area.width, 1), 0, &paint(palette::TEXT, &about));
+            if mid + 1 < area.y + area.height {
+                frame.print_center(
+                    Rect::new(area.x, mid + 1, area.width, 1),
+                    0,
+                    &paint(palette::MUTED, &why),
+                );
+            }
+        }
     }
 }
 

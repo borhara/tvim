@@ -38,9 +38,12 @@ tvim .                    # browse a folder in the sidebar
 tvim                      # reopen what was open here last time, or browse this folder
 tvim +42 src/main.rs      # start on line 42
 tvim +/TODO src/lib.rs    # start on the first TODO
+tvim docs/screenshot.png  # look at a picture
 ```
 
 Files reopen at the line you left them on.
+
+Pictures (PNG, and JPEG and GIF in iTerm2 and WezTerm) open at full resolution, fitted to the window, in kitty, Ghostty, Konsole, iTerm2 and WezTerm. Other terminals, and tmux, say they can't show them. Pictures are only for looking at: tvim won't change or write them.
 
 ## Coming from vim
 
