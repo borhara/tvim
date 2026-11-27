@@ -275,7 +275,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
             Some(Key::Char(c)) if "fgb/zmGrnsSx".contains(*c) => done(Act::Leader(*c), i + 2, count1),
             Some(Key::Char('h')) => match keys.get(i + 2) {
                 None => Parse::More,
-                Some(Key::Char(c @ ('r' | 'p' | 's'))) => done(Act::Hunk(*c), i + 3, count1),
+                Some(Key::Char(c @ ('r' | 'p' | 's' | 'o' | 't' | 'b' | 'n'))) => done(Act::Hunk(*c), i + 3, count1),
                 _ => Parse::Invalid,
             },
             Some(Key::Char('c')) => match keys.get(i + 2) {

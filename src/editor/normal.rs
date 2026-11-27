@@ -3,6 +3,7 @@ use tinsel::app::Key;
 use super::{Dot, Editor, Effect, Input, Kind, Mode, Range};
 use crate::buffer::{Buffer, Pos};
 use crate::command::{Act, Cmd, Motion, Op, Parse, Target, parse};
+use crate::conflict::Keep;
 use crate::diff::Hunk;
 use crate::languages::Ask;
 use crate::motion;
@@ -78,7 +79,7 @@ impl Editor {
             Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
             Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') => true,
-            Act::Hunk('r') => true,
+            Act::Hunk('r' | 'o' | 't' | 'b' | 'n') => true,
             Act::Surround(..) | Act::Unsurround(_) | Act::Resurround(..) => true,
             _ => false,
         }
@@ -116,6 +117,10 @@ impl Editor {
             Act::Select { .. } => {}
             Act::Hunk('p') => self.preview_hunk(),
             Act::Hunk('s') => self.stage_hunk(),
+            Act::Hunk('o') => self.resolve_conflict(Keep::Ours),
+            Act::Hunk('t') => self.resolve_conflict(Keep::Theirs),
+            Act::Hunk('b') => self.resolve_conflict(Keep::Both),
+            Act::Hunk('n') => self.resolve_conflict(Keep::Neither),
             Act::Hunk(_) => self.reset_hunk(),
             Act::Code('a') => self.code_actions(),
             Act::Code(_) => self.format(None),

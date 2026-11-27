@@ -891,6 +891,8 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("s", "stage it"),
                 ("r", "back to HEAD, or the last save"),
                 ("p", "as it was and as it is"),
+                ("o t", "a conflict: keep ours, theirs"),
+                ("b n", "a conflict: keep both, neither"),
             ]),
         ),
         " c" => (
