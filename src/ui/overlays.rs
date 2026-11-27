@@ -751,6 +751,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("g /", "search in files"),
                 ("b", "open files"),
                 ("h r", "undo this change hunk"),
+                ("c", "code"),
                 ("G", "git"),
                 ("z", "zen"),
                 ("m", "markdown preview"),
@@ -758,6 +759,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             ]),
         ),
         " h" => ("hunk".into(), owned(&[("r", "back to HEAD, or the last save")])),
+        " c" => ("code".into(), owned(&[("f", "format the file")])),
         "]" => (
             "]".into(),
             owned(&[("c", "the next change"), ("d", "the next problem")]),

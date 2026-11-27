@@ -76,6 +76,8 @@ pub enum Act {
     Select { kind: char, inner: bool },
     Leader(char),
     Hunk(char),
+    // Space c and a key, for what the language server can do with the code
+    Code(char),
     Window(Key),
     // ys, yss and visual S: put a pair around the target
     Surround(Target, char),
@@ -259,6 +261,11 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
             Some(Key::Char('h')) => match keys.get(i + 2) {
                 None => Parse::More,
                 Some(Key::Char('r')) => done(Act::Hunk('r'), i + 3, count1),
+                _ => Parse::Invalid,
+            },
+            Some(Key::Char('c')) => match keys.get(i + 2) {
+                None => Parse::More,
+                Some(Key::Char(c @ 'f')) => done(Act::Code(*c), i + 3, count1),
                 _ => Parse::Invalid,
             },
             _ => Parse::Invalid,
@@ -594,6 +601,7 @@ mod tests {
         assert_eq!(cmd("!!").act, Act::Operate(Op::Filter, Target::Lines));
         assert_eq!(cmd("gqq").act, Act::Operate(Op::Format, Target::Lines));
         assert_eq!(cmd("==").act, Act::Operate(Op::Tidy, Target::Lines));
+        assert_eq!(cmd(" cf").act, Act::Code('f'));
         assert_eq!(
             cmd("ysiw)").act,
             Act::Surround(Target::Object { kind: 'w', inner: true }, ')')
