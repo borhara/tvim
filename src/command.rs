@@ -37,6 +37,8 @@ pub enum Motion {
     Mark(char, bool),
     Hunk(bool),
     Problem(bool),
+    // ]s and [s
+    Misspelling(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -545,6 +547,7 @@ pub fn motion(keys: &[Key]) -> MotionParse {
             None => MotionParse::More,
             Some(Key::Char('c')) => MotionParse::Done(Hunk(c == ']'), 2),
             Some(Key::Char('d')) => MotionParse::Done(Problem(c == ']'), 2),
+            Some(Key::Char('s')) => MotionParse::Done(Misspelling(c == ']'), 2),
             _ => MotionParse::Invalid,
         },
         Key::Char('\'') => with_char(&|c| Mark(c, false)),

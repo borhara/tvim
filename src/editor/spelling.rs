@@ -1,4 +1,5 @@
 use super::Editor;
+use crate::buffer::Pos;
 use crate::spell::{self, Dictionary};
 use crate::syntax::{Kind, Syntax};
 
@@ -35,5 +36,39 @@ impl Editor {
                 .collect()
         })
         .unwrap_or_default()
+    }
+
+    // the words spelled wrong in the file's line `row`
+    fn misspelled_at(&self, row: usize) -> Vec<(usize, usize)> {
+        let text = self.shown_text();
+        let syntax = text.syntax(true);
+        let kinds = text.highlight(row, true);
+        self.misspelled(self.buf.line(row), kinds.as_deref(), syntax)
+    }
+
+    // ]s and [s: the next word spelled wrong, or the one before, round past the ends
+    pub(super) fn next_misspelled(&self, from: Pos, forward: bool, n: usize) -> Option<Pos> {
+        let rows = self.buf.len();
+        let mut at = from;
+        for _ in 0..n {
+            let found = (0..=rows).find_map(|k| {
+                let row = if forward {
+                    (at.row + k) % rows
+                } else {
+                    (at.row + rows * 2 - k) % rows
+                };
+                let spans = self.misspelled_at(row);
+                let mut cols = spans.iter().map(|&(a, _)| a);
+                let hit = match (forward, k) {
+                    (true, 0) => cols.find(|&c| c > at.col),
+                    (true, _) => cols.next(),
+                    (false, 0) => cols.rfind(|&c| c < at.col),
+                    (false, _) => cols.next_back(),
+                };
+                hit.map(|col| Pos::new(row, col))
+            })?;
+            at = found;
+        }
+        (at != from).then_some(at)
     }
 }

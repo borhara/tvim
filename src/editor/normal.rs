@@ -351,6 +351,7 @@ impl Editor {
                 | Motion::ParagraphBack
                 | Motion::Hunk(_)
                 | Motion::Problem(_)
+                | Motion::Misspelling(_)
         )
     }
 
@@ -610,6 +611,7 @@ impl Editor {
                 };
                 (fnb((*row?).min(b.last_row())), Linewise)
             }
+            Motion::Misspelling(forward) => (self.next_misspelled(p, forward, n)?, Exclusive),
             Motion::Problem(forward) => {
                 let starts = self.problems(self.buffer_id).iter().map(|p| p.start);
                 // a server may still be on older text, so its places are kept inside this one

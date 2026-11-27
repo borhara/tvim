@@ -1,5 +1,6 @@
 mod common;
 use common::{ed, temp};
+use tvim::keys::parse;
 use tvim::spell::Dictionary;
 
 fn words() -> Dictionary {
@@ -39,6 +40,26 @@ fn screen(e: &tvim::Editor) -> String {
         tvim::ui::draw(e, &mut frame);
         frame.snapshot().to_string()
     })
+}
+
+#[test]
+fn brackets_s_go_from_one_word_spelled_wrong_to_the_next() {
+    let mut e = opened("spell.md", "the quikc fox\njumps ovr the `lazzy` dog\n");
+    e.keys(&parse("]s"));
+    assert_eq!((e.cursor().row, e.cursor().col), (0, 4));
+    e.keys(&parse("]s"));
+    assert_eq!((e.cursor().row, e.cursor().col), (1, 6), "not inside code");
+    e.keys(&parse("]s"));
+    assert_eq!((e.cursor().row, e.cursor().col), (0, 4), "round past the end");
+    e.keys(&parse("[s"));
+    assert_eq!((e.cursor().row, e.cursor().col), (1, 6));
+}
+
+#[test]
+fn in_code_only_comments_are_checked() {
+    let mut e = opened("spell.rs", "let quikc = 1; // fix thsi here\n");
+    e.keys(&parse("]s"));
+    assert_eq!(e.cursor().col, 22);
 }
 
 #[test]
