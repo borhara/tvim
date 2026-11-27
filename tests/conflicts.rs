@@ -46,3 +46,36 @@ fn resolving_is_one_change_and_dot_repeats_it() {
     assert_eq!(e.text(), TEXT, "nothing off a conflict");
     assert_eq!(e.message().unwrap().text, "no conflict here");
 }
+
+// the background colour the text `word` is drawn on
+fn background(e: &tvim::Editor, word: &str) -> String {
+    let screen = tinsel::with_color_mode(tinsel::ColorMode::TrueColor, || {
+        let mut frame = tinsel::app::Frame::new(60, 20);
+        tvim::ui::draw(e, &mut frame);
+        frame.snapshot().to_string()
+    });
+    let seg = screen
+        .split("\u{1b}[")
+        .find(|s| s.split_once('m').is_some_and(|(_, t)| t.trim_start().starts_with(word)))
+        .unwrap_or_else(|| panic!("{word} in {screen:?}"));
+    let code = seg.split('m').next().unwrap();
+    code.split(';')
+        .skip_while(|p| *p != "48")
+        .take(5)
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+#[test]
+fn each_side_of_a_conflict_is_tinted_its_own_way() {
+    let e = ed(TEXT);
+    let (plain, ours, theirs) = (
+        background(&e, "middle"),
+        background(&e, "ours"),
+        background(&e, "theirs"),
+    );
+    assert_ne!(ours, plain);
+    assert_ne!(theirs, plain);
+    assert_ne!(ours, theirs);
+    assert_eq!(background(&e, "mine"), ours);
+}

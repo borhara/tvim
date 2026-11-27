@@ -13,6 +13,7 @@ use tinsel::{ColorMode, Rgb, Tone, bold, color_mode, italic, mix, paint, paint_o
 
 use crate::buffer::Buffer;
 use crate::buffer::Pos;
+use crate::conflict::Part;
 use crate::diff::Mark;
 use crate::editor::{Editor, Effect, Mode, Range, View};
 use crate::explorer::Explorer;
@@ -1016,6 +1017,10 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let block = e.block_selection().filter(|_| active);
     let pattern = e.search_pattern();
     let marks = v.text.change_marks();
+    let conflicts = match v.text.id == e.buffer_id {
+        true => e.conflicts(),
+        false => crate::conflict::find(buf.lines()),
+    };
     let word = (mode == Mode::Normal && focused)
         .then(|| word_at(buf.line(cursor.row), cursor.col))
         .flatten();
@@ -1068,6 +1073,17 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             .filter(|p| (p.start.row..=p.end.row).contains(&row))
             .collect();
         let worst = here.iter().map(|p| p.severity).min();
+
+        // a merge conflict's sides, ours green and theirs amber, its markers stronger
+        if let Some(con) = conflicts.iter().find(|con| con.contains(row)) {
+            let (color, amount) = match con.part(row) {
+                Part::Marker => (palette::MUTED, 0.22),
+                Part::Ours => (palette::SAGE, 0.14),
+                Part::Base => (palette::MUTED, 0.08),
+                Part::Theirs => (palette::AMBER, 0.14),
+            };
+            frame.tint(Rect::new(body.x, y, body.width, 1), mix(c.app, color, amount));
+        }
 
         let glow = if active { e.anim.glow(row, time) } else { 0.0 };
         let band = if on_cursor && active && e.options.cursor_line {
