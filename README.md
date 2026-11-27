@@ -134,6 +134,8 @@ lsp go off
 
 **Folds.** A line folds the lines indented under it, along with a closing `}` or `end`. `zc` closes the fold around the cursor, `zo` opens it and `za` does whichever it isn't. `zM` closes them all and `zR` opens them all. A closed fold shows as its first line and how many it hides. `j` and `k` step over it, and `dd` or `yy` on it takes all of it. Searching or going to a mark inside one opens it.
 
+**Spelling.** Words spelled wrong are underlined in red: every word in Markdown and plain text, and only comments in code. They're checked against the system's word list, `/usr/share/dict/words`, with endings like `-s`, `-ed` and `-ing` taken off. `]s` and `[s` go to the next and previous one. `z=` lists words it may have meant, and `zg` takes it as right from then on, keeping it in `spell.txt` beside your config. `:set nospell` turns it off.
+
 **Splits.** `Ctrl-w s` and `Ctrl-w v` (or `:sp` and `:vs`) split the window. `Ctrl-w` with `h`/`j`/`k`/`l` moves between windows and `Ctrl-w q` closes one.
 
 **Colours.** Syntax colouring covers Rust, Python, JavaScript and TypeScript, Go, C and C++, Java, shell, Lua, TOML, YAML, JSON and Markdown. tvim uses its own colour scheme rather than your terminal's, and switches to a light one on a light background.
