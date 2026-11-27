@@ -58,7 +58,7 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 - **`gq`** rewraps lines to `textwidth`, or 79 columns when it's 0, keeping comment markers and list bullets, and `gw` does the same without moving the cursor. With `textwidth` set, typing past it breaks the line: any line in Markdown and plain text, and only comments in code.
 - **`Alt-j` and `Alt-k`** move the line down and up, or the selected lines in visual mode, as in LazyVim. In insert mode Alt still works as Esc, so `Alt-j` there leaves insert mode and moves down.
 - **`gcc`** comments or uncomments a line, and `gc` works with a motion or in visual mode.
-- **`gd`, `gr` and `K`** ask the file's language server, as they do in most Neovim setups, rather than searching the file, replacing characters or running `man`.
+- **`gd`, `gr` and `K`** ask the file's language server, as they do in most Neovim setups, rather than searching the file, replacing characters or running `man`. So does **`=`**, which formats lines instead of reindenting them.
 - **Block visual mode** starts with `Ctrl-v`, or `Ctrl-q` if your terminal keeps `Ctrl-v` for pasting. `>` and `<` move the text from the block's left edge rather than whole lines.
 
 ## Extras
@@ -74,6 +74,7 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 | `Space G` | Git menu |
 | `Space m` | Markdown preview |
 | `Space n` | Rename what's under the cursor, with a language server |
+| `Space c` | Code: `f` formats the file |
 | `Space z` | Zen mode: just the text, centred |
 
 **Surround.** `ys` with a motion or text object and then a bracket or quote puts that pair around the text, so `ysiw)` turns `foo` into `(foo)`. `yss` does the whole line, and `S` does a selection in visual mode, each row on its own in block mode. `ds"` takes away the quotes around the cursor, and `cs"'` swaps them for single quotes. An opening bracket, as in `ysiw(`, puts spaces inside, and with `ds(` or `cs(` it takes them away. LazyVim's names work too: `gsa` for `ys`, `gsd` for `ds` and `gsr` for `cs`.
@@ -94,6 +95,8 @@ The server also knows what the code means, so with the cursor on a name:
 | `gr` | List everywhere it's used, with a preview. Type to narrow the list |
 | `K` | Show its type and docs beside the cursor, until the next key |
 | `Space n` or `:rename new_name` | Rename it in every file. Files it changes are left unsaved, and `:wa` saves them |
+
+The server can tidy the code too. `Space c f` or `:Format` formats the file, and `=` formats the lines it covers, so `==` does one line, `=ip` a paragraph and `:10,20Format` those lines. Each is one change for `u` to undo. `:set formatonsave` formats every file before it's written, if its server answers within two seconds.
 
 tvim knows these servers, and runs whichever you have:
 
@@ -151,6 +154,7 @@ nnoremap <leader>w :w<CR>
 | `gitlens` | `gl` | on | show who last changed the cursor's line |
 | `lsp` | | on | run language servers |
 | `autocomplete` | `acp` | on | show a language server's suggestions as you type |
+| `formatonsave` | `fos` | off | the language server tidies a file before it's written |
 | `roomy` | `ro` | on | a little space above and below the text |
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
 | `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
