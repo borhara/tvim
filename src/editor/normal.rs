@@ -281,6 +281,9 @@ impl Editor {
     }
 
     pub(super) fn normal_z(&mut self, key: Key, count: Option<usize>) {
+        if let Key::Char(c @ ('a' | 'c' | 'o' | 'R' | 'M')) = key {
+            return self.fold_key(c);
+        }
         if let Some(n) = count {
             self.cursor.row = (n - 1).min(self.buf.last_row());
         }
@@ -359,6 +362,19 @@ impl Editor {
             self.jump_from(self.cursor);
         }
         self.cursor = to;
+        if matches!(
+            m,
+            Motion::FirstLine
+                | Motion::LastLine
+                | Motion::CountLine
+                | Motion::ScreenTop
+                | Motion::ScreenMiddle
+                | Motion::ScreenBottom
+                | Motion::NextLine
+                | Motion::PrevLine
+        ) {
+            self.onto_fold();
+        }
         match m {
             Motion::Up | Motion::Down => {}
             Motion::ScreenUp | Motion::ScreenDown if !self.options.wrap => {}
@@ -420,7 +436,7 @@ impl Editor {
                 if p.row == 0 {
                     return None;
                 }
-                let row = p.row.saturating_sub(n);
+                let row = self.fold_step(p.row, n, false);
                 (Pos::new(row, self.col_for_want(row)), Linewise)
             }
             Motion::ScreenUp | Motion::ScreenDown if !self.options.wrap => {
@@ -436,7 +452,10 @@ impl Editor {
                 if p.row >= b.last_row() {
                     return None;
                 }
-                let row = (p.row + n).min(b.last_row());
+                let row = self.fold_step(p.row, n, true);
+                if row == p.row {
+                    return None;
+                }
                 (Pos::new(row, self.col_for_want(row)), Linewise)
             }
             Motion::LineStart => (Pos::new(p.row, 0), Exclusive),

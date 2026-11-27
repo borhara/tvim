@@ -180,6 +180,9 @@ impl Editor {
             Mode::Insert | Mode::Replace => self.insert_input(input),
             Mode::Command | Mode::Search => self.cmdline_input(input),
         }
+        if self.pending.is_empty() {
+            self.open_folds_at_cursor();
+        }
         if (self.mode == Mode::Normal || self.mode.is_visual()) && self.pending.is_empty() {
             self.end_change();
         }

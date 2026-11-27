@@ -36,10 +36,24 @@ impl Editor {
     }
 
     /// The screen rows of a window `height` high showing `buf` from line `top`.
-    pub(crate) fn slices(&self, buf: &Buffer, top: usize, left: usize, width: usize, height: usize) -> Vec<Slice> {
+    /// A closed fold, of those in `closed`, shows as its first line.
+    pub(crate) fn slices(
+        &self,
+        buf: &Buffer,
+        closed: &[(usize, usize)],
+        top: usize,
+        left: usize,
+        width: usize,
+        height: usize,
+    ) -> Vec<Slice> {
         let mut out = Vec::with_capacity(height);
-        let mut row = top;
+        // from the start of a fold the top is inside
+        let mut row = closed
+            .iter()
+            .find(|&&(s, e)| s < top && top <= e)
+            .map_or(top, |&(s, _)| s);
         while out.len() < height {
+            let fold = closed.iter().find(|&&(s, _)| s == row).map(|&(_, e)| e);
             if row >= buf.len() {
                 out.push(Slice {
                     row,
@@ -48,16 +62,19 @@ impl Editor {
                     width,
                     first: true,
                     last: true,
+                    fold: None,
                 });
-            } else if !self.options.wrap {
+            } else if !self.options.wrap || fold.is_some() {
                 out.push(Slice {
                     row,
                     col: 0,
-                    left,
+                    left: if self.options.wrap { 0 } else { left },
                     width,
                     first: true,
                     last: true,
+                    fold,
                 });
+                row = fold.unwrap_or(row);
             } else {
                 let rows = self.wrapped(buf.line(row), width);
                 for (k, &(col, at)) in rows.iter().enumerate() {
@@ -69,6 +86,7 @@ impl Editor {
                         width: (end - at).min(width),
                         first: k == 0,
                         last: k + 1 == rows.len(),
+                        fold: None,
                     });
                 }
             }
@@ -96,13 +114,17 @@ impl Editor {
         let row = self.cursor.row;
         let mut top = self.top.get().min(self.buf.last_row());
         if row < top + so {
-            top = row.saturating_sub(so);
+            top = self.fold_step(row, so, false);
         }
-        if self.options.wrap {
+        let folded = !self.closed.is_empty();
+        if self.options.wrap || folded {
             // the screen rows the cursor's line takes down to the cursor, and the lines below
             let line = self.buf.line(row);
-            let upto = crate::text::row_holding(&self.wrapped(line, self.text_cols()), self.cursor.col) + 1;
-            let below: usize = (row + 1..=(row + so).min(self.buf.last_row()))
+            let upto = match self.fold_holding(row) {
+                Some(_) => 1,
+                None => crate::text::row_holding(&self.wrapped(line, self.text_cols()), self.cursor.col) + 1,
+            };
+            let below: usize = (row + 1..=self.fold_step(row, so, true))
                 .map(|r| self.line_height(r))
                 .sum();
             top = top.max(self.top_with_above(row, rows.saturating_sub(upto + below)));
@@ -112,6 +134,8 @@ impl Editor {
                 top = below + 1 - rows;
             }
         }
+        // a fold's first line, not one hidden in it
+        let top = self.fold_holding(top).map_or(top, |(start, _)| start);
         self.top.set(top);
 
         let cols = self.text_cols();
@@ -134,6 +158,12 @@ impl Editor {
 
     /// How many screen rows line `row` takes.
     pub(crate) fn line_height(&self, row: usize) -> usize {
+        // a closed fold takes one row, its first line's, and the rest none
+        match self.fold_holding(row) {
+            Some((start, _)) if start == row => return 1,
+            Some(_) => return 0,
+            None => {}
+        }
         if self.options.wrap {
             self.wrapped(self.buf.line(row), self.text_cols()).len()
         } else {
@@ -217,6 +247,7 @@ impl Editor {
             self.top.set(top.saturating_sub(n));
             self.cursor.row = self.cursor.row.saturating_sub(n);
         }
+        self.onto_fold();
         self.cursor = self.first_non_blank_pos(self.cursor.row);
         self.set_want();
     }

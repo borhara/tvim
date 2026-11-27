@@ -56,6 +56,8 @@ impl Editor {
                     self.buf.lines(),
                     before,
                 );
+                let old = s.lines.clone();
+                self.follow_folds(&old);
             }
         }
     }
@@ -168,7 +170,13 @@ impl Editor {
         for (k, p) in s.marks {
             self.marks.entry(k).or_insert(p);
         }
+        let old = if self.closed.is_empty() {
+            Vec::new()
+        } else {
+            self.buf.lines().to_vec()
+        };
         self.buf.replace_all(s.lines);
+        self.follow_folds(&old);
         self.version = s.version;
         let row = changed.min(self.buf.last_row());
         self.cursor = if s.cursor.row == row {

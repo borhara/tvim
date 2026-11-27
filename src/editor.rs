@@ -37,6 +37,7 @@ use crate::window::{Node, Win};
 mod block;
 mod buffers;
 mod cmdline;
+mod folds;
 mod git;
 mod input;
 mod insert;
@@ -297,6 +298,9 @@ enum Asking {
     Auto,
 }
 
+// the closed folds, outermost first, for the version of the text and the first lines closed
+type FoldCache = (u64, Vec<usize>, Vec<(usize, usize)>);
+
 // what the menu by the cursor is choosing between, to do once one is chosen
 #[derive(Clone, Debug)]
 pub(crate) enum Choosing {
@@ -379,6 +383,7 @@ struct Doc {
     left: usize,
     states: RefCell<States>,
     diffs: RefCell<Option<DiffCache>>,
+    closed: Vec<usize>,
 }
 
 impl Doc {
@@ -514,6 +519,8 @@ pub(crate) struct Slice {
     pub width: usize,
     pub first: bool,
     pub last: bool,
+    // the last line of the closed fold this row shows, if it shows one
+    pub fold: Option<usize>,
 }
 
 pub(crate) struct View<'a> {
@@ -583,6 +590,10 @@ pub struct Editor {
     hover: Option<String>,
     pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
     pub(crate) quickfix: Option<crate::quickfix::Quickfix>,
+    // the first lines of the folds closed in this buffer
+    closed: Vec<usize>,
+    // the closed folds, outermost only, as of a version of the text and those closed
+    fold_cache: RefCell<Option<FoldCache>>,
     // the call the cursor is in while typing, as the server described it
     signature: Option<crate::languages::Signature>,
     // typed keys that may yet be the start of a mapping
@@ -688,6 +699,8 @@ impl Editor {
             hover: None,
             menu: None,
             quickfix: None,
+            closed: Vec::new(),
+            fold_cache: RefCell::new(None),
             signature: None,
             map_typed: Vec::new(),
             map_depth: 0,

@@ -23,6 +23,7 @@ impl Editor {
             left: self.left.get(),
             states: std::mem::take(&mut self.states),
             diffs: std::mem::take(&mut self.marks_cache),
+            closed: std::mem::take(&mut self.closed),
         }
     }
 
@@ -47,6 +48,7 @@ impl Editor {
         self.changing = false;
         self.states = d.states;
         self.marks_cache = d.diffs;
+        self.closed = d.closed;
         self.mode = Mode::Normal;
         self.pending.clear();
         self.completion = None;

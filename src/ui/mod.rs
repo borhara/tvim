@@ -616,7 +616,14 @@ fn text_cursor(e: &Editor, mode: Mode, body: Rect) -> Option<(usize, usize, Curs
         Mode::Replace => CursorShape::Underline,
         _ => CursorShape::Block,
     };
-    let slices = e.slices(e.buffer(), e.anim.shown(), e.left(), body.width, body.height);
+    let slices = e.slices(
+        e.buffer(),
+        &e.folded(),
+        e.anim.shown(),
+        e.left(),
+        body.width,
+        body.height,
+    );
     let mut row = slices.iter().rposition(|s| s.row == p.row && s.col <= p.col)?;
     let mut x = col.checked_sub(slices[row].left)?;
     // the end of a full wrapped row is the start of the one under it
@@ -1025,7 +1032,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
 
     let mut sky_from = None;
     for (i, slice) in e
-        .slices(buf, top, left, body.width, body.height)
+        .slices(buf, &e.closed_folds(v.text.id), top, left, body.width, body.height)
         .into_iter()
         .enumerate()
     {
@@ -1154,6 +1161,18 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         let kinds = v.text.highlight(row, e.options.syntax);
         let shown = styled_line(line, kinds.as_deref(), ts, c);
         frame.print_from(Rect::new(body.x, y, width, 1), 0, &shown, left);
+        if let Some(end) = slice.fold {
+            draw_fold(
+                frame,
+                Rect::new(body.x, y, body.width, 1),
+                line,
+                buf.line(end),
+                end - row,
+                left,
+                ts,
+                c,
+            );
+        }
 
         if colored {
             tab_arrows(frame, Rect::new(body.x, y, width, 1), line, left, ts, c.guide);
@@ -1235,6 +1254,29 @@ fn tab_arrows(frame: &mut Frame, row: Rect, line: &str, left: usize, ts: usize, 
 
 // between the end of the cursor's line and what's said about it
 const LENS_GAP: usize = 4;
+
+// after a closed fold's first line: its closer, if it ends with one, and how many lines it hides
+#[allow(clippy::too_many_arguments)]
+fn draw_fold(frame: &mut Frame, row: Rect, line: &str, last: &str, hidden: usize, left: usize, ts: usize, c: &Colors) {
+    let end = vcol(line, char_count(line), ts);
+    let Some(x) = (end + 1).checked_sub(left) else { return };
+    let closer = last.trim();
+    let closer = if closer.len() <= 3 && closer.starts_with(['}', ']', ')']) {
+        closer
+    } else {
+        ""
+    };
+    let text = format!(
+        "{} {}  {}",
+        paint(palette::BLUSH, "···"),
+        paint(palette::TEXT, closer),
+        paint(c.faint, &format!("{hidden} line{}", if hidden == 1 { "" } else { "s" }))
+    );
+    frame.tint(Rect::new(row.x, row.y, row.width, 1), mix(c.app, palette::BLUSH, 0.06));
+    if x < row.width {
+        frame.print(Rect::new(row.x + x, row.y, row.width - x, 1), 0, &text);
+    }
+}
 
 fn draw_lens(e: &Editor, frame: &mut Frame, row: Rect, line: &str, left: usize, text: &str, c: &Colors) {
     let end = vcol(line, char_count(line), e.options.tab_stop);

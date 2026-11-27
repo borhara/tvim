@@ -305,7 +305,9 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
         Key::Char('z') => {
             return match keys.get(i + 1) {
                 None => Parse::More,
-                Some(&k @ (Key::Char('z' | 't' | 'b' | '.' | '-') | Key::Enter)) => done(Act::Z(k), i + 2, count1),
+                Some(&k @ (Key::Char('z' | 't' | 'b' | '.' | '-' | 'a' | 'c' | 'o' | 'R' | 'M') | Key::Enter)) => {
+                    done(Act::Z(k), i + 2, count1)
+                }
                 _ => Parse::Invalid,
             };
         }
