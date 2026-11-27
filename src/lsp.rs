@@ -333,6 +333,20 @@ fn initialize_params(root: &Path) -> Json {
                         ("references", Json::Object(Vec::new())),
                         ("rename", Json::Object(Vec::new())),
                         ("formatting", Json::Object(Vec::new())),
+                        (
+                            "signatureHelp",
+                            Json::object([(
+                                "signatureInformation",
+                                Json::object([
+                                    ("documentationFormat", vec!["markdown", "plaintext"].into()),
+                                    (
+                                        "parameterInformation",
+                                        Json::object([("labelOffsetSupport", true.into())]),
+                                    ),
+                                    ("activeParameterSupport", true.into()),
+                                ]),
+                            )]),
+                        ),
                         // actions as objects with their edits, rather than commands alone
                         (
                             "codeAction",

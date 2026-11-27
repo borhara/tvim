@@ -49,6 +49,8 @@ pub enum Ask {
     // to the new name
     Rename(String),
     Complete,
+    // what's being called, and which of its parameters the cursor is in
+    Signature,
     // what can be done with the code from one place to another, as a selection covers
     Actions {
         from: Pos,
@@ -99,6 +101,16 @@ pub struct Item {
     pub extra: Vec<Edit>,
 }
 
+// how a function is called, with the parameter the cursor is in
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Signature {
+    pub label: String,
+    // which characters of the label are the parameter
+    pub active: Option<(usize, usize)>,
+    // what it does, in markdown
+    pub doc: String,
+}
+
 // something a server can do with the code, such as fixing a problem or tidying imports
 #[derive(Clone, Debug, PartialEq)]
 pub struct Action {
@@ -118,6 +130,8 @@ pub struct Action {
 pub enum Said {
     Places(Vec<Place>),
     Actions(Vec<Action>),
+    // None when the cursor isn't in a call
+    Signature(Option<Signature>),
     Items(Vec<Item>),
     Edits(Vec<FileEdits>),
     // markdown, empty when there's nothing to say
@@ -276,14 +290,28 @@ impl Languages {
     // the characters other than those of words that the server for file `id` would complete
     // after, or None if it's not ready to complete things
     pub fn completion_triggers(&self, id: usize) -> Option<Vec<String>> {
+        self.triggers(id, "completionProvider", &["triggerCharacters"])
+    }
+
+    // the characters typed in a call that the server for file `id` would describe it after,
+    // or None if it's not ready to
+    pub fn signature_triggers(&self, id: usize) -> Option<Vec<String>> {
+        self.triggers(
+            id,
+            "signatureHelpProvider",
+            &["triggerCharacters", "retriggerCharacters"],
+        )
+    }
+
+    fn triggers(&self, id: usize, provider: &str, lists: &[&str]) -> Option<Vec<String>> {
         let s = self.synced.get(&id)?;
         let r = self.running.get(&s.key).filter(|r| r.server.ready())?;
-        let provider = &r.server.capabilities()["completionProvider"];
+        let provider = &r.server.capabilities()[provider];
         if !provides(provider) {
             return None;
         }
-        let triggers = provider["triggerCharacters"].as_array().unwrap_or(&[]);
-        Some(triggers.iter().filter_map(|t| t.as_str().map(str::to_string)).collect())
+        let triggers = lists.iter().flat_map(|l| provider[*l].as_array().unwrap_or(&[]));
+        Some(triggers.filter_map(|t| t.as_str().map(str::to_string)).collect())
     }
 
     // asks the server for file `id` about the place `at`, the answer coming with a later update
@@ -307,6 +335,7 @@ impl Languages {
             Ask::Rename(_) => ("textDocument/rename", "renameProvider", "rename things"),
             Ask::Complete => ("textDocument/completion", "completionProvider", "complete things"),
             Ask::Actions { .. } => ("textDocument/codeAction", "codeActionProvider", "change code"),
+            Ask::Signature => ("textDocument/signatureHelp", "signatureHelpProvider", "describe calls"),
             Ask::Format { lines: None, .. } => {
                 ("textDocument/formatting", "documentFormattingProvider", "format files")
             }
@@ -638,6 +667,7 @@ fn said(
             Said::Items(items(result, text, encoding))
         }
         Ask::Actions { .. } => Said::Actions(actions(result, &mut lines, encoding)),
+        Ask::Signature => Said::Signature(signature(result)),
         // a list of TextEdits, all to the file asked about
         Ask::Format { .. } => {
             let path = synced.get(&asked.id).and_then(|s| lsp::uri_path(&s.uri));
@@ -689,6 +719,36 @@ fn file_edits(workspace: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Fi
         }
     }
     out
+}
+
+// SignatureHelp's active signature, with its active parameter found in the label
+fn signature(result: &Json) -> Option<Signature> {
+    let all = result["signatures"].as_array()?;
+    let chosen = result["activeSignature"].as_u64().unwrap_or(0) as usize;
+    let s = all.get(chosen).or(all.first())?;
+    let label = s["label"].as_str()?.to_string();
+    // the signature's own active parameter before the help's
+    let nth = s["activeParameter"].as_u64().or(result["activeParameter"].as_u64());
+    let active = nth.and_then(|n| {
+        let p = &s["parameters"].as_array()?.get(n as usize)?["label"];
+        match p {
+            // offsets in UTF-16, as positions are
+            Json::Array(ends) => {
+                let at = |u: &Json| Encoding::Utf16.chars(&label, u.as_u64().unwrap_or(0) as usize);
+                Some((at(ends.first()?), at(ends.get(1)?)))
+            }
+            _ => {
+                let byte = label.find(p.as_str()?)?;
+                let start = label[..byte].chars().count();
+                Some((start, start + p.as_str()?.chars().count()))
+            }
+        }
+    });
+    let doc = match &s["documentation"] {
+        Json::String(d) => d.trim().to_string(),
+        d => d["value"].as_str().unwrap_or("").trim().to_string(),
+    };
+    Some(Signature { label, active, doc })
 }
 
 // a list of Commands and CodeActions, those that are preferred first
@@ -1762,6 +1822,46 @@ mod tests {
         assert_eq!(update.edits.len(), 1);
         assert_eq!(update.edits[0][0].edits[0].text, "b");
         assert_eq!(fake.recv().unwrap()["result"]["applied"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn a_signature_comes_back_with_its_active_parameter_however_its_given() {
+        let mut r = rig();
+        let v1 = lines("f(1, ");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let capabilities =
+            r#"{"textDocumentSync":1,"signatureHelpProvider":{"triggerCharacters":["("],"retriggerCharacters":[","]}}"#;
+        let mut fake = r.start(&docs, capabilities);
+        fake.recv().unwrap();
+        assert_eq!(r.langs.signature_triggers(1), Some(vec!["(".into(), ",".into()]));
+        assert_eq!(r.langs.completion_triggers(1), None, "nothing said about completing");
+        for (help, active) in [
+            (
+                r#"{"signatures":[{"label":"f(é: u8, b: u8)","parameters":[{"label":[2,7]},{"label":[9,14]}]}],"activeParameter":1}"#,
+                Some((9, 14)),
+            ),
+            (
+                r#"{"signatures":[{"label":"g()"},{"label":"f(a: u8, b: u8)","parameters":[{"label":"a: u8"},{"label":"b: u8"}],"activeParameter":0,"documentation":{"kind":"markdown","value":"Does f. "}}],"activeSignature":1,"activeParameter":1}"#,
+                Some((2, 7)),
+            ),
+            (
+                r#"{"signatures":[{"label":"f()","parameters":[]}],"activeParameter":0}"#,
+                None,
+            ),
+        ] {
+            r.langs.ask(1, Pos::new(0, 5), Ask::Signature).unwrap();
+            reply(&mut fake, "textDocument/signatureHelp", help);
+            let Said::Signature(Some(s)) = answer(&mut r, &docs).said else {
+                panic!("a signature")
+            };
+            assert_eq!(s.active, active, "{help}");
+            if s.label.starts_with("f(a") {
+                assert_eq!(s.doc, "Does f.");
+            }
+        }
+        r.langs.ask(1, Pos::new(0, 5), Ask::Signature).unwrap();
+        reply(&mut fake, "textDocument/signatureHelp", "null");
+        assert_eq!(answer(&mut r, &docs).said, Said::Signature(None), "not in a call");
     }
 
     #[test]
