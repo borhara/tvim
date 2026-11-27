@@ -114,7 +114,14 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
         .max()
         .unwrap_or(0)
         .min(40);
-    let width = (word_width + 6).min(area.width);
+    // a server's choices say what each is, in a column of their own
+    let kind_width = words
+        .iter()
+        .filter_map(|w| w.kind)
+        .map(str::len)
+        .max()
+        .map_or(0, |w| w + 2);
+    let width = (word_width + kind_width + 6).min(area.width);
     let height = rows + 2;
     let shown = picked.map_or(prefix, |i| words[i].label.as_str());
     let x = cx
@@ -122,7 +129,17 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
         .clamp(area.x, area.x + area.width - width);
     let y = if room == below { cy + 1 } else { cy - height };
     let mut panel = Panel::new("").focused(true).background(c.bar);
-    if words.len() > rows {
+    // the chosen one's detail, such as its type, or else how far down the list it is
+    let detail = picked.map_or("", |i| words[i].detail.lines().next().unwrap_or(""));
+    if !detail.is_empty() {
+        let room = width.saturating_sub(6);
+        let mut detail: String = detail.chars().take(room).collect();
+        if tinsel::text::width(&detail) >= room {
+            detail.pop();
+            detail.push('…');
+        }
+        panel = panel.footer(detail);
+    } else if words.len() > rows {
         panel = panel.footer(format!("{}/{}", picked.map_or(0, |i| i + 1), words.len()));
     }
     let rect = Rect::new(x, y, width, height);
@@ -147,6 +164,10 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
             paint(palette::BLUSH, tail)
         };
         frame.print(line, 0, &format!("{marker}{}{tail}", bold(&paint(palette::ROSE, head))));
+        if let Some(kind) = w.kind.filter(|_| inner.width > word_width + kind_width) {
+            let at = Rect::new(inner.x + inner.width - kind.len(), line.y, kind.len(), 1);
+            frame.print(at, 0, &paint(palette::MUTED, kind));
+        }
     }
 }
 

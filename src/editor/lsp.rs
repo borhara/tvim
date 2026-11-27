@@ -258,6 +258,22 @@ impl Editor {
         true
     }
 
+    // as if Ctrl-n had asked the server, which answered with `items`, for testing
+    #[cfg(test)]
+    pub(crate) fn suggested(&mut self, items: Vec<crate::languages::Item>) {
+        self.completion_asked = Some(false);
+        let versions = vec![(self.buffer_id, self.version)];
+        self.answered(Answer {
+            id: self.buffer_id,
+            version: self.version,
+            at: self.cursor,
+            versions,
+            read: HashMap::new(),
+            ask: Ask::Complete,
+            said: Said::Items(items),
+        });
+    }
+
     pub fn hover(&self) -> Option<&str> {
         self.hover.as_deref()
     }

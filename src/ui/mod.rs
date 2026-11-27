@@ -1900,6 +1900,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_servers_completions_say_what_each_is_and_the_chosen_ones_detail() {
+        let mut e = Editor::with_text("s.");
+        e.set_screen(50, 8);
+        e.keys(&crate::keys::parse("A"));
+        let item = |label: &str, kind, detail: &str| crate::languages::Item {
+            label: label.into(),
+            text: label.into(),
+            range: None,
+            filter: label.into(),
+            kind,
+            detail: detail.into(),
+        };
+        e.suggested(vec![
+            item("len", Some("method"), "fn(&self) -> usize"),
+            item("cap", None, ""),
+        ]);
+        let shown = tinsel::with_color_mode(tinsel::ColorMode::None, || {
+            let mut frame = Frame::new(50, 8);
+            draw(&e, &mut frame);
+            frame.snapshot().plain()
+        });
+        let menu: Vec<&str> = shown.lines().skip(2).take(4).map(str::trim).collect();
+        assert_eq!(
+            menu,
+            [
+                "╭───────────────╮",
+                "│ › len  method │",
+                "│   cap         │",
+                "╰─ fn(&self) … ─╯"
+            ],
+            "{shown}"
+        );
+    }
+
+    #[test]
     fn the_problem_on_the_cursors_line_is_said_after_it() {
         let shown = |keys: &str| {
             let mut e = Editor::with_text("let x = y;\nfine");

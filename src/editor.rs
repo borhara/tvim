@@ -1181,8 +1181,7 @@ mod tests {
 
     // Ctrl-n typed with a server that can complete things, which then answers with `items`
     fn completed(e: &mut Editor, items: Vec<Item>) {
-        e.completion_asked = Some(false);
-        e.answered(answer(e, Ask::Complete, Said::Items(items)));
+        e.suggested(items);
     }
 
     #[test]
