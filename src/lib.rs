@@ -19,6 +19,7 @@ pub mod keys;
 pub mod languages;
 pub mod lsp;
 pub mod mapping;
+pub mod menu;
 pub mod motion;
 pub mod object;
 pub mod paths;
