@@ -205,6 +205,8 @@ impl Editor {
             self.lsp_ex(arg);
         } else if is("rename", 3) {
             self.rename(arg);
+        } else if is("copen", 4) || is("cwindow", 2) || is("clist", 2) {
+            self.open_quickfix();
         } else if is("cnext", 2) {
             self.step_quickfix(count_arg(arg));
         } else if is("cprevious", 2) || is("cNext", 2) {

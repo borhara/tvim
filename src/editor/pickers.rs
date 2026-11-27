@@ -44,6 +44,7 @@ impl Editor {
                 self.keep_quickfix(&title, spots);
             }
             Jump::Open { path, row, col, query } => {
+                self.chose_place(&path, Pos::new(row, col));
                 if self.go_to(&path, Pos::new(row, col)) {
                     self.grep = None;
                     self.last_search = Some(crate::regex::escape(&query));

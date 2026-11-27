@@ -13,6 +13,29 @@ impl Editor {
         self.info(format!("{places} in the quickfix list, ]q for the next"));
     }
 
+    // lists the quickfix list in the picker, in its order
+    pub(crate) fn open_quickfix(&mut self) {
+        let Some(q) = self.quickfix.clone() else {
+            return self.error("E42: No Errors");
+        };
+        self.list_spots(&q.title, "", &q.spots, &Default::default());
+    }
+
+    // the place chosen in the picker becomes the one gone to last in the quickfix list, if
+    // it's one of its places
+    pub(super) fn chose_place(&mut self, path: &std::path::Path, pos: crate::buffer::Pos) {
+        let path = crate::paths::absolute(path);
+        if let Some(q) = self.quickfix.as_mut() {
+            if let Some(i) = q
+                .spots
+                .iter()
+                .position(|s| s.pos == pos && crate::paths::absolute(&s.path) == path)
+            {
+                q.at = Some(i);
+            }
+        }
+    }
+
     pub fn quickfix(&self) -> Option<&Quickfix> {
         self.quickfix.as_ref()
     }
