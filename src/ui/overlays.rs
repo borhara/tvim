@@ -643,11 +643,18 @@ pub(super) fn grep(g: &Grep, frame: &mut Frame, area: Rect, c: &Colors) -> Optio
             paint(palette::AMBER, &format!(":{}", hit.row + 1))
         );
         let place_width = tinsel::text::width(path) + 1 + (hit.row + 1).to_string().len();
-        let line = g.line(hit);
+        let line = match &hit.note {
+            Some(note) => note.clone(),
+            None => g.line(hit),
+        };
         let line = line.as_str();
         let lead = line.len() - line.trim_start().len();
         let col = hit.col.saturating_sub(line[..lead].chars().count());
-        let found: Vec<usize> = (col..col + query_len).collect();
+        // a note isn't the line, so has nothing found in it to pick out
+        let found: Vec<usize> = match hit.note {
+            Some(_) => Vec::new(),
+            None => (col..col + query_len).collect(),
+        };
         let shown = with_hits(line.trim_start(), &found, |_, s| paint(palette::TEXT, s));
         frame.print(
             Rect::new(list.x, y, list.width, 1),

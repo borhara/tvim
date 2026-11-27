@@ -18,6 +18,8 @@ pub struct Hit {
     pub file: usize,
     pub row: usize,
     pub col: usize,
+    // said in place of the line, as what's wrong there is
+    pub note: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,13 +101,14 @@ impl Grep {
         g
     }
 
-    /// Lists `places`, each a file and the row and column of `word` in it. Files are read
-    /// with `open`, which gives the text of those open in the editor, or from disk.
+    /// Lists `places`, each a file and the place of `word` in it, in the order given, with
+    /// what to say in place of the line if anything. Files are read with `open`, which gives
+    /// the text of those open in the editor, or from disk.
     pub fn listing(
         root: &Path,
         title: &str,
         word: &str,
-        places: &[(PathBuf, usize, usize)],
+        places: &[Spot],
         open: impl Fn(&Path) -> Option<String>,
     ) -> Grep {
         let root = crate::paths::canonical(root).unwrap_or_else(|_| root.to_path_buf());
@@ -115,7 +118,7 @@ impl Grep {
         };
         let mut paths: Vec<&PathBuf> = Vec::new();
         let mut hits = Vec::new();
-        for (path, row, col) in places {
+        for Spot { path, pos, note } in places {
             let file = match paths.iter().position(|p| *p == path) {
                 Some(i) => i,
                 None => {
@@ -130,8 +133,9 @@ impl Grep {
             let last = loaded.files[file].starts.len() - 1;
             hits.push(Hit {
                 file,
-                row: (*row).min(last),
-                col: *col,
+                row: pos.row.min(last),
+                col: pos.col,
+                note: (!note.is_empty()).then(|| note.clone()),
             });
         }
         let given = Given {
@@ -230,7 +234,7 @@ impl Grep {
                 Spot {
                     path: self.root.join(&f.path),
                     pos: Pos::new(h.row, h.col),
-                    note: f.line(h.row).trim().to_string(),
+                    note: h.note.clone().unwrap_or_else(|| f.line(h.row).trim().to_string()),
                 }
             })
             .collect()
@@ -276,7 +280,7 @@ impl Grep {
                 .iter()
                 .filter(|h| {
                     let f = &loaded.files[h.file];
-                    has(&f.path) || has(f.line(h.row))
+                    has(&f.path) || has(f.line(h.row)) || h.note.as_deref().is_some_and(has)
                 })
                 .cloned()
                 .collect();
@@ -304,7 +308,12 @@ impl Grep {
                     self.searched = loaded.files.len();
                     return self.hits.len() != before;
                 }
-                self.hits.push(Hit { file: i, row, col });
+                self.hits.push(Hit {
+                    file: i,
+                    row,
+                    col,
+                    note: None,
+                });
                 // one hit per line
                 from = f.starts.get(row + 1).copied().unwrap_or(hay.len());
             }

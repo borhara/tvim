@@ -7,6 +7,7 @@ use crate::buffer::Pos;
 use crate::grep::Grep;
 use crate::languages::{Action, Answer, Ask, Edit, FileEdits, OpenDoc, Place, Problem, Said};
 use crate::menu::{Entry, Menu, Picked};
+use crate::quickfix::Spot;
 
 // what a set of edits is doing, to say so: as a verb, done, and being done
 pub(super) struct Doing(&'static str, &'static str, &'static str);
@@ -365,16 +366,24 @@ impl Editor {
         read: &HashMap<PathBuf, Vec<String>>,
     ) {
         // each path in full once, rather than for every comparison while sorting
-        let mut spots: Vec<(PathBuf, usize, usize)> = places
-            .iter()
-            .map(|p| (crate::paths::absolute(&p.path), p.start.row, p.start.col))
+        let mut spots: Vec<Spot> = (places.iter())
+            .map(|p| Spot {
+                path: crate::paths::absolute(&p.path),
+                pos: p.start,
+                note: String::new(),
+            })
             .collect();
         // this file's first, then the others by name
         let here = self.file.path.as_deref().map(crate::paths::absolute);
-        spots.sort_by(|(p, row, col), (q, r, c)| {
-            (Some(p) != here.as_ref(), p, row, col).cmp(&(Some(q) != here.as_ref(), q, r, c))
+        spots.sort_by(|a, b| {
+            (Some(&a.path) != here.as_ref(), &a.path, a.pos).cmp(&(Some(&b.path) != here.as_ref(), &b.path, b.pos))
         });
         spots.dedup();
+        self.list_spots(title, word, &spots, read);
+    }
+
+    // in the grep picker in the order given, with the text of open files as it is in the editor
+    pub(super) fn list_spots(&mut self, title: &str, word: &str, spots: &[Spot], read: &HashMap<PathBuf, Vec<String>>) {
         self.reset_for_picker();
         // an open file's text as it is in the editor, joined only for files that are listed, and
         // others as the server's answer read them
@@ -396,7 +405,7 @@ impl Editor {
             }
             Some(text)
         };
-        self.grep = Some(Grep::listing(&cwd(), title, word, &spots, open));
+        self.grep = Some(Grep::listing(&cwd(), title, word, spots, open));
     }
 
     // opens the file at `to`, remembering where it came from for Ctrl-o, and shows it
