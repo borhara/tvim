@@ -302,6 +302,8 @@ impl Editor {
             self.show_registers();
         } else if is("marks", 4) {
             self.show_marks();
+        } else if name == "Gdiff" || name == "Gvdiffsplit" {
+            self.diff_head();
         } else if is("diffthis", 5) {
             self.diff_this();
         } else if is("diffoff", 5) {

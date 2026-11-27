@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use super::Editor;
 use crate::diff::{self, Hunk};
+use crate::git::Base;
 
 impl Editor {
     // the buffer window `id` shows
@@ -46,6 +47,37 @@ impl Editor {
             _ => return None,
         };
         Some((old, self.diff_hunks(pair)?))
+    }
+
+    // :Gdiff: the file as of HEAD, or its last save outside git, beside it and compared
+    pub(crate) fn diff_head(&mut self) {
+        let Some(name) = self
+            .file
+            .path
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+        else {
+            return self.error("no file to compare");
+        };
+        let (lines, base) = self.git.with(|f| match &f.base {
+            Base::Head(lines) => (lines.clone(), "HEAD"),
+            Base::Untracked => (Vec::new(), "HEAD"),
+            Base::Outside => (Vec::new(), "save"),
+        });
+        let lines = if base == "save" {
+            self.saved_lines.clone()
+        } else {
+            lines
+        };
+        let file = self.focus;
+        if !self.split_window(true, false) {
+            return;
+        }
+        let old = self.focus;
+        self.open_scratch(format!("{name} @ {base}"), &lines);
+        self.diff_wins = vec![old, file];
+        self.focus_window(file);
     }
 
     // :diffthis

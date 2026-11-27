@@ -141,6 +141,14 @@ impl Editor {
         self.fresh_doc();
     }
 
+    // a new buffer of `lines` that isn't a file, called `name`, to read but not change
+    pub(super) fn open_scratch(&mut self, name: String, lines: &[String]) {
+        self.new_buffer();
+        self.buf = Buffer::from_lines(lines.to_vec());
+        self.saved_lines = self.buf.lines().to_vec();
+        self.file.scratch = Some(name);
+    }
+
     pub(super) fn fresh_doc(&mut self) {
         let id = self.next_id;
         self.next_id += 1;

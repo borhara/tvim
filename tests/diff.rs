@@ -1,9 +1,43 @@
 mod common;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use common::temp;
 use tvim::Editor;
 use tvim::clipboard::Memory;
+use tvim::keys::parse;
+
+fn git(dir: &Path, args: &[&str]) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+// a repo with a.txt committed as `committed`, or None without git
+fn repo(name: &str, committed: &str) -> Option<PathBuf> {
+    let dir = temp(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    if !git(&dir, &["init", "-q"]) {
+        return None;
+    }
+    git(&dir, &["config", "core.autocrlf", "false"]);
+    std::fs::write(dir.join("a.txt"), committed).unwrap();
+    assert!(git(&dir, &["add", "a.txt"]));
+    assert!(git(&dir, &["commit", "-q", "-m", "first"]));
+    Some(dir)
+}
 
 fn open(path: &Path) -> Editor {
     let mut e = Editor::open(path).unwrap();
@@ -30,6 +64,48 @@ fn background(e: &Editor, word: &str) -> String {
         .take(5)
         .collect::<Vec<_>>()
         .join(";")
+}
+
+#[test]
+fn gdiff_opens_head_beside_the_file_to_read_only() {
+    let Some(dir) = repo("gdiff", "one\ntwo\nthree\n") else {
+        return;
+    };
+    let file = dir.join("a.txt");
+    std::fs::write(&file, "one\nTWO\nthree\nfour\n").unwrap();
+    let mut e = open(&file);
+    e.ex("Gdiff");
+    assert_eq!(e.window_count(), 2);
+    assert_eq!(e.text(), "one\nTWO\nthree\nfour", "the file keeps the focus");
+    let names: Vec<String> = e.buffers().into_iter().map(|b| b.name).collect();
+    assert!(names.contains(&"a.txt @ HEAD".to_string()), "{names:?}");
+    e.keys(&parse("<C-w>h"));
+    assert_eq!(e.text(), "one\ntwo\nthree");
+    e.keys(&parse("x"));
+    assert_eq!(e.text(), "one\ntwo\nthree");
+    assert_eq!(e.message().unwrap().text, "a.txt @ HEAD can't be changed");
+    e.ex("w");
+    assert_eq!(e.message().unwrap().text, "a.txt @ HEAD isn't a file to write");
+    assert!(!e.is_modified());
+}
+
+#[test]
+fn compared_lines_are_tinted_until_diffoff() {
+    let Some(dir) = repo("gdiff_tint", "one\ntwo\nthree\n") else {
+        return;
+    };
+    let file = dir.join("a.txt");
+    std::fs::write(&file, "one\nTWO\nthree\nfour\n").unwrap();
+    let mut e = open(&file);
+    e.ex("Gdiff");
+    let plain = background(&e, "three");
+    let (changed, added, gone) = (background(&e, "TWO"), background(&e, "four"), background(&e, "two"));
+    assert_ne!(changed, plain);
+    assert_ne!(added, plain);
+    assert_ne!(added, changed);
+    assert_eq!(gone, changed, "a changed line, as it was and is");
+    e.ex("diffoff!");
+    assert_eq!(background(&e, "four"), plain);
 }
 
 #[test]
