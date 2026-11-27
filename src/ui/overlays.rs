@@ -5,6 +5,7 @@ use super::{Colors, file_name, icon, input, plural, styled_line, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
 use crate::grep::Grep;
+use crate::languages::Signature;
 use crate::menu::{Entry, Menu};
 use crate::syntax::{self, State, Syntax};
 
@@ -170,6 +171,37 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
             frame.print(at, 0, &paint(palette::MUTED, kind));
         }
     }
+}
+
+// the call the cursor is in, above it or else below, with the parameter it's in standing out
+pub(super) fn signature(s: &Signature, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
+    let (cx, cy) = at;
+    let above = cy.saturating_sub(area.y);
+    let below = (area.y + area.height).saturating_sub(cy + 1);
+    if area.width < 16 || above < 3 && below < 3 {
+        return;
+    }
+    let chars: Vec<char> = s.label.chars().collect();
+    let (from, to) = s.active.unwrap_or((0, 0));
+    let part = |a: usize, b: usize| chars[a.min(chars.len())..b.min(chars.len())].iter().collect::<String>();
+    let text = format!(
+        "{}{}{}",
+        paint(palette::TEXT, &part(0, from)),
+        bold(&paint(palette::ROSE, &part(from, to))),
+        paint(palette::TEXT, &part(to, chars.len()))
+    );
+    let width = (tinsel::text::width(&s.label) + 4).min(area.width);
+    let x = cx.saturating_sub(2).clamp(area.x, area.x + area.width - width);
+    let y = if above >= 3 { cy - 3 } else { cy + 1 };
+    let mut panel = Panel::new("").background(c.bar);
+    let doc = s.doc.lines().next().unwrap_or("").trim();
+    if !doc.is_empty() {
+        panel = panel.footer(doc.chars().take(width.saturating_sub(6)).collect::<String>());
+    }
+    let rect = Rect::new(x, y, width, 3);
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
+    frame.print(inner, 0, &text);
 }
 
 // a menu to choose from, under the cursor or else above it, each of the first nine numbered

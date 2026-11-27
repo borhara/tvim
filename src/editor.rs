@@ -581,6 +581,8 @@ pub struct Editor {
     // what the server said about the cursor's place, shown until the next key
     hover: Option<String>,
     pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
+    // the call the cursor is in while typing, as the server described it
+    signature: Option<crate::languages::Signature>,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -683,6 +685,7 @@ impl Editor {
             languages: Languages::default(),
             hover: None,
             menu: None,
+            signature: None,
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
@@ -1382,6 +1385,26 @@ mod tests {
             (Pos::new(0, 4), Pos::new(1, 5)),
             "the range asked about"
         );
+    }
+
+    #[test]
+    fn a_signature_shows_while_typing_and_goes_with_insert_mode() {
+        let mut e = Editor::with_text("");
+        let sig = crate::languages::Signature {
+            label: "f(a: u8)".into(),
+            active: Some((2, 7)),
+            doc: String::new(),
+        };
+        e.answered(answer(&e, Ask::Signature, Said::Signature(Some(sig.clone()))));
+        assert!(e.signature().is_none(), "only while typing");
+        e.keys(&parse("if("));
+        e.answered(answer(&e, Ask::Signature, Said::Signature(Some(sig.clone()))));
+        assert_eq!(e.signature(), Some(&sig));
+        e.answered(answer(&e, Ask::Signature, Said::Signature(None)));
+        assert!(e.signature().is_none(), "out of the call");
+        e.answered(answer(&e, Ask::Signature, Said::Signature(Some(sig))));
+        e.keys(&parse("<Esc>"));
+        assert!(e.signature().is_none());
     }
 
     #[test]

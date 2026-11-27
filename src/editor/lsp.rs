@@ -73,6 +73,8 @@ impl Editor {
         match (answer.ask, answer.said) {
             // a server that couldn't complete things still leaves words to offer
             (Ask::Complete, Said::Refused(_)) => self.offer_items(Vec::new()),
+            // asked while typing, so not worth stopping for
+            (Ask::Signature, Said::Refused(_)) => {}
             (_, Said::Refused(why)) => self.error(why),
             (Ask::Definition, Said::Places(places)) => match places.as_slice() {
                 [] => self.error("no definition found"),
@@ -87,6 +89,7 @@ impl Editor {
             (Ask::Complete, Said::Items(items)) => self.offer_items(items),
             (Ask::Format { .. }, Said::Edits(files)) => self.formatted(files),
             (Ask::Actions { .. }, Said::Actions(actions)) => self.offer_actions(actions, answer.versions),
+            (Ask::Signature, Said::Signature(s)) if self.mode == super::Mode::Insert => self.signature = s,
             _ => {}
         }
     }
@@ -153,6 +156,10 @@ impl Editor {
                 self.error(why);
             }
         }
+    }
+
+    pub fn signature(&self) -> Option<&crate::languages::Signature> {
+        self.signature.as_ref()
     }
 
     pub fn menu(&self) -> Option<&Menu> {

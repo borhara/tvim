@@ -88,6 +88,7 @@ impl Editor {
                 }
                 self.clamp();
                 self.set_want();
+                self.describe_call(c);
                 return self.complete_as_typed(Some(c));
             }
             Key::Tab => {
@@ -241,6 +242,22 @@ impl Editor {
             Pos::new(p.row, p.col - len),
             before[before.len() - len..].iter().collect(),
         )
+    }
+
+    // after typing `c`, asks the server about the call the cursor's in: on starting one or a
+    // parameter, and while one is shown, on leaving it too
+    fn describe_call(&mut self, c: char) {
+        if !self.options.lsp || self.insert_replay {
+            return;
+        }
+        let Some(triggers) = self.languages.signature_triggers(self.buffer_id) else {
+            return;
+        };
+        let trigger = triggers.iter().any(|t| t.ends_with(c));
+        if trigger || self.signature.is_some() && c == ')' {
+            self.sync_languages();
+            let _ = self.languages.ask(self.buffer_id, self.cursor, Ask::Signature);
+        }
     }
 
     // asks the language server when it can complete things, and offers words when it can't
@@ -686,6 +703,7 @@ impl Editor {
     pub(super) fn leave_insert(&mut self) {
         self.completion = None;
         self.completion_asked = None;
+        self.signature = None;
         self.finish_block_insert();
         let count = self.insert.count;
         if count > 1 && !self.insert_replay {

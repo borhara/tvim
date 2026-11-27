@@ -534,6 +534,10 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if let Some((x, y, _)) = completion {
         overlays::completion(e, frame, d.panes, (x, y), &c);
     }
+    let signature = text_cursor(e, e.mode(), d.body).and_then(|at| Some((e.signature()?, at)));
+    if let Some((s, (x, y, _))) = signature {
+        overlays::signature(s, frame, d.panes, (x, y), &c);
+    }
     let menu = text_cursor(e, e.mode(), d.body).and_then(|at| Some((e.menu()?, at)));
     if let Some((m, (x, y, _))) = menu {
         overlays::menu(m, frame, d.panes, (x, y), &c);
@@ -553,6 +557,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
     let covered = palette
         || completion.is_some()
+        || signature.is_some()
         || menu.is_some()
         || hover.is_some()
         || e.finder().is_some()
@@ -1935,6 +1940,46 @@ mod tests {
                 "│ › len  method │",
                 "│   cap         │",
                 "╰─ fn(&self) … ─╯"
+            ],
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn a_signature_shows_above_the_cursor() {
+        let mut e = Editor::with_text("\n\n\nlet x = f(");
+        e.set_screen(50, 10);
+        e.keys(&crate::keys::parse("GA"));
+        let sig = crate::languages::Signature {
+            label: "fn f(a: u8, b: u8)".into(),
+            active: Some((12, 17)),
+            doc: "Does f.\nMore.".into(),
+        };
+        let answer = crate::languages::Answer {
+            id: e.buffer_id,
+            version: e.version(),
+            at: e.cursor(),
+            versions: Vec::new(),
+            read: Default::default(),
+            ask: crate::languages::Ask::Signature,
+            said: crate::languages::Said::Signature(Some(sig)),
+        };
+        e.answered(answer);
+        let shown = tinsel::with_color_mode(ColorMode::None, || {
+            let mut frame = Frame::new(50, 10);
+            draw(&e, &mut frame);
+            frame.snapshot().plain()
+        });
+        let at = shown.lines().position(|l| l.contains("let x = f(")).unwrap();
+        let above: Vec<&str> = (shown.lines().skip(at - 3).take(3))
+            .map(|l| l.trim_start_matches([' ', '1', '2', '3']))
+            .collect();
+        assert_eq!(
+            above,
+            [
+                "╭────────────────────╮",
+                "│ fn f(a: u8, b: u8) │",
+                "╰────────── Does f. ─╯"
             ],
             "{shown}"
         );
