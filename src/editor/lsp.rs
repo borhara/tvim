@@ -152,6 +152,7 @@ impl Editor {
                 let Some((_, choosing)) = self.menu.take() else { return };
                 match choosing {
                     Choosing::Actions(mut actions, versions) => self.act(actions.swap_remove(i), &versions),
+                    Choosing::Spelling(from, to, words) => self.respell(from, to, &words[i]),
                 }
             }
         }

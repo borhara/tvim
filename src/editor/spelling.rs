@@ -1,5 +1,6 @@
-use super::Editor;
+use super::{Choosing, Editor};
 use crate::buffer::Pos;
+use crate::menu::{Entry, Menu};
 use crate::spell::{self, Dictionary};
 use crate::syntax::{Kind, Syntax};
 
@@ -70,5 +71,47 @@ impl Editor {
             at = found;
         }
         (at != from).then_some(at)
+    }
+
+    // the word under the cursor, as where it starts and ends, and itself
+    fn word_for_spelling(&self) -> Option<(usize, usize, String)> {
+        let line = self.buf.line(self.cursor.row);
+        let col = self.cursor.col;
+        let (a, b) = spell::words(line).into_iter().find(|&(a, b)| (a..b).contains(&col))?;
+        Some((a, b, line.chars().skip(a).take(b - a).collect()))
+    }
+
+    // z=: what the word under the cursor may have been meant to be, to choose from
+    pub(super) fn suggest_spelling(&mut self) {
+        let Some((from, to, word)) = self.word_for_spelling() else {
+            return self.error("no word to spell here");
+        };
+        let Some(found) = self.with_dictionary(|d| d.suggest(&word, 9)) else {
+            return self.error("no word list to spell with");
+        };
+        if found.is_empty() {
+            return self.info(format!("nothing like {word}"));
+        }
+        let entries = (found.iter())
+            .map(|w| Entry {
+                label: w.clone(),
+                hint: String::new(),
+                disabled: None,
+            })
+            .collect();
+        let row = self.cursor.row;
+        self.menu = Some((
+            Menu::new(&format!("spelling of {word}"), entries),
+            Choosing::Spelling(Pos::new(row, from), Pos::new(row, to), found),
+        ));
+    }
+
+    // puts `word` in place of the word from `from` to `to`
+    pub(super) fn respell(&mut self, from: Pos, to: Pos, word: &str) {
+        self.touch();
+        self.buf.delete(from, to);
+        self.buf.insert(from, word);
+        self.cursor = from;
+        self.end_change();
     }
 }

@@ -63,6 +63,19 @@ fn in_code_only_comments_are_checked() {
 }
 
 #[test]
+fn z_equals_offers_words_to_put_in_its_place() {
+    let mut e = opened("suggest.md", "the quikc fox\n");
+    e.keys(&parse("]sz="));
+    let m = e.menu().expect("offered");
+    assert_eq!(m.title, "spelling of quikc");
+    assert_eq!(m.entries[0].label, "quick");
+    e.keys(&parse("1"));
+    assert_eq!(e.text(), "the quick fox");
+    e.keys(&parse("u"));
+    assert_eq!(e.text(), "the quikc fox");
+}
+
+#[test]
 fn words_spelled_wrong_are_underlined_unless_spell_is_off() {
     let mut e = opened("under.md", "the quikc fox\n");
     assert!(underlined(&e, "quikc"), "{:?}", screen(&e));

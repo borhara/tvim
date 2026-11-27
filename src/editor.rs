@@ -312,6 +312,8 @@ type FoldCache = (u64, Vec<usize>, Vec<(usize, usize)>);
 pub(crate) enum Choosing {
     // and each open file's version when they were asked for, to check their edits against
     Actions(Vec<crate::languages::Action>, Vec<(usize, u64)>),
+    // words to put in place of the one from one place to another
+    Spelling(Pos, Pos, Vec<String>),
 }
 
 // one of the things offered to type, a word from the open files or what a server suggests

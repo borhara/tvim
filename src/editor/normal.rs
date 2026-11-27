@@ -282,8 +282,10 @@ impl Editor {
     }
 
     pub(super) fn normal_z(&mut self, key: Key, count: Option<usize>) {
-        if let Key::Char(c @ ('a' | 'c' | 'o' | 'R' | 'M')) = key {
-            return self.fold_key(c);
+        match key {
+            Key::Char(c @ ('a' | 'c' | 'o' | 'R' | 'M')) => return self.fold_key(c),
+            Key::Char('=') => return self.suggest_spelling(),
+            _ => {}
         }
         if let Some(n) = count {
             self.cursor.row = (n - 1).min(self.buf.last_row());
