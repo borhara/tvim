@@ -321,6 +321,34 @@ fn initialize_params(root: &Path) -> Json {
                         ("references", Json::Object(Vec::new())),
                         ("rename", Json::Object(Vec::new())),
                         ("formatting", Json::Object(Vec::new())),
+                        // actions as objects with their edits, rather than commands alone
+                        (
+                            "codeAction",
+                            Json::object([
+                                (
+                                    "codeActionLiteralSupport",
+                                    Json::object([(
+                                        "codeActionKind",
+                                        Json::object([(
+                                            "valueSet",
+                                            vec![
+                                                "",
+                                                "quickfix",
+                                                "refactor",
+                                                "refactor.extract",
+                                                "refactor.inline",
+                                                "refactor.rewrite",
+                                                "source",
+                                                "source.organizeImports",
+                                            ]
+                                            .into(),
+                                        )]),
+                                    )]),
+                                ),
+                                ("isPreferredSupport", true.into()),
+                                ("disabledSupport", true.into()),
+                            ]),
+                        ),
                         ("rangeFormatting", Json::Object(Vec::new())),
                         // without snippets, so what comes back is plain text to type
                         (

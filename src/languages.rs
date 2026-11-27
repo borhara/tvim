@@ -49,6 +49,10 @@ pub enum Ask {
     // to the new name
     Rename(String),
     Complete,
+    // what can be done with the code from the place asked about to this one
+    Actions {
+        to: Pos,
+    },
     // the whole file, or only these lines, with tabs this wide, or spaces in their place
     Format {
         lines: Option<(usize, usize)>,
@@ -94,9 +98,25 @@ pub struct Item {
     pub extra: Vec<Edit>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+// something a server can do with the code, such as fixing a problem or tidying imports
+#[derive(Clone, Debug, PartialEq)]
+pub struct Action {
+    pub title: String,
+    // as quickfix or refactor.extract, empty when not given
+    pub kind: String,
+    // the one most likely wanted
+    pub preferred: bool,
+    // why it can't be done just now, if it can't
+    pub disabled: Option<String>,
+    // made first, and then the command run, if there is one
+    pub edits: Vec<FileEdits>,
+    pub command: Option<Json>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Said {
     Places(Vec<Place>),
+    Actions(Vec<Action>),
     Items(Vec<Item>),
     Edits(Vec<FileEdits>),
     // markdown, empty when there's nothing to say
@@ -105,7 +125,7 @@ pub enum Said {
 }
 
 // a server's answer, with what was asked, of which file, and where it was then
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Answer {
     pub id: usize,
     pub version: u64,
@@ -118,7 +138,7 @@ pub struct Answer {
     pub said: Said,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Update {
     // problems came or went, so there's something new to show
     pub changed: bool,
@@ -158,6 +178,8 @@ struct Synced {
     // the version number the server was last given
     sent: i64,
     problems: Vec<Problem>,
+    // each problem as the server sent it, to give back when asking how to fix it
+    sent_problems: Vec<Json>,
 }
 
 // how a server wants to hear about files, from its capabilities
@@ -222,6 +244,7 @@ impl Languages {
             saved: 0,
             lines: Vec::new(),
             sent: 0,
+            sent_problems: vec![Json::Null; problems.len()],
             problems,
         };
         self.synced.insert(id, synced);
@@ -280,6 +303,7 @@ impl Languages {
             Ask::References => ("textDocument/references", "referencesProvider", "find references"),
             Ask::Rename(_) => ("textDocument/rename", "renameProvider", "rename things"),
             Ask::Complete => ("textDocument/completion", "completionProvider", "complete things"),
+            Ask::Actions { .. } => ("textDocument/codeAction", "codeActionProvider", "change code"),
             Ask::Format { lines: None, .. } => {
                 ("textDocument/formatting", "documentFormattingProvider", "format files")
             }
@@ -314,6 +338,20 @@ impl Languages {
                     };
                     params.push(("range", Json::object([("start", position(first, 0)), ("end", end)])));
                 }
+            }
+            Ask::Actions { to } => {
+                let (from, to) = (at.min(*to), at.max(*to));
+                let range = Json::object([
+                    ("start", position(from.row, from.col)),
+                    ("end", position(to.row, to.col)),
+                ]);
+                // the problems on those lines, as the server sent them, for it to offer fixes
+                let problems: Vec<Json> = (s.problems.iter().zip(&s.sent_problems))
+                    .filter(|(p, _)| p.start.row <= to.row && p.end.row >= from.row)
+                    .map(|(_, sent)| sent.clone())
+                    .collect();
+                params.push(("range", range));
+                params.push(("context", Json::object([("diagnostics", problems.into())])));
             }
             _ => params.push(("position", position(at.row, at.col))),
         }
@@ -440,7 +478,9 @@ impl Languages {
                     .values_mut()
                     .find(|s| s.key == *key && lsp::uri_path(&s.uri).as_ref() == Some(&path))
                 {
-                    s.problems = problems(&params["diagnostics"], &s.lines, r.server.encoding());
+                    (s.problems, s.sent_problems) = problems(&params["diagnostics"], &s.lines, r.server.encoding())
+                        .into_iter()
+                        .unzip();
                     update.changed = true;
                 }
             }
@@ -450,6 +490,7 @@ impl Languages {
                 for s in synced.values_mut().filter(|s| s.key == *key) {
                     update.changed |= !s.problems.is_empty();
                     s.problems.clear();
+                    s.sent_problems.clear();
                 }
             }
         }
@@ -508,6 +549,7 @@ impl Languages {
                 lines,
                 sent: 1,
                 problems: Vec::new(),
+                sent_problems: Vec::new(),
             };
             self.synced.insert(doc.id, synced);
             return;
@@ -562,6 +604,7 @@ fn said(
             let text = synced.get(&asked.id).map_or(&[][..], |s| s.lines.as_slice());
             Said::Items(items(result, text, encoding))
         }
+        Ask::Actions { .. } => Said::Actions(actions(result, &mut lines, encoding)),
         // a list of TextEdits, all to the file asked about
         Ask::Format { .. } => {
             let path = synced.get(&asked.id).and_then(|s| lsp::uri_path(&s.uri));
@@ -612,6 +655,39 @@ fn file_edits(workspace: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Fi
             }
         }
     }
+    out
+}
+
+// a list of Commands and CodeActions, those that are preferred first
+fn actions(result: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Action> {
+    let mut out: Vec<Action> = (result.as_array().unwrap_or(&[]).iter())
+        .filter_map(|a| {
+            let title = a["title"].as_str()?.trim().to_string();
+            // a bare Command has its name as a string where an action's command is an object
+            if a["command"].as_str().is_some() {
+                return Some(Action {
+                    title,
+                    kind: String::new(),
+                    preferred: false,
+                    disabled: None,
+                    edits: Vec::new(),
+                    command: Some(a.clone()),
+                });
+            }
+            Some(Action {
+                title,
+                kind: a["kind"].as_str().unwrap_or("").to_string(),
+                preferred: a["isPreferred"].as_bool().unwrap_or(false),
+                disabled: a
+                    .get("disabled")
+                    .map(|d| d["reason"].as_str().unwrap_or("").to_string()),
+                edits: a.get("edit").map_or(Vec::new(), |e| file_edits(e, lines, encoding)),
+                command: a.get("command").filter(|c| matches!(c, Json::Object(_))).cloned(),
+            })
+        })
+        .collect();
+    // those that can't be done last
+    out.sort_by_key(|a| (a.disabled.is_some(), !a.preferred));
     out
 }
 
@@ -833,31 +909,35 @@ fn edit(old: &[String], new: &[String], encoding: Encoding) -> Json {
     Json::object([("range", range), ("text", text.into())])
 }
 
-fn problems(diagnostics: &Json, lines: &[String], encoding: Encoding) -> Vec<Problem> {
+// each with the diagnostic it came from
+fn problems(diagnostics: &Json, lines: &[String], encoding: Encoding) -> Vec<(Problem, Json)> {
     let pos = |p: &Json| {
         let row = p["line"].as_u64().unwrap_or(0) as usize;
         let line = lines.get(row).map_or("", String::as_str);
         let units = p["character"].as_u64().unwrap_or(0) as usize;
         Pos::new(row, encoding.chars(line, units))
     };
-    let mut out: Vec<Problem> = diagnostics
+    let mut out: Vec<(Problem, Json)> = diagnostics
         .as_array()
         .unwrap_or(&[])
         .iter()
-        .map(|d| Problem {
-            start: pos(&d["range"]["start"]),
-            end: pos(&d["range"]["end"]),
-            // one without a severity is taken as an error
-            severity: match d["severity"].as_i64() {
-                Some(2) => Severity::Warning,
-                Some(3) => Severity::Info,
-                Some(4) => Severity::Hint,
-                _ => Severity::Error,
-            },
-            message: d["message"].as_str().unwrap_or("").trim().to_string(),
+        .map(|d| {
+            let problem = Problem {
+                start: pos(&d["range"]["start"]),
+                end: pos(&d["range"]["end"]),
+                // one without a severity is taken as an error
+                severity: match d["severity"].as_i64() {
+                    Some(2) => Severity::Warning,
+                    Some(3) => Severity::Info,
+                    Some(4) => Severity::Hint,
+                    _ => Severity::Error,
+                },
+                message: d["message"].as_str().unwrap_or("").trim().to_string(),
+            };
+            (problem, d.clone())
         })
         .collect();
-    out.sort_by_key(|p| (p.start, p.severity));
+    out.sort_by_key(|(p, _)| (p.start, p.severity));
     out
 }
 
@@ -1555,6 +1635,62 @@ mod tests {
             };
             assert!(files[0].edits.is_empty(), "null is nothing to change");
         }
+    }
+
+    #[test]
+    fn code_actions_are_asked_with_the_problems_there_and_come_back_preferred_first() {
+        let mut r = rig();
+        let v1 = lines("use a;\nlet x = 1;\nok");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, r#"{"textDocumentSync":1,"codeActionProvider":true}"#);
+        fake.recv().unwrap();
+        let unused = r#"{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"severity":2,"message":"unused","code":"W1","data":{"id":7}}"#;
+        let later = r#"{"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":2}},"message":"no"}"#;
+        fake.send(&diagnostics(&format!("{unused},{later}")));
+        r.until(&docs, |_| false);
+
+        r.langs
+            .ask(1, Pos::new(0, 2), Ask::Actions { to: Pos::new(1, 3) })
+            .unwrap();
+        let a = Json::from(uri("/work/a.rs"));
+        let remove = format!(
+            r#"{{"documentChanges":[{{"textDocument":{{"uri":{a},"version":1}},"edits":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":1,"character":0}}}},"newText":""}}]}}]}}"#
+        );
+        let found = format!(
+            r#"[{{"title":"Run tests","command":"run","arguments":[1]}},
+                {{"title":"Extract","kind":"refactor.extract","disabled":{{"reason":"nothing selected"}}}},
+                {{"title":" Remove unused import ","kind":"quickfix","isPreferred":true,"edit":{remove},
+                  "command":{{"title":"x","command":"after"}}}}]"#
+        );
+        let asked = reply(&mut fake, "textDocument/codeAction", &found);
+        let range = &asked["params"]["range"];
+        assert_eq!(
+            (range["start"]["line"].as_u64(), range["start"]["character"].as_u64()),
+            (Some(0), Some(2))
+        );
+        assert_eq!(
+            (range["end"]["line"].as_u64(), range["end"]["character"].as_u64()),
+            (Some(1), Some(3))
+        );
+        assert_eq!(
+            asked["params"]["context"]["diagnostics"].to_string(),
+            format!("[{}]", Json::parse(unused).unwrap()),
+            "the problem on those lines, just as it was sent"
+        );
+        let Said::Actions(found) = answer(&mut r, &docs).said else {
+            panic!("actions")
+        };
+        let titles: Vec<&str> = found.iter().map(|a| a.title.as_str()).collect();
+        assert_eq!(titles, ["Remove unused import", "Run tests", "Extract"]);
+        assert_eq!((found[0].kind.as_str(), found[0].preferred), ("quickfix", true));
+        assert_eq!(found[0].edits[0].edits[0].end, Pos::new(1, 0));
+        assert_eq!(found[0].command.as_ref().unwrap()["command"].as_str(), Some("after"));
+        assert_eq!(
+            found[1].command.as_ref().unwrap()["arguments"].to_string(),
+            "[1]",
+            "a bare command"
+        );
+        assert_eq!(found[2].disabled.as_deref(), Some("nothing selected"));
     }
 
     #[test]
