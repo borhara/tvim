@@ -66,3 +66,23 @@ fn a_closed_fold_shows_as_its_first_line_and_what_it_hides() {
     assert!(rows[2].ends_with("1 › fn a() { ··· }  5 lines"), "{shown}");
     assert!(rows[3].ends_with("7   fn b() {"), "{shown}");
 }
+
+#[test]
+fn an_operator_on_a_closed_fold_takes_all_of_it() {
+    use common::text_after as t;
+    let rest = "fn b() {\n    two();\n}";
+    assert_eq!(t(CODE, "jzcdd"), rest);
+    assert_eq!(
+        t(CODE, "jzc2dd"),
+        "    two();\n}",
+        "the fold and the line after it, as two"
+    );
+    assert_eq!(
+        t(CODE, "7Gzc6Gdj"),
+        "fn a() {\n    let x = 1;\n    if x {\n        go();\n    }",
+        "a motion onto one too"
+    );
+    let mut e = ed(CODE);
+    e.keys(&parse("jzcyyGp"));
+    assert_eq!(e.text().lines().count(), 15, "all six lines yanked");
+}

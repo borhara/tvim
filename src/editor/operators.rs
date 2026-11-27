@@ -103,13 +103,18 @@ impl Editor {
     /// running past the end covers nothing, as it does for d, c and y.
     pub(super) fn target_range(&mut self, target: Target, count: Option<usize>, strict: bool) -> Option<Range> {
         let n = count.unwrap_or(1);
-        Some(match target {
+        let range = match target {
             Target::Lines => {
-                let last = self.cursor.row + n - 1;
-                if last > self.buf.last_row() && n > 1 && strict {
-                    return None;
+                // a closed fold counts as one line
+                let mut last = self.cursor.row;
+                for _ in 1..n {
+                    let next = self.fold_step(last, 1, true);
+                    if next == last && strict {
+                        return None;
+                    }
+                    last = next;
                 }
-                Range::lines(self.cursor.row, last.min(self.buf.last_row()))
+                Range::lines(self.cursor.row, last)
             }
             Target::Object { kind, inner } => {
                 let span = object(&self.buf, self.cursor, kind, inner, n)?;
@@ -126,7 +131,21 @@ impl Editor {
                 }
                 self.range_to(to, kind)
             }
-        })
+        };
+        Some(self.with_folds(range))
+    }
+
+    // lines from a closed fold to another take all of both
+    fn with_folds(&self, mut r: Range) -> Range {
+        if r.linewise {
+            if let Some((start, _)) = self.fold_holding(r.start.row) {
+                r.start.row = start;
+            }
+            if let Some((_, end)) = self.fold_holding(r.end.row) {
+                r.end.row = end;
+            }
+        }
+        r
     }
 
     pub(super) fn change_word(&mut self, big: bool, n: usize, register: Option<char>) {
