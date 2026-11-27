@@ -73,7 +73,8 @@ impl Editor {
 
     pub(super) fn is_change(cmd: &Cmd) -> bool {
         match cmd.act {
-            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Filter),
+            // the server's tidying comes later, as a change of its own
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Filter | Op::Tidy),
             Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
             Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') | Act::Hunk('r') => true,

@@ -10,7 +10,7 @@ impl Editor {
     // gc repeats as gcc, and so isn't here
     pub(super) fn is_visual_change(cmd: &Cmd) -> bool {
         match cmd.act {
-            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment | Op::Filter),
+            Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Comment | Op::Filter | Op::Tidy),
             Act::Surround(..) => true,
             Act::Key(Key::Char(c)) => "xXDsSCRJpPIA".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::With('r', _) => true,

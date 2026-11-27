@@ -735,6 +735,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         "g~" => "swap case",
         "gc" => "comment",
         "!" => "filter",
+        "=" => "format",
         "gq" | "gw" => "rewrap",
         _ => "",
     };

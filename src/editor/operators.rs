@@ -91,7 +91,7 @@ impl Editor {
             return;
         };
         // 3>> is three lines, not three shifts, and 3!! three lines to filter
-        let times = if matches!(op, Op::Indent | Op::Dedent | Op::Filter) {
+        let times = if matches!(op, Op::Indent | Op::Dedent | Op::Filter | Op::Tidy) {
             1
         } else {
             n
@@ -267,6 +267,11 @@ impl Editor {
                     n => format!(".,.+{n}"),
                 };
                 self.begin_cmdline(':', format!("{lines}!"));
+            }
+            Op::Tidy => {
+                let (first, last) = (r.start.row, r.last_row().min(self.buf.last_row()));
+                self.cursor = self.first_non_blank_pos(first);
+                self.format(Some((first, last)));
             }
             Op::Format | Op::FormatKeep => {
                 let (first, last) = (r.start.row, r.last_row().min(self.buf.last_row()));

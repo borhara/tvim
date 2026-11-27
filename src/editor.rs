@@ -1287,6 +1287,15 @@ mod tests {
     }
 
     #[test]
+    fn equals_asks_the_server_to_format_lines_and_says_when_there_is_none() {
+        let mut e = Editor::with_text("a\n  b");
+        e.keys(&parse("j$=k"));
+        assert_eq!(e.cursor, Pos::new(0, 0), "to the first line, as = goes");
+        assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
+        assert_eq!(e.buf.lines(), ["a", "  b"]);
+    }
+
+    #[test]
     fn with_nothing_from_the_server_words_are_offered() {
         let mut e = Editor::with_text("plenty\npl");
         e.keys(&parse("jA"));

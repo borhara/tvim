@@ -54,6 +54,8 @@ pub enum Op {
     Format,
     // gw, which leaves the cursor where it was
     FormatKeep,
+    // =, which asks the language server to tidy the lines
+    Tidy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -444,6 +446,7 @@ fn operator(keys: &[Key], visual: bool) -> Option<Result<(Op, usize), ()>> {
         Key::Char('>') => op(Op::Indent),
         Key::Char('<') => op(Op::Dedent),
         Key::Char('!') => op(Op::Filter),
+        Key::Char('=') => op(Op::Tidy),
         Key::Char('u') if visual => op(Op::Lower),
         Key::Char('U') if visual => op(Op::Upper),
         Key::Char('~') if visual => op(Op::ToggleCase),
@@ -590,6 +593,7 @@ mod tests {
         assert_eq!(cmd(">>").act, Act::Operate(Op::Indent, Target::Lines));
         assert_eq!(cmd("!!").act, Act::Operate(Op::Filter, Target::Lines));
         assert_eq!(cmd("gqq").act, Act::Operate(Op::Format, Target::Lines));
+        assert_eq!(cmd("==").act, Act::Operate(Op::Tidy, Target::Lines));
         assert_eq!(
             cmd("ysiw)").act,
             Act::Surround(Target::Object { kind: 'w', inner: true }, ')')
