@@ -133,6 +133,8 @@ impl Editor {
             'G' => self.open_git_menu(None),
             'r' => self.pick_recent(),
             'n' => self.rename(""),
+            's' => self.symbols(None),
+            'S' => self.symbols(Some("")),
             _ => self.grep(None),
         }
     }

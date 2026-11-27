@@ -1614,6 +1614,32 @@ mod tests {
     }
 
     #[test]
+    fn symbols_are_listed_in_the_files_order_or_matching_what_was_asked() {
+        let a = temp_file("syms-a.rs", "struct A;\nfn b() {}\n");
+        let mut e = Editor::open(&a).unwrap();
+        let said = Said::Places(vec![place(&a, 1, 3), place(&a, 0, 7)]);
+        e.answered(answer(&e, Ask::Symbols(None), said));
+        let g = e.grep_picker().expect("listed");
+        assert_eq!(g.title(), Some("symbols in syms-a.rs"));
+        let rows: Vec<usize> = g.hits().iter().map(|h| h.row).collect();
+        assert_eq!(rows, [0, 1]);
+        e.keys(&parse("<Esc>"));
+        let said = Said::Places(vec![place(&a, 1, 3)]);
+        e.answered(answer(&e, Ask::Symbols(Some("b".into())), said));
+        assert_eq!(e.grep_picker().unwrap().title(), Some("symbols matching b"));
+        e.keys(&parse("<Esc>"));
+        e.answered(answer(&e, Ask::Symbols(None), Said::Places(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "nothing defined here");
+    }
+
+    #[test]
+    fn space_capital_s_asks_what_to_look_for_starting_from_the_word() {
+        let mut e = Editor::with_text("let area = 1;");
+        e.keys(&parse("w S"));
+        assert_eq!(e.cmdline().text, "Symbols area");
+    }
+
+    #[test]
     fn definitions_in_more_than_one_place_are_listed() {
         let a = temp_file("defs-a.rs", "fn f() {}\nfn f() {}\nf();\n");
         let mut e = Editor::open(&a).unwrap();

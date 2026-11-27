@@ -89,6 +89,17 @@ impl Editor {
             (Ask::Complete, Said::Items(items)) => self.offer_items(items),
             (Ask::Format { .. }, Said::Edits(files)) => self.formatted(files),
             (Ask::Actions { .. }, Said::Actions(actions)) => self.offer_actions(actions, answer.versions),
+            (Ask::Symbols(None), Said::Places(places)) if places.is_empty() => self.error("nothing defined here"),
+            (Ask::Symbols(None), Said::Places(places)) => {
+                let title = format!("symbols in {}", self.file_name());
+                self.list_places(&title, "", &places, &answer.read);
+            }
+            (Ask::Symbols(Some(q)), Said::Places(places)) if places.is_empty() => {
+                self.error(format!("no symbols match {q}"))
+            }
+            (Ask::Symbols(Some(q)), Said::Places(places)) => {
+                self.list_places(&format!("symbols matching {q}"), &q, &places, &answer.read)
+            }
             (Ask::Signature, Said::Signature(s)) if self.mode == super::Mode::Insert => self.signature = s,
             _ => {}
         }
@@ -164,6 +175,18 @@ impl Editor {
 
     pub fn menu(&self) -> Option<&Menu> {
         self.menu.as_ref().map(|(m, _)| m)
+    }
+
+    // lists what's defined in the file, or across the project what matches `query`; Space S
+    // asks for the query, starting from the word under the cursor
+    pub(crate) fn symbols(&mut self, query: Option<&str>) {
+        match query.map(str::trim) {
+            Some("") => {
+                let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
+                self.begin_cmdline(':', format!("Symbols {word}"));
+            }
+            query => self.ask_server(Ask::Symbols(query.map(str::to_string))),
+        }
     }
 
     // asks the language server to tidy the file, or only these lines, as one change

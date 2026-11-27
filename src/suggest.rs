@@ -66,6 +66,11 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
         "For",
         "tidy the file, or the lines given, with its language server",
     ),
+    (
+        "Symbols",
+        "Sym",
+        "what's defined in the file, or across the project by name",
+    ),
     ("preview", "prev", "show or hide a markdown preview"),
     ("help", "h", "a quick reminder"),
     ("version", "ve", "show the version"),
