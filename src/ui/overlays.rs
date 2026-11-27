@@ -887,7 +887,11 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         ),
         " h" => (
             "hunk".into(),
-            owned(&[("r", "back to HEAD, or the last save"), ("p", "as it was and as it is")]),
+            owned(&[
+                ("s", "stage it"),
+                ("r", "back to HEAD, or the last save"),
+                ("p", "as it was and as it is"),
+            ]),
         ),
         " c" => (
             "code".into(),

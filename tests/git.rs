@@ -195,6 +195,45 @@ fn space_h_p_shows_the_hunk_as_it_was_and_is() {
     assert_eq!(e.hover(), None, "nothing off a hunk");
 }
 
+fn git_out(dir: &Path, args: &[&str]) -> String {
+    let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    String::from_utf8(out.stdout).unwrap()
+}
+
+#[test]
+fn space_h_s_stages_only_the_hunk_under_the_cursor() {
+    let Some(dir) = repo("stage", "1\n2\n3\n4\n5\n6\n") else {
+        return;
+    };
+    let file = dir.join("a.txt");
+    std::fs::write(&file, "1\nTWO\n3\n4\n5\nSIX\n").unwrap();
+    let mut e = open(&file);
+    e.keys(&parse("j<Space>hs"));
+    assert_eq!(e.message().unwrap().text, "staged");
+    assert_eq!(git_out(&dir, &["show", ":a.txt"]), "1\nTWO\n3\n4\n5\n6\n");
+    // unsaved, as the buffer has it
+    e.keys(&parse("Gciwsix<Esc><Space>hs"));
+    assert_eq!(git_out(&dir, &["show", ":a.txt"]), "1\nTWO\n3\n4\n5\nsix\n");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "1\nTWO\n3\n4\n5\nSIX\n");
+    e.keys(&parse("gg<Space>hs"));
+    assert_eq!(e.message().unwrap().text, "nothing here to stage");
+}
+
+#[test]
+fn space_h_s_stages_in_a_folder_and_a_new_file() {
+    let Some(dir) = repo("stage_deep", "a\n") else {
+        return;
+    };
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    let file = dir.join("sub/new.txt");
+    std::fs::write(&file, "x\ny\n").unwrap();
+    let mut e = open(&file);
+    e.keys(&parse("<Space>hs"));
+    assert_eq!(e.message().map(|m| m.text.clone()), Some("staged".into()));
+    assert_eq!(git_out(&dir, &["show", ":sub/new.txt"]), "x\ny\n");
+    assert_eq!(git_out(&dir, &["status", "--porcelain"]), "A  sub/new.txt\n");
+}
+
 #[test]
 fn the_branch_shows_at_the_top_right() {
     let Some(dir) = repo("looks", "a\n") else { return };

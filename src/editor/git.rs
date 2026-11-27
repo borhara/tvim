@@ -42,6 +42,39 @@ impl Editor {
         self.hover = Some(format!("```diff\n{}\n```", body.join("\n")));
     }
 
+    // Space h s: the change under the cursor goes in the index, as the buffer has it
+    pub(super) fn stage_hunk(&mut self) {
+        let Some(path) = self.file.path.clone() else {
+            return self.error("no file to stage");
+        };
+        if self.git.with(|f| f.base == Base::Outside) {
+            return self.error("not in a git repo");
+        }
+        let staged = crate::git::staged_lines(&path).unwrap_or_default();
+        let lines = self.buf.lines();
+        let row = self.cursor.row;
+        let hunks = crate::diff::hunks(&staged, lines);
+        let Some(h) = hunks
+            .iter()
+            .find(|h| h.new.contains(&row) || h.new.is_empty() && h.row() == row)
+        else {
+            return self.info("nothing here to stage");
+        };
+        let mut text = staged;
+        text.splice(h.old.clone(), lines[h.new.clone()].iter().cloned());
+        let mut text = text.join("\n");
+        if !text.is_empty() && self.file.final_newline {
+            text.push('\n');
+        }
+        match crate::git::stage_text(&path, &text) {
+            Ok(()) => {
+                self.info("staged");
+                self.refresh_tree();
+            }
+            Err(why) => self.error(why),
+        }
+    }
+
     pub fn lens(&self) -> Option<String> {
         let quiet = self.mode != Mode::Normal
             || !self.pending.is_empty()
