@@ -152,6 +152,8 @@ fn bracket_c_walks_the_hunks_without_wrapping() {
     assert_eq!(row(&mut e, "9[c"), 1, "a big count stops at the first");
     assert_eq!(row(&mut e, "[c"), 1);
     assert_eq!(row(&mut e, "]c<C-o>"), 1, "and go in the jump list");
+    assert_eq!(row(&mut e, "]h]h"), 8, "]h and [h as LazyVim has them");
+    assert_eq!(row(&mut e, "[h"), 4);
 }
 
 #[test]

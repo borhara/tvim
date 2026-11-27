@@ -546,7 +546,7 @@ pub fn motion(keys: &[Key]) -> MotionParse {
         }),
         Key::Char(c @ (']' | '[')) => match keys.get(1) {
             None => MotionParse::More,
-            Some(Key::Char('c')) => MotionParse::Done(Hunk(c == ']'), 2),
+            Some(Key::Char('c' | 'h')) => MotionParse::Done(Hunk(c == ']'), 2),
             Some(Key::Char('d')) => MotionParse::Done(Problem(c == ']'), 2),
             Some(Key::Char('s')) => MotionParse::Done(Misspelling(c == ']'), 2),
             _ => MotionParse::Invalid,

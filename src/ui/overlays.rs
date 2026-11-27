@@ -880,7 +880,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         "]" => (
             "]".into(),
             owned(&[
-                ("c", "the next change"),
+                ("c h", "the next change"),
                 ("d", "the next problem"),
                 ("q", "the next place in the quickfix list"),
                 ("s", "the next word spelled wrong"),
@@ -889,7 +889,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         "[" => (
             "[".into(),
             owned(&[
-                ("c", "the previous change"),
+                ("c h", "the previous change"),
                 ("d", "the previous problem"),
                 ("q", "the previous place in the quickfix list"),
                 ("s", "the previous word spelled wrong"),
