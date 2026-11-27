@@ -214,6 +214,14 @@ impl Server {
 
     fn receive(&mut self, msg: Json) -> Option<Incoming> {
         match (msg["method"].as_str(), msg.get("id")) {
+            // edits it wants made, which are, so it's told they were and the editor told what
+            (Some(method @ "workspace/applyEdit"), Some(id)) => {
+                self.write(reply(id.clone(), Ok(Json::object([("applied", true.into())]))));
+                Some(Incoming::Notice {
+                    method: method.to_string(),
+                    params: msg["params"].clone(),
+                })
+            }
             (Some(method), Some(id)) => {
                 let answer = answer(method, &msg["params"]);
                 self.write(reply(id.clone(), answer));
@@ -306,7 +314,11 @@ fn initialize_params(root: &Path) -> Json {
             Json::object([
                 (
                     "workspace",
-                    Json::object([("workspaceEdit", Json::object([("documentChanges", true.into())]))]),
+                    Json::object([
+                        ("workspaceEdit", Json::object([("documentChanges", true.into())])),
+                        ("applyEdit", true.into()),
+                        ("executeCommand", Json::Object(Vec::new())),
+                    ]),
                 ),
                 (
                     "general",
@@ -834,9 +846,24 @@ mod tests {
     }
 
     #[test]
+    fn edits_the_server_asks_for_are_said_to_be_made_and_passed_on() {
+        let (mut server, mut fake) = started();
+        fake.send(r#"{"jsonrpc":"2.0","id":5,"method":"workspace/applyEdit","params":{"edit":{"changes":{}}}}"#);
+        let passed = Incoming::Notice {
+            method: "workspace/applyEdit".into(),
+            params: Json::parse(r#"{"edit":{"changes":{}}}"#).unwrap(),
+        };
+        assert_eq!(next(&mut server), passed);
+        assert_eq!(
+            fake.recv().unwrap().to_string(),
+            r#"{"jsonrpc":"2.0","id":5,"result":{"applied":true}}"#
+        );
+    }
+
+    #[test]
     fn requests_the_editor_cant_answer_get_an_error_back() {
         let (mut server, mut fake) = started();
-        fake.send(r#"{"jsonrpc":"2.0","id":4,"method":"workspace/applyEdit","params":{}}"#);
+        fake.send(r#"{"jsonrpc":"2.0","id":4,"method":"window/showDocument","params":{}}"#);
         sync_up(&mut server, &mut fake);
         let answer = fake.recv().unwrap();
         assert_eq!(answer["id"].as_i64(), Some(4));

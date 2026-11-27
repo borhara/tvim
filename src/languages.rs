@@ -144,6 +144,8 @@ pub struct Update {
     pub changed: bool,
     pub errors: Vec<String>,
     pub answers: Vec<Answer>,
+    // edits servers asked to have made, such as by a command they were asked to run
+    pub edits: Vec<Vec<FileEdits>>,
 }
 
 // a server is one command run for one project
@@ -373,6 +375,29 @@ impl Languages {
         Ok(())
     }
 
+    // has the server for file `id` run `command`, a Command it gave, if it says it can; what
+    // the command changes comes as edits it asks to have made
+    pub fn run(&mut self, id: usize, command: &Json) -> Result<(), String> {
+        let name = command["command"].as_str().unwrap_or("");
+        let r = (self.synced.get(&id))
+            .and_then(|s| self.running.get_mut(&s.key))
+            .filter(|r| r.server.ready())
+            .ok_or("the language server has stopped")?;
+        let known = r.server.capabilities()["executeCommandProvider"]["commands"]
+            .as_array()
+            .is_some_and(|c| c.iter().any(|c| c.as_str() == Some(name)));
+        // others are the editor's own in editors the server was made for
+        if !known {
+            return Err(format!("tvim can't run {name}"));
+        }
+        let mut params = vec![("command", name.into())];
+        if let Some(args) = command.get("arguments") {
+            params.push(("arguments", args.clone()));
+        }
+        r.server.request("workspace/executeCommand", Json::object(params));
+        Ok(())
+    }
+
     // whether something like `ask` asked about file `id` is still waiting on its answer
     pub fn waiting(&self, id: usize, ask: &Ask) -> bool {
         let like = |a: &Asked| a.id == id && std::mem::discriminant(&a.ask) == std::mem::discriminant(ask);
@@ -467,6 +492,13 @@ impl Languages {
                         continue;
                     }
                 };
+                if method == "workspace/applyEdit" {
+                    let mut lines = Lines::new(synced);
+                    update
+                        .edits
+                        .push(file_edits(&params["edit"], &mut lines, r.server.encoding()));
+                    continue;
+                }
                 if method != "textDocument/publishDiagnostics" {
                     continue;
                 }
@@ -988,7 +1020,12 @@ mod tests {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 let update = self.update(docs);
-                if done(self) || update.changed || !update.errors.is_empty() || !update.answers.is_empty() {
+                if done(self)
+                    || update.changed
+                    || !update.errors.is_empty()
+                    || !update.answers.is_empty()
+                    || !update.edits.is_empty()
+                {
                     return update;
                 }
                 assert!(Instant::now() < deadline, "nothing happened");
@@ -1691,6 +1728,37 @@ mod tests {
             "a bare command"
         );
         assert_eq!(found[2].disabled.as_deref(), Some("nothing selected"));
+    }
+
+    #[test]
+    fn commands_the_server_knows_are_run_and_the_edits_they_ask_for_passed_on() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(
+            &docs,
+            r#"{"textDocumentSync":1,"executeCommandProvider":{"commands":["fix"]}}"#,
+        );
+        fake.recv().unwrap();
+        let fix = Json::parse(r#"{"title":"Fix","command":"fix","arguments":[{"at":1}]}"#).unwrap();
+        r.langs.run(1, &fix).unwrap();
+        let asked = fake.recv().unwrap();
+        assert_eq!(asked["method"].as_str(), Some("workspace/executeCommand"));
+        assert_eq!(
+            asked["params"].to_string(),
+            r#"{"command":"fix","arguments":[{"at":1}]}"#
+        );
+        let other = Json::parse(r#"{"title":"Run","command":"editor.run"}"#).unwrap();
+        assert_eq!(r.langs.run(1, &other), Err("tvim can't run editor.run".into()));
+
+        let a = Json::from(uri("/work/a.rs"));
+        fake.send(&format!(
+            r#"{{"jsonrpc":"2.0","id":9,"method":"workspace/applyEdit","params":{{"edit":{{"changes":{{{a}:[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":0,"character":1}}}},"newText":"b"}}]}}}}}}}}"#
+        ));
+        let update = r.until(&docs, |_| false);
+        assert_eq!(update.edits.len(), 1);
+        assert_eq!(update.edits[0][0].edits[0].text, "b");
+        assert_eq!(fake.recv().unwrap()["result"]["applied"].as_bool(), Some(true));
     }
 
     #[test]
