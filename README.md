@@ -84,6 +84,8 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 
 **Language servers.** When a language server is installed for the file you open, tvim starts it and keeps it up to date as you type. Lines with problems get a coloured line number, the problem itself is tinted, and the cursor's line says what's wrong. `]d` and `[d` go to the next and previous problem.
 
+As you type, what the server suggests shows below the cursor, saying what each is. Nothing goes in until you choose: `Ctrl-n` and `Ctrl-p` (or the arrow keys) move through the list putting each in, `Ctrl-y` takes the one chosen, or the first, and `Ctrl-e` puts back what you typed. Anything else carries on as usual, so `Enter` still starts a new line. `Ctrl-n` on its own asks for suggestions, or offers words from the open files where there's no server. `:set noacp` keeps the list away until you press `Ctrl-n`.
+
 The server also knows what the code means, so with the cursor on a name:
 
 | Keys | What it does |
@@ -148,6 +150,7 @@ nnoremap <leader>w :w<CR>
 | `smooth` | `sm` | on | scroll smoothly on big jumps |
 | `gitlens` | `gl` | on | show who last changed the cursor's line |
 | `lsp` | | on | run language servers |
+| `autocomplete` | `acp` | on | show a language server's suggestions as you type |
 | `roomy` | `ro` | on | a little space above and below the text |
 | `dim` | | on | fade the sidebar while you're in the file, and the other way round |
 | `wrap` | | off | long lines carry on in the rows below; `gj` and `gk` move a row at a time |
