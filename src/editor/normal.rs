@@ -77,7 +77,8 @@ impl Editor {
             Act::Operate(op, _) => !matches!(op, Op::Yank | Op::Filter | Op::Tidy),
             Act::Key(Key::Char(c)) => "xXsSDCpPJ~&iaIAoOR".contains(c),
             Act::Key(Key::Ctrl('a' | 'x')) | Act::Key(Key::Delete) => true,
-            Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') | Act::Hunk('r') => true,
+            Act::With('r', _) | Act::G('J' | 'p' | 'P' | 'i') => true,
+            Act::Hunk('r') => true,
             Act::Surround(..) | Act::Unsurround(_) | Act::Resurround(..) => true,
             _ => false,
         }
@@ -357,6 +358,7 @@ impl Editor {
                 | Motion::Hunk(_)
                 | Motion::Problem(_)
                 | Motion::Misspelling(_)
+                | Motion::Conflict(_)
         )
     }
 
@@ -616,6 +618,7 @@ impl Editor {
                 };
                 (fnb((*row?).min(b.last_row())), Linewise)
             }
+            Motion::Conflict(forward) => (fnb(self.next_conflict(p.row, forward, n)?), Linewise),
             Motion::Misspelling(forward) => (self.next_misspelled(p, forward, n)?, Exclusive),
             Motion::Problem(forward) => {
                 let starts = self.problems(self.buffer_id).iter().map(|p| p.start);

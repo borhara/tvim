@@ -37,6 +37,7 @@ use crate::window::{Node, Win};
 mod block;
 mod buffers;
 mod cmdline;
+mod conflicts;
 mod folds;
 mod git;
 mod input;
@@ -306,6 +307,9 @@ enum Asking {
 
 // the closed folds, outermost first, for the version of the text and the first lines closed
 type FoldCache = (u64, Vec<usize>, Vec<(usize, usize)>);
+
+// the merge conflicts in a buffer, for its id and the version of its text
+type ConflictCache = ((usize, u64), Vec<crate::conflict::Conflict>);
 
 // what the menu by the cursor is choosing between, to do once one is chosen
 #[derive(Clone, Debug)]
@@ -607,6 +611,7 @@ pub struct Editor {
     closed: Vec<usize>,
     // the closed folds, outermost only, as of a version of the text and those closed
     fold_cache: RefCell<Option<FoldCache>>,
+    conflict_cache: RefCell<Option<ConflictCache>>,
     // the call the cursor is in while typing, as the server described it
     signature: Option<crate::languages::Signature>,
     // typed keys that may yet be the start of a mapping
@@ -717,6 +722,7 @@ impl Editor {
             substitute_preview: None,
             closed: Vec::new(),
             fold_cache: RefCell::new(None),
+            conflict_cache: RefCell::new(None),
             signature: None,
             map_typed: Vec::new(),
             map_depth: 0,

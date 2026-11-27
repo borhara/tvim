@@ -904,6 +904,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("d", "the next problem"),
                 ("q", "the next place in the quickfix list"),
                 ("s", "the next word spelled wrong"),
+                ("x", "the next merge conflict"),
             ]),
         ),
         "[" => (
@@ -913,6 +914,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("d", "the previous problem"),
                 ("q", "the previous place in the quickfix list"),
                 ("s", "the previous word spelled wrong"),
+                ("x", "the previous merge conflict"),
             ]),
         ),
         "g" => ("g".into(), owned(G)),

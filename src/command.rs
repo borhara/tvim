@@ -39,6 +39,8 @@ pub enum Motion {
     Problem(bool),
     // ]s and [s
     Misspelling(bool),
+    // ]x and [x
+    Conflict(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -549,6 +551,7 @@ pub fn motion(keys: &[Key]) -> MotionParse {
             Some(Key::Char('c' | 'h')) => MotionParse::Done(Hunk(c == ']'), 2),
             Some(Key::Char('d')) => MotionParse::Done(Problem(c == ']'), 2),
             Some(Key::Char('s')) => MotionParse::Done(Misspelling(c == ']'), 2),
+            Some(Key::Char('x')) => MotionParse::Done(Conflict(c == ']'), 2),
             _ => MotionParse::Invalid,
         },
         Key::Char('\'') => with_char(&|c| Mark(c, false)),
