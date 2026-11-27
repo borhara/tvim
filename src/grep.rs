@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use tinsel::app::{Event, Key, Keymap, Waker, navigate};
 
+use crate::buffer::Pos;
 use crate::finder::{edit_query, follow, walk};
+use crate::quickfix::Spot;
 use crate::sync::{lock, wait_until};
 
 const MAX_FILE: u64 = 1_000_000;
@@ -28,6 +30,8 @@ pub enum Jump {
         query: String,
     },
     Close,
+    // Ctrl-q, to keep what's listed in the quickfix list
+    Keep(String, Vec<Spot>),
 }
 
 struct File {
@@ -208,6 +212,30 @@ impl Grep {
         self.lock().files[hit.file].path.clone()
     }
 
+    // what's listed, to name a quickfix list after
+    fn describe(&self) -> String {
+        match (&self.given, self.query.trim()) {
+            (Some(g), "") => g.title.clone(),
+            (Some(g), q) => format!("{} with {q}", g.title),
+            (None, q) => format!("search for {q}"),
+        }
+    }
+
+    // each hit listed, with its line
+    pub fn spots(&self) -> Vec<Spot> {
+        let loaded = self.lock();
+        (self.hits.iter())
+            .map(|h| {
+                let f = &loaded.files[h.file];
+                Spot {
+                    path: self.root.join(&f.path),
+                    pos: Pos::new(h.row, h.col),
+                    note: f.line(h.row).trim().to_string(),
+                }
+            })
+            .collect()
+    }
+
     pub fn line(&self, hit: &Hit) -> String {
         self.lock().files[hit.file].line(hit.row).to_string()
     }
@@ -316,6 +344,7 @@ impl Grep {
                     None => Jump::Nothing,
                 };
             }
+            Key::Ctrl('q') => return Jump::Keep(self.describe(), self.spots()),
             Key::Ctrl('d') => self.selected = (self.selected + 10).min(last),
             k if navigate(&mut self.selected, self.hits.len(), &Event::Key(k), Keymap::Picker) => {}
             k => match edit_query(&mut self.query, k, |c| !c.is_alphanumeric() && c != '_') {

@@ -78,6 +78,8 @@ pub enum Act {
     Hunk(char),
     // Space c and a key, for what the language server can do with the code
     Code(char),
+    // ]q and [q, to the next or previous place in the quickfix list
+    Quickfix(bool),
     Window(Key),
     // ys, yss and visual S: put a pair around the target
     Surround(Target, char),
@@ -290,6 +292,9 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 
     match key {
+        Key::Char(c @ (']' | '[')) if !visual && keys.get(i + 1) == Some(&Key::Char('q')) => {
+            return done(Act::Quickfix(c == ']'), i + 2, count1);
+        }
         Key::Char('g') => match keys.get(i + 1) {
             None => return Parse::More,
             Some(Key::Char(c @ ('v' | 'J' | 'i' | 'p' | 'P' | 't' | 'T' | 'd' | 'r'))) => {
@@ -612,6 +617,8 @@ mod tests {
         assert_eq!(cmd("==").act, Act::Operate(Op::Tidy, Target::Lines));
         assert_eq!(cmd(" cf").act, Act::Code('f'));
         assert_eq!(cmd(" ca").act, Act::Code('a'));
+        assert_eq!(cmd("]q").act, Act::Quickfix(true));
+        assert_eq!(cmd("2[q").act, Act::Quickfix(false));
         assert_eq!(
             cmd("ysiw)").act,
             Act::Surround(Target::Object { kind: 'w', inner: true }, ')')

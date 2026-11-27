@@ -116,6 +116,7 @@ impl Editor {
             Act::Hunk(_) => self.reset_hunk(),
             Act::Code('a') => self.code_actions(),
             Act::Code(_) => self.format(None),
+            Act::Quickfix(forward) => self.step_quickfix(if forward { n as isize } else { -(n as isize) }),
             Act::Window(k) => self.window_key(k, cmd.count),
             Act::Leader(c) => self.leader(c),
         }

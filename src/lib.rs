@@ -24,6 +24,7 @@ pub mod motion;
 pub mod object;
 pub mod paths;
 mod preview;
+pub mod quickfix;
 pub mod regex;
 pub mod servers;
 pub mod session;

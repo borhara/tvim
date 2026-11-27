@@ -39,6 +39,10 @@ impl Editor {
         match g.key(key) {
             Jump::Nothing => {}
             Jump::Close => self.grep = None,
+            Jump::Keep(title, spots) => {
+                self.grep = None;
+                self.keep_quickfix(&title, spots);
+            }
             Jump::Open { path, row, col, query } => {
                 if self.go_to(&path, Pos::new(row, col)) {
                     self.grep = None;

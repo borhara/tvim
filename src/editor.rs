@@ -45,6 +45,7 @@ mod lsp;
 mod normal;
 mod operators;
 mod pickers;
+mod quickfix;
 mod repeat;
 mod search;
 mod surround;
@@ -581,6 +582,7 @@ pub struct Editor {
     // what the server said about the cursor's place, shown until the next key
     hover: Option<String>,
     pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
+    pub(crate) quickfix: Option<crate::quickfix::Quickfix>,
     // the call the cursor is in while typing, as the server described it
     signature: Option<crate::languages::Signature>,
     // typed keys that may yet be the start of a mapping
@@ -685,6 +687,7 @@ impl Editor {
             languages: Languages::default(),
             hover: None,
             menu: None,
+            quickfix: None,
             signature: None,
             map_typed: Vec::new(),
             map_depth: 0,
@@ -1637,6 +1640,42 @@ mod tests {
         let mut e = Editor::with_text("let area = 1;");
         e.keys(&parse("w S"));
         assert_eq!(e.cmdline().text, "Symbols area");
+    }
+
+    #[test]
+    fn ctrl_q_keeps_whats_listed_to_go_through_with_brackets_q() {
+        let a = temp_file("qf-a.rs", "fn x() {}\nx();\n");
+        let b = temp_file("qf-b.rs", "\n\nx();\n");
+        let mut e = Editor::open(&a).unwrap();
+        let said = Said::Places(vec![place(&a, 0, 3), place(&a, 1, 0), place(&b, 2, 0)]);
+        e.answered(answer(&e, Ask::References, said));
+        e.keys(&parse("<C-q>"));
+        assert!(e.grep_picker().is_none());
+        let q = e.quickfix().expect("kept");
+        assert_eq!((q.title.as_str(), q.spots.len()), ("references to fn", 3));
+        assert_eq!(q.spots[1].note, "x();");
+        assert_eq!(
+            e.message.as_ref().unwrap().text,
+            "3 places in the quickfix list, ]q for the next"
+        );
+
+        e.keys(&parse("]q"));
+        assert_eq!(e.cursor, Pos::new(0, 3), "the first to begin with");
+        e.keys(&parse("2]q"));
+        assert!(e.file.path.as_ref().unwrap().ends_with("qf-b.rs"));
+        assert_eq!(e.cursor, Pos::new(2, 0));
+        assert_eq!(e.message.as_ref().unwrap().text, "(3 of 3) x();");
+        e.keys(&parse("]q"));
+        assert_eq!(e.message.as_ref().unwrap().text, "E553: No more items");
+        e.keys(&parse("[q"));
+        assert_eq!(e.cursor, Pos::new(1, 0));
+        e.ex("cc 1");
+        assert_eq!(e.cursor, Pos::new(0, 3));
+        e.ex("clast");
+        assert_eq!(e.cursor, Pos::new(2, 0));
+        e.ex("cfirst");
+        e.ex("cn");
+        assert_eq!(e.cursor, Pos::new(1, 0));
     }
 
     #[test]

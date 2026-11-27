@@ -205,6 +205,18 @@ impl Editor {
             self.lsp_ex(arg);
         } else if is("rename", 3) {
             self.rename(arg);
+        } else if is("cnext", 2) {
+            self.step_quickfix(count_arg(arg));
+        } else if is("cprevious", 2) || is("cNext", 2) {
+            self.step_quickfix(-count_arg(arg));
+        } else if is("cfirst", 4) || is("crewind", 2) {
+            self.quickfix_to(Some(0));
+        } else if is("clast", 3) {
+            self.quickfix_to(None);
+        } else if name == "cc" {
+            // the one gone to last, unless given another, counting from 1
+            let at = self.quickfix.as_ref().and_then(|q| q.at).unwrap_or(0);
+            self.quickfix_to(Some(arg.parse::<usize>().map_or(at, |n| n.saturating_sub(1))));
         } else if is("Symbols", 3) || is("symbols", 3) {
             self.symbols(non_empty(arg));
         } else if is("Format", 3) || is("format", 4) {
@@ -1084,6 +1096,11 @@ fn is_known(word: &str) -> bool {
 
 const HELP: &str =
     "i insert · Esc normal · :w save · :q quit · :wq both · u undo · ^R redo · /text search · :s/a/b/g replace";
+
+// how many to move by, as :cnext 3 gives, or one
+fn count_arg(arg: &str) -> isize {
+    arg.parse().unwrap_or(1)
+}
 
 fn non_empty(s: &str) -> Option<&str> {
     (!s.is_empty()).then_some(s)
