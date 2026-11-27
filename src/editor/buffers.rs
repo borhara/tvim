@@ -61,14 +61,19 @@ impl Editor {
             .enumerate()
             .map(|(i, d)| {
                 let current = i == self.current;
-                let (id, path, modified) = if current {
-                    (self.buffer_id, self.file.path.clone(), self.is_modified())
+                let (id, path, modified, scratch) = if current {
+                    (
+                        self.buffer_id,
+                        self.file.path.clone(),
+                        self.is_modified(),
+                        &self.file.scratch,
+                    )
                 } else {
-                    (d.id, d.file.path.clone(), d.modified())
+                    (d.id, d.file.path.clone(), d.modified(), &d.file.scratch)
                 };
                 BufferInfo {
                     id,
-                    name: display_name(path.as_deref()),
+                    name: scratch.clone().unwrap_or_else(|| display_name(path.as_deref())),
                     path,
                     modified,
                     current,
@@ -293,6 +298,7 @@ impl Editor {
                     blank_line: text == "\n",
                     image: None,
                     mtime: None,
+                    scratch: None,
                 };
                 let lines = if text.is_empty() { 0 } else { self.buf.len() };
                 let mut notes = String::new();
@@ -314,6 +320,7 @@ impl Editor {
                     blank_line: false,
                     image: None,
                     mtime: None,
+                    scratch: None,
                 };
                 self.info(format!("\"{display}\" [New]"));
             }
@@ -359,7 +366,10 @@ impl Editor {
             None => match &self.file.path {
                 Some(p) => p.clone(),
                 None => {
-                    self.error("E32: No file name");
+                    match &self.file.scratch {
+                        Some(name) => self.error(format!("{name} isn't a file to write")),
+                        None => self.error("E32: No file name"),
+                    }
                     return false;
                 }
             },

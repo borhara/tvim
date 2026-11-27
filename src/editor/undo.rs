@@ -10,6 +10,10 @@ impl Editor {
     /// before a change starts, so nothing it would do on the way happens, to registers or
     /// marks; what gets past it is undone in [`end_change`](Self::end_change).
     pub(crate) fn refuses_change(&mut self) -> bool {
+        if let Some(name) = &self.file.scratch {
+            self.info(format!("{name} can't be changed"));
+            return true;
+        }
         if self.file.image.is_none() {
             return false;
         }

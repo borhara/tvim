@@ -240,6 +240,8 @@ pub struct FileInfo {
     pub blank_line: bool,
     // a picture, shown rather than edited; the buffer is left empty
     pub image: Option<tinsel::image::Image>,
+    // the name of text that isn't a file, as a.rs @ HEAD, to read but not change
+    pub scratch: Option<String>,
     // when it was last changed on disk, as of reading or writing it, to see when something
     // else changes it
     pub mtime: Option<std::time::SystemTime>,
@@ -433,6 +435,7 @@ pub(crate) struct Text<'a> {
     pub buf: &'a Buffer,
     pub path: Option<&'a Path>,
     pub image: Option<&'a tinsel::image::Image>,
+    pub scratch: Option<&'a str>,
     pub modified: bool,
     pub version: u64,
     git: &'a Git,
@@ -446,7 +449,12 @@ impl Text<'_> {
         if !on {
             return None;
         }
-        Syntax::detect(self.path?.file_name()?.to_str()?)
+        // a scratch buffer's name starts with the file it's a copy of
+        let name = match (self.path, self.scratch) {
+            (Some(p), _) => p.file_name()?.to_str()?,
+            (None, name) => name?.split(' ').next()?,
+        };
+        Syntax::detect(name)
     }
 
     pub fn highlight(&self, row: usize, on: bool) -> Option<Vec<syntax::Kind>> {
@@ -864,6 +872,7 @@ impl Editor {
             buf: &self.buf,
             path: self.file.path.as_deref(),
             image: self.file.image.as_ref(),
+            scratch: self.file.scratch.as_deref(),
             modified: self.is_modified(),
             version: self.version,
             git: &self.git,
@@ -880,6 +889,7 @@ impl Editor {
                 buf: &d.buf,
                 path: d.file.path.as_deref(),
                 image: d.file.image.as_ref(),
+                scratch: d.file.scratch.as_deref(),
                 modified: d.modified(),
                 version: d.version,
                 git: &d.git,

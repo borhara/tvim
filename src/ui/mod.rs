@@ -835,7 +835,10 @@ fn window_title(
     preview: bool,
     scope: &[(String, Rgb)],
 ) {
-    let name = file_name(v.text.path, "untitled");
+    let name = match v.text.scratch {
+        Some(name) if v.text.path.is_none() => name.to_string(),
+        _ => file_name(v.text.path, "untitled"),
+    };
     let name = if preview { format!("preview · {name}") } else { name };
     let line = if lit { accent } else { palette::LINE };
     let mut label = if lit {
@@ -1513,7 +1516,10 @@ struct Tab {
 
 fn tab_names(e: &Editor) -> Vec<Tab> {
     let all = e.buffers();
-    let base = |b: &crate::editor::BufferInfo| file_name(b.path.as_deref(), "untitled");
+    let base = |b: &crate::editor::BufferInfo| match &b.path {
+        None if b.name != "[No Name]" => b.name.clone(),
+        path => file_name(path.as_deref(), "untitled"),
+    };
     all.iter()
         .map(|b| {
             let name = base(b);
