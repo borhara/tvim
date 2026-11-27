@@ -39,6 +39,7 @@ mod buffers;
 mod cmdline;
 mod conflicts;
 mod diffmode;
+mod editorconfig;
 mod folds;
 mod git;
 mod input;
@@ -243,6 +244,8 @@ pub struct FileInfo {
     pub image: Option<tinsel::image::Image>,
     // the name of text that isn't a file, as a.rs @ HEAD, to read but not change
     pub scratch: Option<String>,
+    // what the project's .editorconfig says about it
+    pub editorconfig: crate::editorconfig::Settings,
     // when it was last changed on disk, as of reading or writing it, to see when something
     // else changes it
     pub mtime: Option<std::time::SystemTime>,
@@ -668,6 +671,8 @@ pub struct Editor {
     pub(crate) outline: RefCell<Option<OutlineCache>>,
     // the focused window's cursor and scroll live in the fields above; wins has the rest
     pub(crate) wins: Vec<Win>,
+    // your own expandtab, tabstop and shiftwidth, while a buffer's .editorconfig has its own
+    own_indent: Option<(bool, usize, usize)>,
     // the windows :diffthis compares, the first two still open being the pair
     diff_wins: Vec<usize>,
     diff_cache: RefCell<Option<DiffPairCache>>,
@@ -778,6 +783,7 @@ impl Editor {
             next_id: 2,
             recent: Vec::new(),
             outline: RefCell::new(None),
+            own_indent: None,
             diff_wins: Vec::new(),
             diff_cache: RefCell::new(None),
             wins: vec![Win {

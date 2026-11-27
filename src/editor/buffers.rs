@@ -49,6 +49,7 @@ impl Editor {
         self.states = d.states;
         self.marks_cache = d.diffs;
         self.closed = d.closed;
+        self.apply_editorconfig();
         self.mode = Mode::Normal;
         self.pending.clear();
         self.completion = None;
@@ -307,6 +308,7 @@ impl Editor {
                     image: None,
                     mtime: None,
                     scratch: None,
+                    editorconfig: Default::default(),
                 };
                 let lines = if text.is_empty() { 0 } else { self.buf.len() };
                 let mut notes = String::new();
@@ -329,12 +331,15 @@ impl Editor {
                     image: None,
                     mtime: None,
                     scratch: None,
+                    editorconfig: Default::default(),
                 };
                 self.info(format!("\"{display}\" [New]"));
             }
             Err(e) => return Err(e),
         }
         self.file.mtime = mtime;
+        self.file.editorconfig = crate::editorconfig::for_file(path);
+        self.apply_editorconfig();
         self.cursor = Pos::default();
         self.saved_lines = self.buf.lines().to_vec();
         self.git.probe(self.file.path.as_deref());

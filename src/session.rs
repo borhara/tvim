@@ -188,6 +188,8 @@ impl Editor {
     }
 
     pub fn apply_config(&mut self, text: &str) -> Option<String> {
+        // your settings under the open file's .editorconfig, which goes back on after
+        self.own_indenting();
         let mut problems = Vec::new();
         for (n, line) in text.lines().enumerate() {
             let line = line.trim().trim_start_matches(':').trim_start();
@@ -208,6 +210,7 @@ impl Editor {
                 problems.push(format!("config line {}: {}", n + 1, m.text));
             }
         }
+        self.apply_editorconfig();
         let first = problems.first()?.clone();
         let more = problems.len() - 1;
         let shown = if more > 0 {
