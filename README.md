@@ -87,6 +87,8 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 
 As you type, what the server suggests shows below the cursor, saying what each is. Nothing goes in until you choose: `Ctrl-n` and `Ctrl-p` (or the arrow keys) move through the list putting each in, `Ctrl-y` takes the one chosen, or the first, and `Ctrl-e` puts back what you typed. Anything else carries on as usual, so `Enter` still starts a new line. `Ctrl-n` on its own asks for suggestions, or offers words from the open files where there's no server. `:set noacp` keeps the list away until you press `Ctrl-n`.
 
+Typing a call, as in `area(`, shows what the function takes above the cursor, with the parameter you're typing picked out, until you leave the call or insert mode.
+
 The server also knows what the code means, so with the cursor on a name:
 
 | Keys | What it does |
