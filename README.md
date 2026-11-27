@@ -74,7 +74,7 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 | `Space G` | Git menu |
 | `Space m` | Markdown preview |
 | `Space n` | Rename what's under the cursor, with a language server |
-| `Space c` | Code: `f` formats the file |
+| `Space c` | Code: `a` for what the language server can do here, `f` formats the file |
 | `Space z` | Zen mode: just the text, centred |
 
 **Surround.** `ys` with a motion or text object and then a bracket or quote puts that pair around the text, so `ysiw)` turns `foo` into `(foo)`. `yss` does the whole line, and `S` does a selection in visual mode, each row on its own in block mode. `ds"` takes away the quotes around the cursor, and `cs"'` swaps them for single quotes. An opening bracket, as in `ysiw(`, puts spaces inside, and with `ds(` or `cs(` it takes them away. LazyVim's names work too: `gsa` for `ys`, `gsd` for `ds` and `gsr` for `cs`.
@@ -95,6 +95,7 @@ The server also knows what the code means, so with the cursor on a name:
 | `gr` | List everywhere it's used, with a preview. Type to narrow the list |
 | `K` | Show its type and docs beside the cursor, until the next key |
 | `Space n` or `:rename new_name` | Rename it in every file. Files it changes are left unsaved, and `:wa` saves them |
+| `Space c a` | List what the server can do here, such as fixing the problem on the line or adding an import, and do the one you choose. In visual mode it's about what's selected |
 
 The server can tidy the code too. `Space c f` or `:Format` formats the file, and `=` formats the lines it covers, so `==` does one line, `=ip` a paragraph and `:10,20Format` those lines. Each is one change for `u` to undo. `:set formatonsave` formats every file before it's written, if its server answers within two seconds.
 
