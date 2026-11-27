@@ -1,24 +1,27 @@
 use super::{Editor, Input, Mode, cwd};
+use crate::diff::Hunk;
 use crate::git::Base;
 use crate::gitmenu::{GitMenu, Want};
 
 impl Editor {
-    pub(super) fn reset_hunk(&mut self) {
+    // the change under the cursor, and the lines it took the place of
+    fn hunk_here(&self) -> Option<(Hunk, Vec<String>)> {
         let row = self.cursor.row;
-        let Some(h) = self
+        let h = self
             .change_hunks()
             .iter()
             .find(|h| h.new.contains(&row) || h.new.is_empty() && h.row() == row)
-            .cloned()
-        else {
-            return;
-        };
+            .cloned()?;
         let old = self.git.with(|f| match &f.base {
             Base::Head(lines) => lines.get(h.old.clone()).map(<[String]>::to_vec),
             Base::Untracked => Some(Vec::new()),
             Base::Outside => self.saved_lines.get(h.old.clone()).map(<[String]>::to_vec),
-        });
-        let Some(old) = old else { return };
+        })?;
+        Some((h, old))
+    }
+
+    pub(super) fn reset_hunk(&mut self) {
+        let Some((h, old)) = self.hunk_here() else { return };
         self.touch();
         let mut lines = self.buf.lines().to_vec();
         lines.splice(h.new.clone(), old);
