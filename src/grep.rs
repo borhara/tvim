@@ -480,12 +480,12 @@ mod tests {
         let root = project("given");
         let a = crate::paths::canonical(&root.join("src/a.rs")).unwrap();
         let notes = crate::paths::canonical(&root.join("notes.md")).unwrap();
-        let places = [
-            (a.clone(), 0, 3),
-            (notes.clone(), 0, 2),
-            (a.clone(), 2, 0),
-            (a.clone(), 99, 0),
-        ];
+        let spot = |path: &PathBuf, row, col| Spot {
+            path: path.clone(),
+            pos: Pos::new(row, col),
+            note: String::new(),
+        };
+        let places = [spot(&a, 0, 3), spot(&notes, 0, 2), spot(&a, 2, 0), spot(&a, 99, 0)];
         // a.rs is open, and changed since it was saved
         let open = |p: &Path| (p == a).then(|| "fn alpha() {}\nlet Beta = 2;\n// alpha();\n".to_string());
         let mut g = Grep::listing(&root, "uses of alpha", "alpha", &places, open);
