@@ -285,6 +285,7 @@ impl Editor {
         match key {
             Key::Char(c @ ('a' | 'c' | 'o' | 'R' | 'M')) => return self.fold_key(c),
             Key::Char('=') => return self.suggest_spelling(),
+            Key::Char('g') => return self.add_spelling(),
             _ => {}
         }
         if let Some(n) = count {

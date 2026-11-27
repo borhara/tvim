@@ -785,7 +785,7 @@ const Z: &[(&str, &str)] = &[
     ("zb", "line to the bottom"),
     ("zc zo za", "close, open, toggle a fold"),
     ("zM zR", "close, open every fold"),
-    ("z=", "spelling suggestions"),
+    ("z= zg", "spelling: suggestions, the word is right"),
 ];
 
 const WINDOW: &[(&str, &str)] = &[

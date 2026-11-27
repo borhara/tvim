@@ -114,4 +114,16 @@ impl Editor {
         self.cursor = from;
         self.end_change();
     }
+
+    // zg: the word under the cursor is spelled right, from now on
+    pub(super) fn add_spelling(&mut self) {
+        let Some((_, _, word)) = self.word_for_spelling() else {
+            return self.error("no word to spell here");
+        };
+        match self.with_dictionary(|d| d.add(&word)) {
+            Some(Ok(())) => self.info(format!("{word} added to your words")),
+            Some(Err(e)) => self.error(format!("couldn't keep {word}: {e}")),
+            None => self.error("no word list to spell with"),
+        }
+    }
 }

@@ -76,6 +76,15 @@ fn z_equals_offers_words_to_put_in_its_place() {
 }
 
 #[test]
+fn zg_takes_a_word_as_spelled_right() {
+    let mut e = opened("zg.md", "the tvim fox\n");
+    e.keys(&parse("wzg"));
+    assert_eq!(e.message().unwrap().text, "tvim added to your words");
+    e.keys(&parse("gg]s"));
+    assert_eq!(e.cursor().col, 0, "nothing else to go to");
+}
+
+#[test]
 fn words_spelled_wrong_are_underlined_unless_spell_is_off() {
     let mut e = opened("under.md", "the quikc fox\n");
     assert!(underlined(&e, "quikc"), "{:?}", screen(&e));
