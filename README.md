@@ -49,7 +49,7 @@ Pictures (PNG, JPEG and GIF) open at full resolution, fitted to the window, in k
 
 Normal, insert, replace and visual modes work as you'd expect, along with motions, operators, text objects, counts, registers, marks, macros, `.`, undo and redo, and the usual `:` commands (`:w`, `:q`, `:s`, `:g`, `:m`, `:t`, `:sort`, `:e`, `:normal`, ranges and so on). A few things behave differently:
 
-- **Search** uses regular expressions the way most other tools write them, so `(a|b)+` and `\d{3}` work without extra backslashes. Search ignores case unless you type a capital. Use `\c` or `\C` in the pattern to force it either way.
+- **Search** uses regular expressions the way most other tools write them, so `(a|b)+` and `\d{3}` work without extra backslashes. Search ignores case unless you type a capital. Use `\c` or `\C` in the pattern to force it either way. `:s` shows its change on the lines in view while you type it, and makes it only when you press `Enter`.
 - **`Tab`** in normal mode moves between the file and the sidebar. Terminals send the same key for `Ctrl-i`, so straight after `Ctrl-o` it goes forward through jumps instead.
 - **Brackets and quotes** close themselves as you type. Turn this off with `:set noap`.
 - **Opening another file** never asks you to save first. Unsaved files stay open with a dot next to their name, and `:q` won't quit while any are left.
