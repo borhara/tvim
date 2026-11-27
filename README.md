@@ -130,6 +130,8 @@ lsp go off
 
 **Several files.** Open files are listed along the top. Switch with `gt`/`gT`, `:b name` or `:bn`/`:bp`, and close one with `:bd`. `:wa` saves them all.
 
+**Folds.** A line folds the lines indented under it, along with a closing `}` or `end`. `zc` closes the fold around the cursor, `zo` opens it and `za` does whichever it isn't. `zM` closes them all and `zR` opens them all. A closed fold shows as its first line and how many it hides. `j` and `k` step over it, and `dd` or `yy` on it takes all of it. Searching or going to a mark inside one opens it.
+
 **Splits.** `Ctrl-w s` and `Ctrl-w v` (or `:sp` and `:vs`) split the window. `Ctrl-w` with `h`/`j`/`k`/`l` moves between windows and `Ctrl-w q` closes one.
 
 **Colours.** Syntax colouring covers Rust, Python, JavaScript and TypeScript, Go, C and C++, Java, shell, Lua, TOML, YAML, JSON and Markdown. tvim uses its own colour scheme rather than your terminal's, and switches to a light one on a light background.
