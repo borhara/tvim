@@ -56,6 +56,8 @@ impl Editor {
             return;
         }
         match (answer.ask, answer.said) {
+            // a server that couldn't complete things still leaves words to offer
+            (Ask::Complete, Said::Refused(_)) => self.offer_items(Vec::new()),
             (_, Said::Refused(why)) => self.error(why),
             (Ask::Definition, Said::Places(places)) => match places.as_slice() {
                 [] => self.error("no definition found"),
@@ -67,6 +69,7 @@ impl Editor {
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
             (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions),
+            (Ask::Complete, Said::Items(items)) => self.offer_items(items),
             _ => {}
         }
     }

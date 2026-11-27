@@ -108,10 +108,15 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
     if rows == 0 || area.width < 10 {
         return;
     }
-    let word_width = words.iter().map(|w| tinsel::text::width(w)).max().unwrap_or(0).min(40);
+    let word_width = words
+        .iter()
+        .map(|w| tinsel::text::width(&w.label))
+        .max()
+        .unwrap_or(0)
+        .min(40);
     let width = (word_width + 6).min(area.width);
     let height = rows + 2;
-    let shown = picked.map_or(prefix, |i| words[i].as_str());
+    let shown = picked.map_or(prefix, |i| words[i].label.as_str());
     let x = cx
         .saturating_sub(tinsel::text::width(shown) + 4)
         .clamp(area.x, area.x + area.width - width);
@@ -131,7 +136,11 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
             frame.tint(line, c.picked);
         }
         let marker = marker(selected);
-        let (head, tail) = w.split_at(prefix.len().min(w.len()));
+        // what was typed stands out, when the choice starts with it
+        let (head, tail) = match w.label.strip_prefix(prefix) {
+            Some(tail) => (prefix, tail),
+            None => ("", w.label.as_str()),
+        };
         let tail = if selected {
             bold(&paint(palette::PETAL, tail))
         } else {

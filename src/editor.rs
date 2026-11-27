@@ -268,10 +268,24 @@ struct InsertSession {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Completion {
-    start: Pos,
+    // where the text the choices replace starts, and what it was before any went in
+    from: Pos,
+    typed: String,
+    // the word before the cursor, which the choices are matched against
     prefix: String,
-    words: Vec<String>,
+    choices: Vec<Choice>,
     at: Option<usize>,
+}
+
+// one of the things offered to type, a word from the open files or what a server suggests
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Choice {
+    pub label: String,
+    // what goes in, after the first `keep` characters of what was typed
+    text: String,
+    keep: usize,
+    pub kind: Option<&'static str>,
+    pub detail: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -528,6 +542,8 @@ pub struct Editor {
     insert_replay: bool,
     insert: InsertSession,
     pub(crate) completion: Option<Completion>,
+    // completions asked of the language server, and whether Ctrl-p asked, to show when they come
+    completion_asked: Option<bool>,
     recording: Option<(char, Vec<Input>)>,
     macros: HashMap<char, Vec<Input>>,
     last_macro: Option<char>,
@@ -629,6 +645,7 @@ impl Editor {
             insert_replay: false,
             insert: InsertSession::default(),
             completion: None,
+            completion_asked: None,
             recording: None,
             macros: HashMap::new(),
             last_macro: None,
@@ -1051,7 +1068,7 @@ pub(crate) fn expand_home(path: &str) -> String {
 mod tests {
     use super::{Editor, Pos, slashed};
     use crate::keys::parse;
-    use crate::languages::{Answer, Ask, Edit, FileEdits, Place, Problem, Said, Severity};
+    use crate::languages::{Answer, Ask, Edit, FileEdits, Item, Place, Problem, Said, Severity};
     use std::path::{Path, PathBuf};
 
     fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
@@ -1149,6 +1166,79 @@ mod tests {
             start: Pos::new(row, col),
             end: Pos::new(row, col + 1),
         }
+    }
+
+    fn item(label: &str, range: Option<((usize, usize), (usize, usize))>, text: &str) -> Item {
+        Item {
+            label: label.into(),
+            text: text.into(),
+            range: range.map(|(a, b)| (Pos::new(a.0, a.1), Pos::new(b.0, b.1))),
+            filter: label.into(),
+            kind: Some("method"),
+            detail: String::new(),
+        }
+    }
+
+    // Ctrl-n typed with a server that can complete things, which then answers with `items`
+    fn completed(e: &mut Editor, items: Vec<Item>) {
+        e.completion_asked = Some(false);
+        e.answered(answer(e, Ask::Complete, Said::Items(items)));
+    }
+
+    #[test]
+    fn a_servers_completions_are_matched_against_the_word_typed() {
+        let mut e = Editor::with_text("s.P");
+        e.keys(&parse("A"));
+        let items = vec![
+            item("len", None, "len"),
+            item("map_parts", None, "map_parts"),
+            item("push", None, "push"),
+        ];
+        completed(&mut e, items);
+        let (_, choices, at) = e.completion().unwrap();
+        let labels: Vec<&str> = choices.iter().map(|c| c.label.as_str()).collect();
+        assert_eq!(labels, ["push", "map_parts"], "starting with it first, ignoring case");
+        assert_eq!(at, Some(0));
+        assert_eq!(e.buf.lines(), ["s.push"]);
+        e.keys(&parse("<C-n>"));
+        assert_eq!(e.buf.lines(), ["s.map_parts"]);
+        e.keys(&parse("<C-e>"));
+        assert_eq!(e.buf.lines(), ["s.P"], "and back to what was typed");
+    }
+
+    #[test]
+    fn a_completion_replaces_the_range_the_server_gives_and_repeats_as_typed() {
+        let mut e = Editor::with_text("s.p\ns.p");
+        e.keys(&parse("A"));
+        completed(&mut e, vec![item("push", Some(((0, 0), (0, 3))), "self.push")]);
+        assert_eq!(e.buf.lines(), ["self.push", "s.p"]);
+        e.keys(&parse("()<Esc>j."));
+        assert_eq!(e.buf.lines(), ["self.push()", "self.push()"]);
+    }
+
+    #[test]
+    fn with_nothing_from_the_server_words_are_offered() {
+        let mut e = Editor::with_text("plenty\npl");
+        e.keys(&parse("jA"));
+        completed(&mut e, vec![item("zzz", None, "zzz")]);
+        assert_eq!(e.buf.lines(), ["plenty", "plenty"]);
+        e.keys(&parse("<C-e>"));
+        e.completion_asked = Some(false);
+        let refused = answer(&e, Ask::Complete, Said::Refused("busy".into()));
+        e.answered(refused);
+        assert_eq!(e.buf.lines(), ["plenty", "plenty"], "nor when it refuses");
+        assert!(e.message.is_none(), "which isn't worth saying");
+    }
+
+    #[test]
+    fn a_completion_answered_after_another_key_is_dropped() {
+        let mut e = Editor::with_text("s.p");
+        e.keys(&parse("A"));
+        e.completion_asked = Some(false);
+        let late = answer(&e, Ask::Complete, Said::Items(vec![item("push", None, "push")]));
+        e.keys(&parse("<Left><Right>"));
+        e.answered(late);
+        assert!(e.completion().is_none());
     }
 
     #[test]

@@ -1,8 +1,9 @@
 use tinsel::app::Key;
 
-use super::{Completion, Editor, Input, InsertSession, Mode, Range};
+use super::{Choice, Completion, Editor, Input, InsertSession, Mode, Range};
 use crate::buffer::Pos;
 use crate::command::Op;
+use crate::languages::{Ask, Item};
 use crate::motion;
 use crate::text::{char_count, class, first_non_blank, indent, is_word, vcol};
 
@@ -164,9 +165,9 @@ impl Editor {
         self.set_want();
     }
 
-    pub fn completion(&self) -> Option<(&str, &[String], Option<usize>)> {
+    pub fn completion(&self) -> Option<(&str, &[Choice], Option<usize>)> {
         let c = self.completion.as_ref()?;
-        Some((c.prefix.as_str(), c.words.as_slice(), c.at))
+        Some((c.prefix.as_str(), c.choices.as_slice(), c.at))
     }
 
     pub(super) fn completion_input(&mut self, input: &Input) -> bool {
@@ -174,6 +175,8 @@ impl Editor {
             Input::Key(k) => Some(*k),
             Input::Paste(_) => None,
         };
+        // a key typed before the server answers means its answer is about text gone by
+        self.completion_asked = None;
         if self.completion.is_some() {
             match key {
                 Some(Key::Ctrl(c @ ('n' | 'p'))) => self.cycle_completion(c == 'p'),
@@ -196,24 +199,100 @@ impl Editor {
         false
     }
 
-    pub(super) fn start_completion(&mut self, back: bool) {
+    // the word before the cursor, and where it starts
+    fn word_before(&self) -> (Pos, String) {
         let p = self.cursor;
         let before: Vec<char> = self.buf.line(p.row).chars().take(p.col).collect();
         let len = before.iter().rev().take_while(|c| is_word(**c)).count();
-        let prefix: String = before[before.len() - len..].iter().collect();
-        let start = Pos::new(p.row, p.col - len);
+        (
+            Pos::new(p.row, p.col - len),
+            before[before.len() - len..].iter().collect(),
+        )
+    }
+
+    // asks the language server when it can complete things, and offers words when it can't
+    pub(super) fn start_completion(&mut self, back: bool) {
+        if self.options.lsp {
+            self.sync_languages();
+            if self.languages.ask(self.buffer_id, self.cursor, Ask::Complete).is_ok() {
+                self.completion_asked = Some(back);
+                return;
+            }
+        }
+        self.complete_words(back);
+    }
+
+    fn complete_words(&mut self, back: bool) {
+        let (start, prefix) = self.word_before();
         let others: Vec<&[String]> = (self.docs.iter().enumerate())
             .filter(|(i, _)| *i != self.current)
             .map(|(_, d)| d.buf.lines())
             .collect();
         let words = crate::complete::candidates(self.buf.lines(), start, &prefix, &others);
-        if words.is_empty() {
+        let choices = words
+            .into_iter()
+            .map(|w| Choice {
+                label: w.clone(),
+                text: w,
+                keep: 0,
+                kind: None,
+                detail: String::new(),
+            })
+            .collect();
+        self.offer(start, prefix.clone(), prefix, choices, back);
+    }
+
+    // what the server suggested, matched against the word before the cursor; with nothing to
+    // offer, words from the open files are
+    pub(super) fn offer_items(&mut self, items: Vec<Item>) {
+        let Some(back) = self.completion_asked.take() else {
+            return;
+        };
+        if self.mode != Mode::Insert {
+            return;
+        }
+        let (start, prefix) = self.word_before();
+        let row = self.cursor.row;
+        // the text replaced starts where the earliest item's does, if that's on this line
+        let begins = |i: &Item| match i.range {
+            Some((s, _)) if s.row == row && s <= self.cursor => s,
+            _ => start,
+        };
+        let from = items.iter().map(begins).min().unwrap_or(start).min(start);
+        let line = self.buf.line(row);
+        let typed: String = line.chars().skip(from.col).take(self.cursor.col - from.col).collect();
+        let mut choices: Vec<(usize, Choice)> = items
+            .iter()
+            .filter_map(|i| {
+                let rank = matches(&i.filter, &prefix)?;
+                let choice = Choice {
+                    label: i.label.clone(),
+                    text: i.text.clone(),
+                    keep: begins(i).col - from.col,
+                    kind: i.kind,
+                    detail: i.detail.clone(),
+                };
+                Some((rank, choice))
+            })
+            .collect();
+        // those that start with what was typed first, otherwise in the server's order
+        choices.sort_by_key(|(rank, _)| *rank);
+        if choices.is_empty() {
+            return self.complete_words(back);
+        }
+        let choices = choices.into_iter().map(|(_, c)| c).collect();
+        self.offer(from, typed, prefix, choices, back);
+    }
+
+    fn offer(&mut self, from: Pos, typed: String, prefix: String, choices: Vec<Choice>, back: bool) {
+        if choices.is_empty() {
             return self.error("Pattern not found");
         }
         self.completion = Some(Completion {
-            start,
+            from,
+            typed,
             prefix,
-            words,
+            choices,
             at: None,
         });
         self.cycle_completion(back);
@@ -221,7 +300,7 @@ impl Editor {
 
     pub(super) fn cycle_completion(&mut self, back: bool) {
         let Some(c) = &self.completion else { return };
-        let n = c.words.len();
+        let n = c.choices.len();
         let at = match (c.at, back) {
             (None, false) => Some(0),
             (None, true) => Some(n - 1),
@@ -231,30 +310,49 @@ impl Editor {
         self.pick_completion(at);
     }
 
+    // what goes in place of what was typed for choice `at`, or what was typed for none
+    fn completed(c: &Completion, at: Option<usize>) -> String {
+        match at {
+            Some(i) => {
+                let choice = &c.choices[i];
+                let kept: String = c.typed.chars().take(choice.keep).collect();
+                format!("{kept}{}", choice.text)
+            }
+            None => c.typed.clone(),
+        }
+    }
+
     pub(super) fn pick_completion(&mut self, at: Option<usize>) {
         let Some(c) = self.completion.as_mut() else { return };
         c.at = at;
-        let text = at.map_or(&c.prefix, |i| &c.words[i]).clone();
-        let start = c.start;
+        let from = c.from;
+        let text = Self::completed(c, at);
         self.touch();
-        self.buf.delete(start, self.cursor);
-        self.cursor = self.buf.insert(start, &text);
+        self.buf.delete(from, self.cursor);
+        self.cursor = self.buf.insert(from, &text);
         self.insert.auto_indent = None;
         self.set_want();
     }
 
-    // dot and counts replay the chosen word as typed text, not as another search
+    // dot and counts replay the choice as typed text, not as another search: what was typed
+    // and isn't kept is taken back, and the rest typed
     pub(super) fn accept_completion(&mut self) {
         let Some(c) = self.completion.take() else { return };
-        let Some(i) = c.at else { return };
-        let rest = c.words[i][c.prefix.len()..].to_string();
-        if rest.is_empty() {
+        if c.at.is_none() {
             return;
         }
-        if let Some(b) = self.building.as_mut() {
-            b.inputs.push(Input::Paste(rest.clone()));
+        let text = Self::completed(&c, c.at);
+        let same = c.typed.chars().zip(text.chars()).take_while(|(a, b)| a == b).count();
+        let back = c.typed.chars().count() - same;
+        let rest: String = text.chars().skip(same).collect();
+        let mut replay = vec![Input::Key(Key::Backspace); back];
+        if !rest.is_empty() {
+            replay.push(Input::Paste(rest));
         }
-        self.insert.typed.push(Input::Paste(rest));
+        if let Some(b) = self.building.as_mut() {
+            b.inputs.extend(replay.iter().cloned());
+        }
+        self.insert.typed.extend(replay);
     }
 
     pub(super) fn type_char(&mut self, c: char) {
@@ -502,6 +600,7 @@ impl Editor {
 
     pub(super) fn leave_insert(&mut self) {
         self.completion = None;
+        self.completion_asked = None;
         self.finish_block_insert();
         let count = self.insert.count;
         if count > 1 && !self.insert_replay {
@@ -531,4 +630,15 @@ impl Editor {
         }
         self.end_change();
     }
+}
+
+// how well `filter` matches what was typed, lower being better: starting with it, ignoring
+// case, before only having its letters in order; None when it doesn't
+fn matches(filter: &str, typed: &str) -> Option<usize> {
+    let (filter, typed) = (filter.to_lowercase(), typed.to_lowercase());
+    if filter.starts_with(&typed) {
+        return Some(0);
+    }
+    let mut rest = filter.chars();
+    typed.chars().all(|c| rest.any(|f| f == c)).then_some(1)
 }
