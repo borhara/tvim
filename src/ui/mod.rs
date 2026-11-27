@@ -1911,6 +1911,7 @@ mod tests {
             filter: label.into(),
             kind,
             detail: detail.into(),
+            extra: Vec::new(),
         };
         e.suggested(vec![
             item("len", Some("method"), "fn(&self) -> usize"),

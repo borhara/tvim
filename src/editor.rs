@@ -301,6 +301,7 @@ pub struct Choice {
     keep: usize,
     pub kind: Option<&'static str>,
     pub detail: String,
+    extra: Vec<crate::languages::Edit>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1191,6 +1192,7 @@ mod tests {
             filter: label.into(),
             kind: Some("method"),
             detail: String::new(),
+            extra: Vec::new(),
         }
     }
 
@@ -1228,6 +1230,32 @@ mod tests {
         assert_eq!(e.buf.lines(), ["self.push", "s.p"]);
         e.keys(&parse("()<Esc>j."));
         assert_eq!(e.buf.lines(), ["self.push()", "self.push()"]);
+    }
+
+    #[test]
+    fn a_completion_that_needs_an_import_brings_it_in_one_change() {
+        let mut e = Editor::with_text("fn main() {\n    Has\n}");
+        e.keys(&parse("jA"));
+        let mut needing = item("HashMap", None, "HashMap");
+        needing.extra = vec![Edit {
+            start: Pos::new(0, 0),
+            end: Pos::new(0, 0),
+            text: "use std::collections::HashMap;\n\n".into(),
+        }];
+        completed(&mut e, vec![needing]);
+        e.keys(&parse("<C-y>::new()"));
+        assert_eq!(
+            e.buf.lines(),
+            [
+                "use std::collections::HashMap;",
+                "",
+                "fn main() {",
+                "    HashMap::new()",
+                "}"
+            ]
+        );
+        e.keys(&parse("<Esc>u"));
+        assert_eq!(e.buf.lines(), ["fn main() {", "    Has", "}"], "undone together");
     }
 
     #[test]

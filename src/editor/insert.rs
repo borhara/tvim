@@ -294,6 +294,7 @@ impl Editor {
                 keep: 0,
                 kind: None,
                 detail: String::new(),
+                extra: Vec::new(),
             })
             .collect();
         self.offer(start, prefix.clone(), prefix, choices, back);
@@ -337,6 +338,7 @@ impl Editor {
                     keep: begins(i).col - from.col,
                     kind: i.kind,
                     detail: i.detail.clone(),
+                    extra: i.extra.clone(),
                 };
                 Some((rank, choice))
             })
@@ -417,8 +419,12 @@ impl Editor {
     // and isn't kept is taken back, and the rest typed
     pub(super) fn accept_completion(&mut self) {
         let Some(c) = self.completion.take() else { return };
-        if c.at.is_none() {
-            return;
+        let Some(i) = c.at else { return };
+        // part of the same change as the typing, so undo takes both away
+        if !c.choices[i].extra.is_empty() {
+            self.grouped += 1;
+            self.edit_text(&c.choices[i].extra);
+            self.grouped -= 1;
         }
         let text = Self::completed(&c, c.at);
         let same = c.typed.chars().zip(text.chars()).take_while(|(a, b)| a == b).count();

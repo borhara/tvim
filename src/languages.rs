@@ -84,6 +84,8 @@ pub struct Item {
     pub filter: String,
     pub kind: Option<&'static str>,
     pub detail: String,
+    // made elsewhere in the file when it's chosen, such as an import it needs
+    pub extra: Vec<Edit>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -581,6 +583,13 @@ fn items(result: &Json, lines: &[String], encoding: Encoding) -> Vec<Item> {
                 label: label.clone(),
                 text,
                 range,
+                extra: (i["additionalTextEdits"].as_array().unwrap_or(&[]).iter())
+                    .map(|e| Edit {
+                        start: pos(&e["range"]["start"]),
+                        end: pos(&e["range"]["end"]),
+                        text: e["newText"].as_str().unwrap_or("").to_string(),
+                    })
+                    .collect(),
             };
             Some((i["sortText"].as_str().unwrap_or(&label).to_string(), item))
         })
@@ -1375,7 +1384,8 @@ mod tests {
         fake.recv().unwrap();
         r.langs.ask(1, Pos::new(0, 10), Ask::Complete).unwrap();
         let list = r#"{"isIncomplete":false,"items":[
-            {"label":"len","kind":2,"detail":"fn(&self) -> usize ","sortText":"b"},
+            {"label":"len","kind":2,"detail":"fn(&self) -> usize ","sortText":"b",
+             "additionalTextEdits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"use x;\n"}]},
             {"label":"push","kind":2,"sortText":"a","insertText":"push_str",
              "textEdit":{"insert":{"start":{"line":0,"character":11},"end":{"line":0,"character":11}},
                          "replace":{"start":{"line":0,"character":11},"end":{"line":0,"character":12}},"newText":"push"}},
@@ -1404,6 +1414,12 @@ mod tests {
             (Some("method"), "fn(&self) -> usize")
         );
         assert_eq!((items[1].text.as_str(), items[1].range), ("len", None));
+        let import = Edit {
+            start: Pos::new(0, 0),
+            end: Pos::new(0, 0),
+            text: "use x;\n".into(),
+        };
+        assert_eq!(items[1].extra, [import], "with what else to change");
         assert_eq!((items[2].kind, items[2].filter.as_str()), (None, "xx"));
         assert_eq!(items[2].range, Some((Pos::new(0, 4), Pos::new(0, 5))));
 
