@@ -9,6 +9,7 @@ pub mod editor;
 mod ex;
 pub mod explorer;
 pub mod finder;
+pub mod fold;
 pub mod format;
 pub mod git;
 pub mod gitmenu;
