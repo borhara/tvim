@@ -1047,7 +1047,11 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         }
         // a wrapped line's later rows show it from further along
         let (left, width) = (slice.left, slice.width);
-        let line = buf.line(row);
+        // as :s, being typed, would leave it
+        let preview = (e.substitute_preview.as_ref())
+            .filter(|_| active && v.text.id == e.buffer_id)
+            .and_then(|p| p.get(&row));
+        let line = preview.map_or(buf.line(row), |p| p.text.as_str());
         let on_cursor = row == cursor.row;
         let here: Vec<&Problem> = problems
             .iter()
@@ -1151,6 +1155,9 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
             for (at, end) in whole_words(line, w) {
                 tint(frame, at, end, c.word);
             }
+        }
+        for &(from, to) in preview.map_or(&[][..], |p| p.spans.as_slice()) {
+            tint(frame, from, to.max(from + 1), c.current_match);
         }
         let trimmed = char_count(line.trim_end_matches([' ', '\t']));
         let len = char_count(line);

@@ -327,7 +327,7 @@ pub struct CmdLine {
     pub prompt: char,
     browse: Option<usize>,
     origin: Pos,
-    origin_top: usize,
+    pub(crate) origin_top: usize,
     completing: Option<(Vec<crate::suggest::Suggestion>, usize)>,
 }
 
@@ -590,6 +590,8 @@ pub struct Editor {
     hover: Option<String>,
     pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
     pub(crate) quickfix: Option<crate::quickfix::Quickfix>,
+    // the lines :s would change as it's typed, as they'd be, and where it replaces in each
+    pub(crate) substitute_preview: Option<HashMap<usize, crate::ex::Replaced>>,
     // the first lines of the folds closed in this buffer
     closed: Vec<usize>,
     // the closed folds, outermost only, as of a version of the text and those closed
@@ -699,6 +701,7 @@ impl Editor {
             hover: None,
             menu: None,
             quickfix: None,
+            substitute_preview: None,
             closed: Vec::new(),
             fold_cache: RefCell::new(None),
             signature: None,

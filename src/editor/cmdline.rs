@@ -26,6 +26,7 @@ impl Editor {
                 self.cmd.text.insert_str(at, first);
                 self.cmd.cursor += char_count(first);
                 self.preview_search();
+                self.preview_substitute();
                 return;
             }
             Input::Key(k) => k,
@@ -72,6 +73,7 @@ impl Editor {
             self.cmd.cursor = line.cursor();
         }
         self.preview_search();
+        self.preview_substitute();
     }
 
     pub(super) fn browse_history(&mut self, back: bool) {
@@ -113,7 +115,7 @@ impl Editor {
     }
 
     pub(super) fn cancel_cmdline(&mut self) {
-        if self.mode == Mode::Search {
+        if self.mode == Mode::Search || self.substitute_preview.take().is_some() {
             self.cursor = self.cmd.origin;
             self.top.set(self.cmd.origin_top);
         }
@@ -123,6 +125,7 @@ impl Editor {
     }
 
     pub(super) fn finish_cmdline(&mut self) {
+        self.substitute_preview = None;
         let text = std::mem::take(&mut self.cmd.text);
         let prompt = self.cmd.prompt;
         self.mode = Mode::Normal;

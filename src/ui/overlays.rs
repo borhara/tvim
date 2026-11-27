@@ -16,12 +16,12 @@ pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> 
     let width = area.width.saturating_sub(8).clamp(30.min(area.width), 76);
     let list_rows = suggestions.len().min(8).min(area.height.saturating_sub(10));
     let height = 3 + if list_rows > 0 { list_rows + 1 } else { 0 } + usize::from(error.is_some());
-    let rect = Rect::new(
-        area.x + (area.width - width) / 2,
-        area.y + area.height.saturating_sub(height) / 4,
-        width,
-        height,
-    );
+    // at the bottom while :s shows its change, so the lines it changes aren't under it
+    let y = match e.substitute_preview {
+        Some(_) => area.y + area.height.saturating_sub(height),
+        None => area.y + area.height.saturating_sub(height) / 4,
+    };
+    let rect = Rect::new(area.x + (area.width - width) / 2, y, width, height);
     let panel = Panel::new("command")
         .footer("tab complete · ↑↓ history · esc close")
         .focused(true)

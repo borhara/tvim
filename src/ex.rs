@@ -739,15 +739,16 @@ impl Editor {
         self.set_cursor(self.first_non_blank_pos(first));
     }
 
-    fn substitute(&mut self, (first, last): (usize, usize), arg: &str) {
+    // what :s/pat/rep/flags was given, or the last one again for :s alone
+    pub(crate) fn read_substitute(&self, arg: &str) -> Result<Substitute, String> {
         let mut chars = arg.chars();
         let (pat, rep, flags) = match chars.next() {
             None => match self.last_substitute.clone() {
                 Some((p, r)) => (p, r, String::new()),
-                None => return self.error("E35: No previous regular expression"),
+                None => return Err("E35: No previous regular expression".into()),
             },
             Some(d) if d.is_alphanumeric() || "\\\"| ".contains(d) => {
-                return self.error("E146: Regular expressions can't be delimited by letters");
+                return Err("E146: Regular expressions can't be delimited by letters".into());
             }
             Some(d) => {
                 let parts = split_unescaped(chars.as_str(), d);
@@ -757,21 +758,12 @@ impl Editor {
                 (pat, rep, flags)
             }
         };
-        let pat = if pat.is_empty() {
-            match self.last_search.clone() {
-                Some(p) => p,
-                None => return self.error("E35: No previous regular expression"),
-            }
-        } else {
-            pat
+        let pat = match (pat.is_empty(), self.last_search.clone()) {
+            (false, _) => pat,
+            (true, Some(p)) => p,
+            (true, None) => return Err("E35: No previous regular expression".into()),
         };
-        let mut re = match Regex::new(&pat) {
-            Ok(re) => re,
-            Err(e) => return self.bad_pattern(&pat, &e),
-        };
-        self.last_substitute = Some((pat.clone(), rep.clone()));
-        self.last_search = Some(pat.clone());
-        let all = flags.contains('g');
+        let mut re = Regex::new(&pat).map_err(|e| format!("E383: Invalid search string: {pat} ({e})"))?;
         if flags.contains('I') {
             re.set_case(false, false);
         } else if flags.contains('i') {
@@ -779,36 +771,79 @@ impl Editor {
         } else {
             re.set_case(self.options.ignore_case, self.options.smart_case);
         }
-        let quiet = flags.contains('e');
+        Ok(Substitute {
+            pat,
+            re,
+            rep,
+            all: flags.contains('g'),
+            quiet: flags.contains('e'),
+        })
+    }
+
+    // while :s is being typed, its change shown on the lines in view, the first it makes
+    // brought into view, and nothing changed until it's run
+    pub(crate) fn preview_substitute(&mut self) {
+        self.substitute_preview = None;
+        if self.mode != crate::editor::Mode::Command || !self.options.incremental_search {
+            return;
+        }
+        self.top.set(self.cmd.origin_top);
+        let text = self.cmd.text.trim_start_matches([' ', ':']).to_string();
+        let Ok((range, rest)) = self.parse_range(&text) else {
+            return;
+        };
+        let rest = rest.trim_start();
+        let name_len = rest.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(rest.len());
+        let name = &rest[..name_len];
+        let arg = &rest[name_len..];
+        // a pattern begun, after a delimiter
+        let named = name == "s" || name.len() >= 2 && "substitute".starts_with(name);
+        if !named || arg.chars().count() < 2 {
+            return;
+        }
+        let Ok(sub) = self.read_substitute(arg) else { return };
+        let row = self.cursor.row;
+        let (first, last) = range.unwrap_or((row, row));
+        let last = last.min(self.buf.last_row());
+        let Some(hit) = (first..=last).find(|&r| !sub.re.spans(self.buf.line(r)).is_empty()) else {
+            return;
+        };
+        let top = self.top.get();
+        if !(top..=self.last_shown(top)).contains(&hit) {
+            self.top.set(hit.saturating_sub(self.text_rows() / 3));
+        }
+        let top = self.top.get();
+        let shown = top.max(first)..=self.last_shown(top).min(last);
+        let changed = shown.filter_map(|r| {
+            let mut replaced = sub.apply(self.buf.line(r))?;
+            // a line split in two shows where, on the one line
+            replaced.text = replaced.text.replace('\n', "⏎");
+            Some((r, replaced))
+        });
+        self.substitute_preview = Some(changed.collect());
+    }
+
+    fn substitute(&mut self, (first, last): (usize, usize), arg: &str) {
+        let sub = match self.read_substitute(arg) {
+            Ok(sub) => sub,
+            Err(e) => return self.error(e),
+        };
+        self.last_substitute = Some((sub.pat.clone(), sub.rep.clone()));
+        self.last_search = Some(sub.pat.clone());
         let mut count = 0;
         let mut changed_lines = 0;
         let mut last_row = None;
         let mut last = last.min(self.buf.last_row());
         let mut row = first;
         while row <= last {
-            let chars: Vec<char> = self.buf.line(row).chars().collect();
-            let hits = if all {
-                re.captures_all(&chars)
-            } else {
-                re.find_at(&chars, 0).into_iter().collect()
-            };
-            if hits.is_empty() {
+            let Some(Replaced { text: out, hits, .. }) = sub.apply(self.buf.line(row)) else {
                 row += 1;
                 continue;
-            }
-            let mut out = String::new();
-            let mut at = 0;
-            for groups in &hits {
-                let Some((from, to)) = groups[0] else { continue };
-                out.extend(&chars[at..from]);
-                out.push_str(&expand_replacement(&rep, &chars, groups));
-                at = to;
-            }
-            out.extend(&chars[at..]);
+            };
             if count == 0 {
                 self.touch();
             }
-            count += hits.len();
+            count += hits;
             changed_lines += 1;
             // lines the replacement splits off push the rest of the range down
             let parts: Vec<String> = out.split('\n').map(str::to_string).collect();
@@ -832,8 +867,8 @@ impl Editor {
                     ));
                 }
             }
-            None if quiet => {}
-            None => self.error(format!("E486: Pattern not found: {pat}")),
+            None if sub.quiet => {}
+            None => self.error(format!("E486: Pattern not found: {}", sub.pat)),
         }
     }
 
@@ -1106,6 +1141,55 @@ const HELP: &str =
 // how many to move by, as :cnext 3 gives, or one
 fn count_arg(arg: &str) -> isize {
     arg.parse().unwrap_or(1)
+}
+
+pub(crate) struct Substitute {
+    pat: String,
+    re: Regex,
+    rep: String,
+    // every match on a line, not just the first
+    all: bool,
+    // no error when nothing matches
+    quiet: bool,
+}
+
+impl Substitute {
+    // the line with its matches replaced, or None if nothing matched
+    pub(crate) fn apply(&self, line: &str) -> Option<Replaced> {
+        let chars: Vec<char> = line.chars().collect();
+        let hits = if self.all {
+            self.re.captures_all(&chars)
+        } else {
+            self.re.find_at(&chars, 0).into_iter().collect()
+        };
+        if hits.is_empty() {
+            return None;
+        }
+        let mut out = String::new();
+        let mut spans = Vec::new();
+        let mut at = 0;
+        for groups in &hits {
+            let Some((from, to)) = groups[0] else { continue };
+            out.extend(&chars[at..from]);
+            let start = out.chars().count();
+            out.push_str(&expand_replacement(&self.rep, &chars, groups));
+            spans.push((start, out.chars().count()));
+            at = to;
+        }
+        out.extend(&chars[at..]);
+        Some(Replaced {
+            text: out,
+            hits: hits.len(),
+            spans,
+        })
+    }
+}
+
+pub(crate) struct Replaced {
+    pub text: String,
+    pub hits: usize,
+    // where each replacement is in the text, in characters
+    pub spans: Vec<(usize, usize)>,
 }
 
 fn non_empty(s: &str) -> Option<&str> {
