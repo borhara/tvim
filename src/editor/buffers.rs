@@ -13,6 +13,7 @@ impl Editor {
             last_visual: self.last_visual.take(),
             undo: std::mem::take(&mut self.undo),
             redo: std::mem::take(&mut self.redo),
+            history: std::mem::take(&mut self.history),
             version: self.version,
             saved: self.saved,
             marks: std::mem::take(&mut self.marks),
@@ -35,6 +36,7 @@ impl Editor {
         self.last_visual = d.last_visual;
         self.undo = d.undo;
         self.redo = d.redo;
+        self.history = d.history;
         self.version = d.version;
         self.saved = d.saved;
         self.marks = d.marks;
@@ -344,6 +346,7 @@ impl Editor {
         self.saved_lines = self.buf.lines().to_vec();
         self.git.probe(self.file.path.as_deref());
         self.undo.clear();
+        self.history.clear();
         self.redo.clear();
         self.versions += 1;
         self.version = self.versions;

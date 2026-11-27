@@ -153,6 +153,7 @@ impl Editor {
                 match choosing {
                     Choosing::Actions(mut actions, versions) => self.act(actions.swap_remove(i), &versions),
                     Choosing::Spelling(from, to, words) => self.respell(from, to, &words[i]),
+                    Choosing::History(moments) => self.revisit(moments[i]),
                 }
             }
         }

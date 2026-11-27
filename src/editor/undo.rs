@@ -62,6 +62,7 @@ impl Editor {
                 );
                 let old = s.lines.clone();
                 self.follow_folds(&old);
+                self.remember();
             }
         }
     }

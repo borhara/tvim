@@ -55,6 +55,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("map", "", "map keys, or list mappings"),
     ("unmap", "unm", "remove a mapping"),
     ("undo", "u", "undo"),
+    ("undolist", "undol", "every state the text has been in, undone ones too"),
     ("redo", "red", "redo"),
     ("shell", "sh", "open a shell"),
     ("zen", "", "only the text, centred"),

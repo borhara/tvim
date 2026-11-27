@@ -145,6 +145,7 @@ impl Editor {
             's' => self.symbols(None),
             'x' => self.list_problems(),
             'S' => self.symbols(Some("")),
+            'u' => self.list_history(),
             _ => self.grep(None),
         }
     }

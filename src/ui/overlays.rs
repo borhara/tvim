@@ -883,6 +883,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("s", "symbols in the file"),
                 ("S", "symbols in the project"),
                 ("x", "problems in open files"),
+                ("u", "undo history"),
             ]),
         ),
         " h" => (

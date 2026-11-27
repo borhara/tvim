@@ -43,6 +43,7 @@ mod editorconfig;
 mod folds;
 mod git;
 mod help;
+mod history;
 mod input;
 mod insert;
 mod jumps;
@@ -260,6 +261,14 @@ struct Snapshot {
     marks: HashMap<char, Pos>,
 }
 
+// the text as a change left it, and when, which a file's kept history doesn't know
+#[derive(Clone, Debug, Default)]
+struct Moment {
+    lines: Vec<String>,
+    cursor: Pos,
+    when: Option<i64>,
+}
+
 #[derive(Clone, Debug, Default)]
 struct Dot {
     count: Option<usize>,
@@ -328,6 +337,8 @@ pub(crate) enum Choosing {
     Actions(Vec<crate::languages::Action>, Vec<(usize, u64)>),
     // words to put in place of the one from one place to another
     Spelling(Pos, Pos, Vec<String>),
+    // states the text has been in, by their place in its history
+    History(Vec<usize>),
 }
 
 // one of the things offered to type, a word from the open files or what a server suggests
@@ -395,6 +406,7 @@ struct Doc {
     last_visual: Option<(Pos, Pos, Mode)>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
+    history: Vec<Moment>,
     version: u64,
     saved: u64,
     marks: HashMap<char, Pos>,
@@ -581,6 +593,10 @@ pub struct Editor {
     registers: HashMap<char, Register>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
+    // every state the text has been in, in the order it got there, undone ones too
+    history: Vec<Moment>,
+    // going back to one of those, which isn't a new one
+    revisiting: bool,
     version: u64,
     saved: u64,
     versions: u64,
@@ -705,6 +721,8 @@ impl Editor {
             registers: HashMap::new(),
             undo: Vec::new(),
             redo: Vec::new(),
+            history: Vec::new(),
+            revisiting: false,
             version: 0,
             saved: 0,
             versions: 0,

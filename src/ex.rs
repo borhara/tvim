@@ -315,6 +315,8 @@ impl Editor {
             self.push_effect(Effect::Shell(shell));
         } else if is("stop", 2) || is("suspend", 3) {
             self.push_effect(Effect::Suspend);
+        } else if is("undolist", 5) {
+            self.list_history();
         } else if is("undo", 1) {
             self.keys_noremap(&[tinsel::app::Key::Char('u')]);
         } else if is("redo", 3) {
