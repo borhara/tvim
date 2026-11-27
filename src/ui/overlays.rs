@@ -275,6 +275,8 @@ pub(super) fn menu(m: &Menu, frame: &mut Frame, area: Rect, at: (usize, usize), 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum HoverLine {
     Code(Option<Syntax>, String),
+    // a line of a diff, taken away or put in
+    Diff(String),
     Prose(String),
     Rule,
 }
@@ -283,6 +285,7 @@ pub(super) enum HoverLine {
 pub(super) fn hover_lines(text: &str, width: usize) -> Vec<HoverLine> {
     let mut out = Vec::new();
     let mut fence: Option<Option<Syntax>> = None;
+    let mut diff = false;
     for line in text.lines() {
         let trimmed = line.trim();
         if let Some(lang) = trimmed.strip_prefix("```") {
@@ -290,9 +293,11 @@ pub(super) fn hover_lines(text: &str, width: usize) -> Vec<HoverLine> {
                 Some(_) => None,
                 None => Some(fence_syntax(lang.trim())),
             };
+            diff = fence.is_some() && lang.trim() == "diff";
             continue;
         }
         match fence {
+            Some(_) if diff => out.push(HoverLine::Diff(line.trim_end().to_string())),
             Some(syntax) => out.push(HoverLine::Code(syntax, line.trim_end().to_string())),
             None if trimmed.len() >= 3 && trimmed.chars().all(|c| c == '-' || c == '*' || c == '_') => {
                 out.push(HoverLine::Rule)
@@ -391,7 +396,7 @@ pub(super) fn hover(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize
     let widest = lines
         .iter()
         .map(|l| match l {
-            HoverLine::Code(_, s) | HoverLine::Prose(s) => tinsel::text::width(s),
+            HoverLine::Code(_, s) | HoverLine::Diff(s) | HoverLine::Prose(s) => tinsel::text::width(s),
             HoverLine::Rule => 0,
         })
         .max()
@@ -417,6 +422,14 @@ pub(super) fn hover(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, usize
                 styled_line(s, Some(&kinds), e.options.tab_stop, c)
             }
             HoverLine::Code(None, s) => paint(palette::SAGE, s),
+            HoverLine::Diff(s) => paint(
+                if s.starts_with('-') {
+                    palette::RED
+                } else {
+                    palette::SAGE
+                },
+                s,
+            ),
             HoverLine::Prose(s) => {
                 state = State::Normal;
                 let (kinds, next) = syntax::highlight(s, Syntax::Markdown, md);
@@ -861,7 +874,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("r", "recent files"),
                 ("g /", "search in files"),
                 ("b", "open files"),
-                ("h r", "undo this change hunk"),
+                ("h", "the change here"),
                 ("c", "code"),
                 ("G", "git"),
                 ("z", "zen"),
@@ -872,7 +885,10 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("x", "problems in open files"),
             ]),
         ),
-        " h" => ("hunk".into(), owned(&[("r", "back to HEAD, or the last save")])),
+        " h" => (
+            "hunk".into(),
+            owned(&[("r", "back to HEAD, or the last save"), ("p", "as it was and as it is")]),
+        ),
         " c" => (
             "code".into(),
             owned(&[("a", "what the language server can do here"), ("f", "format the file")]),

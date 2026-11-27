@@ -31,6 +31,17 @@ impl Editor {
         self.end_change();
     }
 
+    // Space h p: the change under the cursor, as it was and as it is, by the cursor
+    pub(super) fn preview_hunk(&mut self) {
+        let Some((h, old)) = self.hunk_here() else {
+            return self.info("no change here");
+        };
+        let was = old.iter().map(|l| format!("-{l}"));
+        let is = self.buf.lines()[h.new].iter().map(|l| format!("+{l}"));
+        let body: Vec<String> = was.chain(is).collect();
+        self.hover = Some(format!("```diff\n{}\n```", body.join("\n")));
+    }
+
     pub fn lens(&self) -> Option<String> {
         let quiet = self.mode != Mode::Normal
             || !self.pending.is_empty()

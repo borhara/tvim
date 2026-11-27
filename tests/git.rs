@@ -178,6 +178,24 @@ fn space_h_r_resets_the_hunk_under_the_cursor() {
 }
 
 #[test]
+fn space_h_p_shows_the_hunk_as_it_was_and_is() {
+    let Some(dir) = repo("preview", "a\nb\nc\nd\n") else {
+        return;
+    };
+    let file = dir.join("a.txt");
+    std::fs::write(&file, "a\nB\nB2\nc\n").unwrap();
+    let mut e = open(&file);
+    e.keys(&parse("j<Space>hp"));
+    assert_eq!(e.hover(), Some("```diff\n-b\n+B\n+B2\n```"));
+    let screen = shown_ref(&e, 40, 12);
+    assert!(screen.contains("-b") && screen.contains("+B2"), "{screen}");
+    e.keys(&parse("j"));
+    assert_eq!(e.hover(), None, "gone with the next key");
+    e.keys(&parse("gg<Space>hp"));
+    assert_eq!(e.hover(), None, "nothing off a hunk");
+}
+
+#[test]
 fn the_branch_shows_at_the_top_right() {
     let Some(dir) = repo("looks", "a\n") else { return };
     let mut e = open(&dir.join("a.txt"));
