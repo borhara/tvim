@@ -70,6 +70,7 @@ impl Editor {
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
             (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions),
             (Ask::Complete, Said::Items(items)) => self.offer_items(items),
+            (Ask::Format { .. }, Said::Edits(files)) => self.formatted(files),
             _ => {}
         }
     }
@@ -82,6 +83,28 @@ impl Editor {
             return self.begin_cmdline(':', format!("rename {word}"));
         }
         self.ask_server(Ask::Rename(to.to_string()));
+    }
+
+    // asks the language server to tidy the file, or only these lines, as one change
+    pub(crate) fn format(&mut self, lines: Option<(usize, usize)>) {
+        let ask = Ask::Format {
+            lines,
+            tab_size: self.options.shift_width,
+            spaces: self.options.expand_tab,
+        };
+        self.ask_server(ask);
+    }
+
+    fn formatted(&mut self, files: Vec<FileEdits>) {
+        let edits: Vec<Edit> = files.into_iter().flat_map(|f| f.edits).collect();
+        let before = self.version;
+        // a change that changes nothing isn't kept, and leaves the version as it was
+        self.edit_text(&edits);
+        self.info(if self.version == before {
+            "already formatted"
+        } else {
+            "formatted"
+        });
     }
 
     // makes each file's edits, opening those that aren't open yet, and leaves them unsaved

@@ -1259,6 +1259,34 @@ mod tests {
     }
 
     #[test]
+    fn formatting_is_one_change_that_keeps_the_cursor_on_its_text() {
+        let mut e = Editor::with_text("fn a(){\nlet x=1;\n}");
+        e.keys(&parse("jfx"));
+        let edits = vec![
+            edit((0, 6), (0, 6), " "),
+            edit((1, 0), (1, 0), "    "),
+            edit((1, 5), (1, 6), " = "),
+        ];
+        let files = vec![FileEdits {
+            path: PathBuf::new(),
+            edits,
+        }];
+        let format = Ask::Format {
+            lines: None,
+            tab_size: 4,
+            spaces: true,
+        };
+        e.answered(answer(&e, format.clone(), Said::Edits(files)));
+        assert_eq!(e.buf.lines(), ["fn a() {", "    let x = 1;", "}"]);
+        assert_eq!(e.cursor, Pos::new(1, 8));
+        assert_eq!(e.message.as_ref().unwrap().text, "formatted");
+        e.keys(&parse("u"));
+        assert_eq!(e.buf.lines(), ["fn a(){", "let x=1;", "}"], "undone at once");
+        e.answered(answer(&e, format, Said::Edits(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "already formatted");
+    }
+
+    #[test]
     fn with_nothing_from_the_server_words_are_offered() {
         let mut e = Editor::with_text("plenty\npl");
         e.keys(&parse("jA"));

@@ -205,6 +205,8 @@ impl Editor {
             self.lsp_ex(arg);
         } else if is("rename", 3) {
             self.rename(arg);
+        } else if is("Format", 3) || is("format", 4) {
+            self.format(range);
         } else if is("recent", 3) {
             self.pick_recent();
         } else if is("zen", 3) {

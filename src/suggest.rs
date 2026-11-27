@@ -61,6 +61,11 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("git", "", "the git menu: stage, commit, log, branches"),
     ("lsp", "", "the language server for this file, or choose one"),
     ("rename", "ren", "rename what's under the cursor everywhere"),
+    (
+        "Format",
+        "For",
+        "tidy the file, or the lines given, with its language server",
+    ),
     ("preview", "prev", "show or hide a markdown preview"),
     ("help", "h", "a quick reminder"),
     ("version", "ve", "show the version"),
