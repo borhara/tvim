@@ -32,3 +32,10 @@ fn help_finds_keys_and_commands_too_and_reuses_its_window() {
     );
 }
 
+#[test]
+fn help_topics_are_suggested_as_typed() {
+    let mut e = ed("");
+    e.keys(&parse(":help spel"));
+    let labels: Vec<String> = e.cmd_suggestions().0.iter().map(|s| s.label.clone()).collect();
+    assert_eq!(labels, ["Spelling"]);
+}

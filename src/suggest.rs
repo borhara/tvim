@@ -193,6 +193,16 @@ pub fn suggestions(text: &str, options: &Options, buffers: &[String]) -> Vec<Sug
                 value: String::new(),
             })
             .collect(),
+        "h" | "help" => crate::help::topics(crate::help::DOCS)
+            .into_iter()
+            .filter(|t| t.name.to_lowercase().contains(&arg.trim().to_lowercase()))
+            .map(|t| Suggestion {
+                replace: format!("{cmd} {}", t.name),
+                label: t.name,
+                desc: t.gist,
+                value: String::new(),
+            })
+            .collect(),
         "e" | "edit" | "r" | "read" | "w" | "write" | "Ex" | "Explore" | "Lex" => files(head, word),
         _ => Vec::new(),
     }
