@@ -138,6 +138,8 @@ lsp go off
 
 **Spelling.** Words spelled wrong are underlined in red: every word in Markdown and plain text, and only comments in code. They're checked against the system's word list, `/usr/share/dict/words`, with endings like `-s`, `-ed` and `-ing` taken off. `]s` and `[s` go to the next and previous one. `z=` lists words it may have meant, and `zg` takes it as right from then on, keeping it in `spell.txt` beside your config. `:set nospell` turns it off.
 
+**Undo history.** `Space u` or `:undolist` lists every state the text has been in, newest first, with how long ago and how many lines changed. That includes ones `u` can no longer reach because a change was made after undoing. Choosing one brings the text back to it as a new change, so `u` goes back again.
+
 **Help.** `:help` opens this README inside tvim, read only, in a window above. `:help spelling` goes to a topic, and `:help zg` or `:help :Gdiff` to where a key or command is described. Topics are suggested as you type.
 
 **Splits.** `Ctrl-w s` and `Ctrl-w v` (or `:sp` and `:vs`) split the window. `Ctrl-w` with `h`/`j`/`k`/`l` moves between windows and `Ctrl-w q` closes one.
