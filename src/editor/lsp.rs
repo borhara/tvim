@@ -79,10 +79,10 @@ impl Editor {
             (Ask::Definition, Said::Places(places)) => match places.as_slice() {
                 [] => self.error("no definition found"),
                 [place] => _ = self.go_to(&place.path, place.start),
-                _ => self.list_places("definitions", "of", &places, &answer.read),
+                _ => self.list_about("definitions", "of", &places, &answer.read),
             },
             (Ask::References, Said::Places(places)) if places.is_empty() => self.error("no references found"),
-            (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places, &answer.read),
+            (Ask::References, Said::Places(places)) => self.list_about("references", "to", &places, &answer.read),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
             (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions, &RENAMING),
@@ -321,15 +321,26 @@ impl Editor {
         self.set_want();
     }
 
-    // in the grep picker, with the text of open files as it is in the editor
+    // as definitions of the word under the cursor, say
+    fn list_about(&mut self, what: &str, joiner: &str, places: &[Place], read: &HashMap<PathBuf, Vec<String>>) {
+        let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
+        let title = if word.is_empty() {
+            what.to_string()
+        } else {
+            format!("{what} {joiner} {word}")
+        };
+        self.list_places(&title, &word, places, read);
+    }
+
+    // in the grep picker, with the text of open files as it is in the editor and `word` picked
+    // out in it
     pub(super) fn list_places(
         &mut self,
-        what: &str,
-        joiner: &str,
+        title: &str,
+        word: &str,
         places: &[Place],
         read: &HashMap<PathBuf, Vec<String>>,
     ) {
-        let word = self.word_under_cursor().map_or(String::new(), |(_, w)| w);
         // each path in full once, rather than for every comparison while sorting
         let mut spots: Vec<(PathBuf, usize, usize)> = places
             .iter()
@@ -341,11 +352,6 @@ impl Editor {
             (Some(p) != here.as_ref(), p, row, col).cmp(&(Some(q) != here.as_ref(), q, r, c))
         });
         spots.dedup();
-        let title = if word.is_empty() {
-            what.to_string()
-        } else {
-            format!("{what} {joiner} {word}")
-        };
         self.reset_for_picker();
         // an open file's text as it is in the editor, joined only for files that are listed, and
         // others as the server's answer read them
@@ -367,7 +373,7 @@ impl Editor {
             }
             Some(text)
         };
-        self.grep = Some(Grep::listing(&cwd(), &title, &word, &spots, open));
+        self.grep = Some(Grep::listing(&cwd(), title, word, &spots, open));
     }
 
     // opens the file at `to`, remembering where it came from for Ctrl-o, and shows it
