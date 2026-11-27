@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use super::{Editor, cwd, listed, relative_to_cwd};
+use super::{Choosing, Editor, Input, cwd, listed, relative_to_cwd};
 use crate::buffer::Pos;
 use crate::grep::Grep;
-use crate::languages::{Answer, Ask, Edit, FileEdits, OpenDoc, Place, Problem, Said};
+use crate::languages::{Action, Answer, Ask, Edit, FileEdits, OpenDoc, Place, Problem, Said};
+use crate::menu::{Entry, Menu, Picked};
 
 // what a set of edits is doing, to say so: as a verb, done, and being done
 pub(super) struct Doing(&'static str, &'static str, &'static str);
@@ -85,6 +86,7 @@ impl Editor {
             (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions, &RENAMING),
             (Ask::Complete, Said::Items(items)) => self.offer_items(items),
             (Ask::Format { .. }, Said::Edits(files)) => self.formatted(files),
+            (Ask::Actions { .. }, Said::Actions(actions)) => self.offer_actions(actions, answer.versions),
             _ => {}
         }
     }
@@ -97,6 +99,64 @@ impl Editor {
             return self.begin_cmdline(':', format!("rename {word}"));
         }
         self.ask_server(Ask::Rename(to.to_string()));
+    }
+
+    // asks the language server what it can do with the code at the cursor, or that selected
+    pub(crate) fn code_actions(&mut self) {
+        let (from, to) = match self.mode.is_visual() {
+            true => self.char_span(self.visual_range()),
+            false => (self.cursor, self.cursor),
+        };
+        self.ask_server(Ask::Actions { from, to });
+    }
+
+    fn offer_actions(&mut self, actions: Vec<Action>, versions: Vec<(usize, u64)>) {
+        if actions.is_empty() {
+            return self.info("nothing to do here");
+        }
+        let entries = actions
+            .iter()
+            .map(|a| Entry {
+                label: a.title.clone(),
+                hint: a.kind.clone(),
+                disabled: a.disabled.clone(),
+            })
+            .collect();
+        self.reset_for_picker();
+        self.menu = Some((Menu::new("code actions", entries), Choosing::Actions(actions, versions)));
+    }
+
+    pub(super) fn menu_input(&mut self, input: Input) {
+        let (Input::Key(key), Some((menu, _))) = (input, self.menu.as_mut()) else {
+            return;
+        };
+        match menu.key(key) {
+            Picked::Stay => {}
+            Picked::Close => self.menu = None,
+            Picked::Chose(i) => {
+                let Some((_, choosing)) = self.menu.take() else { return };
+                match choosing {
+                    Choosing::Actions(mut actions, versions) => self.act(actions.swap_remove(i), &versions),
+                }
+            }
+        }
+    }
+
+    // makes the action's edits, then has the server run its command, if it has one
+    fn act(&mut self, action: Action, versions: &[(usize, u64)]) {
+        if !action.edits.is_empty() {
+            self.apply_edits(action.edits, versions, &CHANGING);
+        }
+        if let Some(command) = action.command {
+            self.sync_languages();
+            if let Err(why) = self.languages.run(self.buffer_id, &command) {
+                self.error(why);
+            }
+        }
+    }
+
+    pub fn menu(&self) -> Option<&Menu> {
+        self.menu.as_ref().map(|(m, _)| m)
     }
 
     // asks the language server to tidy the file, or only these lines, as one change

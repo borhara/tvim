@@ -296,6 +296,13 @@ enum Asking {
     Auto,
 }
 
+// what the menu by the cursor is choosing between, to do once one is chosen
+#[derive(Clone, Debug)]
+pub(crate) enum Choosing {
+    // and each open file's version when they were asked for, to check their edits against
+    Actions(Vec<crate::languages::Action>, Vec<(usize, u64)>),
+}
+
 // one of the things offered to type, a word from the open files or what a server suggests
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Choice {
@@ -573,6 +580,7 @@ pub struct Editor {
     pub(crate) languages: Languages,
     // what the server said about the cursor's place, shown until the next key
     hover: Option<String>,
+    pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
     // typed keys that may yet be the start of a mapping
     map_typed: Vec<Key>,
     map_depth: usize,
@@ -674,6 +682,7 @@ impl Editor {
             servers: Servers::default(),
             languages: Languages::default(),
             hover: None,
+            menu: None,
             map_typed: Vec::new(),
             map_depth: 0,
             from_map: 0,
@@ -1088,7 +1097,7 @@ pub(crate) fn expand_home(path: &str) -> String {
 mod tests {
     use super::{Editor, Pos, slashed};
     use crate::keys::parse;
-    use crate::languages::{Answer, Ask, Edit, FileEdits, Item, Place, Problem, Said, Severity};
+    use crate::languages::{Action, Answer, Ask, Edit, FileEdits, Item, Place, Problem, Said, Severity};
     use std::path::{Path, PathBuf};
 
     fn problem(start: (usize, usize), end: (usize, usize), severity: Severity, message: &str) -> Problem {
@@ -1308,6 +1317,71 @@ mod tests {
         e.ex("w");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "fn a(){} x\n");
         assert!(e.message.as_ref().unwrap().text.ends_with("written"));
+    }
+
+    // edits to `path`, or a command when there are none
+    fn action(title: &str, path: &Path, edits: Vec<Edit>, command: Option<&str>) -> Action {
+        Action {
+            title: title.into(),
+            kind: "quickfix".into(),
+            preferred: false,
+            disabled: None,
+            edits: if edits.is_empty() {
+                Vec::new()
+            } else {
+                vec![FileEdits {
+                    path: path.to_path_buf(),
+                    edits,
+                }]
+            },
+            command: command.map(|c| crate::json::Json::object([("title", c.into()), ("command", c.into())])),
+        }
+    }
+
+    #[test]
+    fn a_chosen_code_action_makes_its_edits() {
+        let path = temp_file("actions.rs", "use a;\nfn main() {}\n");
+        let mut e = Editor::open(&path).unwrap();
+        let ask = Ask::Actions {
+            from: e.cursor,
+            to: e.cursor,
+        };
+        let run = || action("Run", &path, Vec::new(), Some("run"));
+        let remove = action("Remove unused import", &path, vec![edit((0, 0), (1, 0), "")], None);
+        e.answered(answer(&e, ask.clone(), Said::Actions(vec![run(), remove])));
+        let m = e.menu().expect("offered");
+        assert_eq!(m.title, "code actions");
+        assert_eq!(m.entries[1].label, "Remove unused import");
+        assert_eq!(m.entries[1].hint, "quickfix");
+        e.keys(&parse("j<CR>"));
+        assert!(e.menu().is_none());
+        assert_eq!(e.buf.lines(), ["fn main() {}"]);
+        e.keys(&parse("u"));
+        assert_eq!(e.buf.lines(), ["use a;", "fn main() {}"]);
+
+        e.answered(answer(&e, ask.clone(), Said::Actions(vec![run()])));
+        e.keys(&parse("1"));
+        assert!(e.message.as_ref().unwrap().error, "no server to run it");
+        e.answered(answer(&e, ask.clone(), Said::Actions(vec![run()])));
+        e.keys(&parse("<Esc>"));
+        assert!(e.menu().is_none());
+        e.answered(answer(&e, ask, Said::Actions(Vec::new())));
+        assert_eq!(e.message.as_ref().unwrap().text, "nothing to do here");
+    }
+
+    #[test]
+    fn code_actions_for_a_selection_ask_about_all_of_it() {
+        let mut e = Editor::with_text("one two\nthree");
+        e.keys(&parse("wvj"));
+        e.keys(&parse(" ca"));
+        assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
+        let mut e = Editor::with_text("one two\nthree");
+        e.keys(&parse("wvj"));
+        assert_eq!(
+            e.char_span(e.visual_range()),
+            (Pos::new(0, 4), Pos::new(1, 5)),
+            "the range asked about"
+        );
     }
 
     #[test]

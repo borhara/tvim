@@ -209,6 +209,7 @@ impl Editor {
             Act::With(c, ch) => self.normal_with(c, ch, n),
             Act::G(c) => self.normal_g(c, n, cmd.register),
             Act::Z(k) => self.normal_z(k, cmd.count),
+            Act::Code('a') => self.code_actions(),
             _ => {}
         }
     }

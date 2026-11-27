@@ -34,6 +34,7 @@ impl Editor {
             || self.explorer_focused()
             || self.preview_focused()
             || self.finder.is_some()
+            || self.menu.is_some()
             || self.grep.is_some()
             || self.git_menu.is_some()
             || self.is_blank_slate();

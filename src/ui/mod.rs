@@ -534,6 +534,10 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     if let Some((x, y, _)) = completion {
         overlays::completion(e, frame, d.panes, (x, y), &c);
     }
+    let menu = text_cursor(e, e.mode(), d.body).and_then(|at| Some((e.menu()?, at)));
+    if let Some((m, (x, y, _))) = menu {
+        overlays::menu(m, frame, d.panes, (x, y), &c);
+    }
     let hover = text_cursor(e, e.mode(), d.body).filter(|_| e.hover().is_some());
     if let Some((x, y, _)) = hover {
         overlays::hover(e, frame, d.panes, (x, y), &c);
@@ -549,6 +553,7 @@ fn draw_with(e: &Editor, frame: &mut Frame, hints: bool) {
     }
     let covered = palette
         || completion.is_some()
+        || menu.is_some()
         || hover.is_some()
         || e.finder().is_some()
         || e.grep_picker().is_some()
@@ -1930,6 +1935,42 @@ mod tests {
                 "│ › len  method │",
                 "│   cap         │",
                 "╰─ fn(&self) … ─╯"
+            ],
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn a_menu_shows_under_the_cursor_numbered_with_hints() {
+        use crate::menu::{Entry, Menu};
+        let mut e = Editor::with_text("let x = 1;");
+        e.set_screen(50, 8);
+        let entry = |label: &str, hint: &str, disabled: Option<&str>| Entry {
+            label: label.into(),
+            hint: hint.into(),
+            disabled: disabled.map(str::to_string),
+        };
+        let entries = vec![
+            entry("Inline x", "refactor", None),
+            entry("Extract", "", Some("no selection")),
+        ];
+        e.menu = Some((
+            Menu::new("code actions", entries),
+            crate::editor::Choosing::Actions(Vec::new(), Vec::new()),
+        ));
+        let shown = tinsel::with_color_mode(ColorMode::None, || {
+            let mut frame = Frame::new(50, 8);
+            draw(&e, &mut frame);
+            frame.snapshot().plain()
+        });
+        let menu: Vec<&str> = shown.lines().skip(2).take(4).map(str::trim).collect();
+        assert_eq!(
+            menu,
+            [
+                "╭─ ✦ code actions ────────────╮",
+                "│ › 1 Inline x       refactor │",
+                "│   2 Extract    no selection │",
+                "╰─────────────── enter · esc ─╯"
             ],
             "{shown}"
         );

@@ -114,6 +114,7 @@ impl Editor {
             Act::Z(k) => self.normal_z(k, cmd.count),
             Act::Select { .. } => {}
             Act::Hunk(_) => self.reset_hunk(),
+            Act::Code('a') => self.code_actions(),
             Act::Code(_) => self.format(None),
             Act::Window(k) => self.window_key(k, cmd.count),
             Act::Leader(c) => self.leader(c),

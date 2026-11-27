@@ -5,6 +5,7 @@ use super::{Colors, file_name, icon, input, plural, styled_line, with_hits};
 use crate::editor::Editor;
 use crate::finder::Finder;
 use crate::grep::Grep;
+use crate::menu::{Entry, Menu};
 use crate::syntax::{self, State, Syntax};
 
 pub(super) fn palette(e: &Editor, frame: &mut Frame, area: Rect, c: &Colors) -> Option<(usize, usize)> {
@@ -167,6 +168,74 @@ pub(super) fn completion(e: &Editor, frame: &mut Frame, area: Rect, at: (usize, 
         if let Some(kind) = w.kind.filter(|_| inner.width > word_width + kind_width) {
             let at = Rect::new(inner.x + inner.width - kind.len(), line.y, kind.len(), 1);
             frame.print(at, 0, &paint(palette::MUTED, kind));
+        }
+    }
+}
+
+// a menu to choose from, under the cursor or else above it, each of the first nine numbered
+pub(super) fn menu(m: &Menu, frame: &mut Frame, area: Rect, at: (usize, usize), c: &Colors) {
+    let (cx, cy) = at;
+    let below = (area.y + area.height).saturating_sub(cy + 1);
+    let above = cy.saturating_sub(area.y);
+    let room = if below >= m.entries.len() + 2 || below >= above {
+        below
+    } else {
+        above
+    };
+    let rows = m.entries.len().min(12).min(room.saturating_sub(2));
+    if rows == 0 || area.width < 16 {
+        return;
+    }
+    let hint = |e: &Entry| e.disabled.as_deref().unwrap_or(&e.hint).to_string();
+    let label_width = m
+        .entries
+        .iter()
+        .map(|e| tinsel::text::width(&e.label))
+        .max()
+        .unwrap_or(0);
+    let hint_width = m
+        .entries
+        .iter()
+        .map(|e| tinsel::text::width(&hint(e)))
+        .max()
+        .unwrap_or(0);
+    let gap = if hint_width > 0 { hint_width + 3 } else { 0 };
+    let width = (label_width + gap + 8)
+        .max(tinsel::text::width(&m.title) + 6)
+        .min(area.width);
+    let height = rows + 2;
+    let x = cx.clamp(area.x, area.x + area.width - width);
+    let y = if room == below { cy + 1 } else { cy - height };
+    let panel = Panel::new(&m.title)
+        .focused(true)
+        .background(c.bar)
+        .footer("enter · esc");
+    let rect = Rect::new(x, y, width, height);
+    let inner = panel.inner(rect);
+    frame.render(rect, panel);
+    let first = (m.selected + 1).saturating_sub(rows);
+    for (i, e) in m.entries.iter().enumerate().skip(first).take(rows) {
+        let line = Rect::new(inner.x, inner.y + i - first, inner.width, 1);
+        let selected = m.selected == i;
+        if selected {
+            frame.tint(line, c.picked);
+        }
+        let number = if i < 9 { format!("{} ", i + 1) } else { "  ".into() };
+        let label = match (&e.disabled, selected) {
+            (Some(_), _) => paint(palette::MUTED, &e.label),
+            (None, true) => bold(&paint(palette::PETAL, &e.label)),
+            (None, false) => paint(palette::TEXT, &e.label),
+        };
+        let text = format!("{}{}{label}", marker(selected), paint(palette::MUTED, &number));
+        frame.print(line, 0, &text);
+        let hint = hint(e);
+        let w = tinsel::text::width(&hint);
+        if w > 0 && inner.width > label_width + w + 6 {
+            frame.print(
+                Rect::new(inner.x + inner.width - w, line.y, w, 1),
+                0,
+                &paint(palette::MUTED, &hint),
+            );
         }
     }
 }
@@ -759,7 +828,10 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
             ]),
         ),
         " h" => ("hunk".into(), owned(&[("r", "back to HEAD, or the last save")])),
-        " c" => ("code".into(), owned(&[("f", "format the file")])),
+        " c" => (
+            "code".into(),
+            owned(&[("a", "what the language server can do here"), ("f", "format the file")]),
+        ),
         "]" => (
             "]".into(),
             owned(&[("c", "the next change"), ("d", "the next problem")]),

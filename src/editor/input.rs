@@ -26,6 +26,7 @@ impl Editor {
             && (self.mode == Mode::Normal || self.mode.is_visual())
             && self.pending.is_empty()
             && self.git_menu.is_none()
+            && self.menu.is_none()
             && self.finder.is_none()
             && self.grep.is_none()
             && !self.explorer_focused()
@@ -63,7 +64,7 @@ impl Editor {
     }
 
     pub(super) fn map_mode(&self) -> Option<MapMode> {
-        let overlay = self.git_menu.is_some() || self.finder.is_some() || self.grep.is_some();
+        let overlay = self.git_menu.is_some() || self.menu.is_some() || self.finder.is_some() || self.grep.is_some();
         if overlay || self.explorer_focused() && self.mode != Mode::Command {
             return None;
         }
@@ -146,6 +147,9 @@ impl Editor {
         self.hover = None;
         if self.git_menu.is_some() {
             return self.git_menu_input(input);
+        }
+        if self.menu.is_some() {
+            return self.menu_input(input);
         }
         if self.finder.is_some() {
             return self.finder_input(input);

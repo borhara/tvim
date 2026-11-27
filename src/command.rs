@@ -254,6 +254,15 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
         }
     }
 
+    // Space c a works on what's selected too
+    if key == Key::Char(' ') && visual {
+        return match (keys.get(i + 1), keys.get(i + 2)) {
+            (None, _) | (Some(Key::Char('c')), None) => Parse::More,
+            (Some(Key::Char('c')), Some(Key::Char('a'))) => done(Act::Code('a'), i + 3, count1),
+            _ => Parse::Invalid,
+        };
+    }
+
     if key == Key::Char(' ') && !visual {
         return match keys.get(i + 1) {
             None => Parse::More,
@@ -265,7 +274,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
             },
             Some(Key::Char('c')) => match keys.get(i + 2) {
                 None => Parse::More,
-                Some(Key::Char(c @ 'f')) => done(Act::Code(*c), i + 3, count1),
+                Some(Key::Char(c @ ('f' | 'a'))) => done(Act::Code(*c), i + 3, count1),
                 _ => Parse::Invalid,
             },
             _ => Parse::Invalid,
@@ -602,6 +611,7 @@ mod tests {
         assert_eq!(cmd("gqq").act, Act::Operate(Op::Format, Target::Lines));
         assert_eq!(cmd("==").act, Act::Operate(Op::Tidy, Target::Lines));
         assert_eq!(cmd(" cf").act, Act::Code('f'));
+        assert_eq!(cmd(" ca").act, Act::Code('a'));
         assert_eq!(
             cmd("ysiw)").act,
             Act::Surround(Target::Object { kind: 'w', inner: true }, ')')
