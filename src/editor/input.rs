@@ -175,11 +175,14 @@ impl Editor {
                 keys.push(input.clone());
             }
         }
+        let for_cursors = self.mode == Mode::Normal && self.pending.is_empty() && self.multi_input(&input);
         match self.mode {
+            _ if for_cursors => {}
             Mode::Normal | Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.normal(input),
             Mode::Insert | Mode::Replace => self.insert_input(input),
             Mode::Command | Mode::Search => self.cmdline_input(input),
         }
+        self.multi_typed();
         if self.pending.is_empty() {
             self.open_folds_at_cursor();
         }

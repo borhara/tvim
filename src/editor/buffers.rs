@@ -52,6 +52,7 @@ impl Editor {
         self.mode = Mode::Normal;
         self.pending.clear();
         self.completion = None;
+        self.multi = None;
     }
 
     pub fn buffers(&self) -> Vec<BufferInfo> {

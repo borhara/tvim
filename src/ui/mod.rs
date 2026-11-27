@@ -1156,6 +1156,13 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
                 tint(frame, at, end, c.word);
             }
         }
+        // the other cursors' selections, or while typing their places
+        if active {
+            for (p, len) in e.multi_cursors().into_iter().filter(|(p, _)| p.row == row) {
+                let color = if len == 0 { mix(c.app, lit, 0.7) } else { c.selection };
+                tint(frame, p.col, p.col + len.max(1), color);
+            }
+        }
         for &(from, to) in preview.map_or(&[][..], |p| p.spans.as_slice()) {
             tint(frame, from, to.max(from + 1), c.current_match);
         }

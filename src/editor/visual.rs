@@ -179,6 +179,7 @@ impl Editor {
             }
             Act::Key(Key::Char(c)) => self.visual_key(c, cmd.register, n),
             Act::Key(Key::Ctrl('v' | 'q')) => self.switch_visual(Mode::VisualBlock),
+            Act::Key(Key::Ctrl('n')) => self.multi_start(),
             Act::Key(Key::Ctrl(c @ ('a' | 'x'))) => {
                 let r = self.visual_range();
                 self.leave_visual();

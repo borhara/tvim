@@ -43,6 +43,7 @@ mod input;
 mod insert;
 mod jumps;
 mod lsp;
+mod multi;
 mod normal;
 mod operators;
 mod pickers;
@@ -590,6 +591,7 @@ pub struct Editor {
     hover: Option<String>,
     pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
     pub(crate) quickfix: Option<crate::quickfix::Quickfix>,
+    multi: Option<multi::Multi>,
     // the lines :s would change as it's typed, as they'd be, and where it replaces in each
     pub(crate) substitute_preview: Option<HashMap<usize, crate::ex::Replaced>>,
     // the first lines of the folds closed in this buffer
@@ -701,6 +703,7 @@ impl Editor {
             hover: None,
             menu: None,
             quickfix: None,
+            multi: None,
             substitute_preview: None,
             closed: Vec::new(),
             fold_cache: RefCell::new(None),

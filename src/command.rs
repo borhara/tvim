@@ -337,7 +337,7 @@ pub fn parse(keys: &[Key], visual: bool) -> Parse {
     }
 
     let simple = if visual { VISUAL_KEYS } else { NORMAL_KEYS };
-    let ctrl = if visual { "acxvq" } else { "rglaxzcpoivq" };
+    let ctrl = if visual { "acxvqn" } else { "rglaxzcpoivqn" };
     match key {
         Key::Char(c) if simple.contains(c) => done(Act::Key(key), i + 1, count1),
         Key::Ctrl(c) if "dufbey".contains(c) || ctrl.contains(c) => done(Act::Key(key), i + 1, count1),
@@ -508,7 +508,7 @@ pub fn motion(keys: &[Key]) -> MotionParse {
     match key {
         Key::Char('h') | Key::Left | Key::Backspace | Key::Ctrl('h') => one(Left),
         Key::Char('l') | Key::Right | Key::Char(' ') => one(Right),
-        Key::Char('j') | Key::Down | Key::Ctrl('j') | Key::Ctrl('n') => one(Down),
+        Key::Char('j') | Key::Down | Key::Ctrl('j') => one(Down),
         Key::Char('k') | Key::Up => one(Up),
         Key::Char('0') | Key::Home => one(LineStart),
         Key::Char('^') => one(FirstNonBlank),

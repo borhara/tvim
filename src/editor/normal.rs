@@ -151,6 +151,7 @@ impl Editor {
                 self.cursor.row = if c == 'j' { row + by } else { row - by };
             }
             Key::Char('K') => self.ask_server(Ask::Hover),
+            Key::Ctrl('n') => self.multi_start(),
             Key::Char('x') | Key::Delete => {
                 if self.buf.line_len(self.cursor.row) > 0 {
                     op(self, Op::Delete, Motion::Right)
