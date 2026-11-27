@@ -253,6 +253,49 @@ pub(crate) fn git(dir: &Path, args: &[impl AsRef<std::ffi::OsStr>]) -> Option<(i
     Some((out.status.code().unwrap_or(-1), out.stdout))
 }
 
+// the file's lines as staged, or None if it's not in the index
+pub fn staged_lines(path: &Path) -> Option<Vec<String>> {
+    let name = path.file_name()?.to_str()?;
+    match git(dir_of(path), &["cat-file", "blob", &format!(":./{name}")]) {
+        Some((0, bytes)) => Some(lines(&String::from_utf8(bytes).ok()?)),
+        _ => None,
+    }
+}
+
+/// Puts `text` in the index as the file at `path`, keeping its mode if it's there already.
+pub fn stage_text(path: &Path, text: &str) -> Result<(), String> {
+    let dir = dir_of(path);
+    let name = path.file_name().and_then(|n| n.to_str()).ok_or("no file name")?;
+    let mode = git_line(dir, &["ls-files", "-s", "--", name])
+        .and_then(|l| l.split_whitespace().next().map(str::to_string))
+        .unwrap_or_else(|| "100644".into());
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["hash-object", "-w", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().expect("piped");
+        stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let sha = trimmed(out.stdout)
+        .filter(|_| out.status.success())
+        .ok_or("git couldn't keep the text")?;
+    // --cacheinfo takes the path from the top of the repo
+    let prefix = git_line(dir, &["rev-parse", "--show-prefix"]).unwrap_or_default();
+    let info = format!("{mode},{sha},{prefix}{name}");
+    match git(dir, &["update-index", "--add", "--cacheinfo", &info]) {
+        Some((0, _)) => Ok(()),
+        _ => Err("git couldn't stage it".into()),
+    }
+}
+
 fn trimmed(out: Vec<u8>) -> Option<String> {
     let s = String::from_utf8(out).ok()?.trim().to_string();
     (!s.is_empty()).then_some(s)
