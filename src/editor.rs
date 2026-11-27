@@ -1687,6 +1687,29 @@ mod tests {
     }
 
     #[test]
+    fn cdo_and_cfdo_run_a_command_through_the_quickfix_list() {
+        let a = temp_file("cdo-a.rs", "old\nold\n");
+        let b = temp_file("cdo-b.rs", "x old old\n");
+        let mut e = Editor::open(&a).unwrap();
+        let spot = |path: &Path, row, col| crate::quickfix::Spot {
+            path: path.to_path_buf(),
+            pos: Pos::new(row, col),
+            note: String::new(),
+        };
+        e.keep_quickfix("t", vec![spot(&a, 0, 0), spot(&a, 1, 0), spot(&b, 0, 2)]);
+        e.ex("cdo s/old/new/");
+        assert!(e.file.path.as_ref().unwrap().ends_with("cdo-b.rs"), "left at the last");
+        assert_eq!(e.buf.lines(), ["x new old"]);
+        assert_eq!(e.message.as_ref().unwrap().text, "ran at 3 places, :wa saves them all");
+        e.ex("cfdo %s/new/newer/g");
+        assert_eq!(e.buf.lines(), ["x newer old"]);
+        e.ex("b 1");
+        assert_eq!(e.buf.lines(), ["newer", "newer"], "once in each file");
+        e.ex("cdo s/nothing/x/");
+        assert!(e.message.as_ref().unwrap().error, "stops at the first error");
+    }
+
+    #[test]
     fn definitions_in_more_than_one_place_are_listed() {
         let a = temp_file("defs-a.rs", "fn f() {}\nfn f() {}\nf();\n");
         let mut e = Editor::open(&a).unwrap();

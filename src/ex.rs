@@ -33,6 +33,8 @@ impl Editor {
             || name == "s"
             || name.len() >= 2 && "substitute".starts_with(name)
             || name.len() >= 4 && "normal".starts_with(name)
+            || name == "cdo"
+            || name == "cfdo"
             || !name.is_empty() && ("global".starts_with(name) || "vglobal".starts_with(name));
         if whole {
             return None;
@@ -205,6 +207,8 @@ impl Editor {
             self.lsp_ex(arg);
         } else if is("rename", 3) {
             self.rename(arg);
+        } else if name == "cdo" || name == "cfdo" {
+            return self.quickfix_do(arg, name == "cfdo");
         } else if is("copen", 4) || is("cwindow", 2) || is("clist", 2) {
             self.open_quickfix();
         } else if is("cnext", 2) {

@@ -13,6 +13,50 @@ impl Editor {
         self.info(format!("{places} in the quickfix list, ]q for the next"));
     }
 
+    // runs the ex command `cmd` at each place in the quickfix list, or with `per_file` once in
+    // each file it has places in, stopping at the first error
+    pub(crate) fn quickfix_do(&mut self, cmd: &str, per_file: bool) {
+        let Some(q) = self.quickfix.clone() else {
+            return self.error("E42: No Errors");
+        };
+        if cmd.trim().is_empty() {
+            return self.error("E471: Argument required");
+        }
+        let mut seen = Vec::new();
+        let (back, mut ran) = (self.current, 0);
+        self.no_jumps = true;
+        for (i, spot) in q.spots.iter().enumerate() {
+            let path = crate::paths::absolute(&spot.path);
+            if per_file && seen.contains(&path) {
+                continue;
+            }
+            seen.push(path);
+            if !self.go_to(&spot.path, spot.pos) {
+                break;
+            }
+            if let Some(q) = self.quickfix.as_mut() {
+                q.at = Some(i);
+            }
+            self.ex(cmd);
+            ran += 1;
+            if self.message.as_ref().is_some_and(|m| m.error) || self.should_quit() {
+                break;
+            }
+        }
+        self.no_jumps = false;
+        let failed = self.message.as_ref().is_some_and(|m| m.error);
+        if !failed {
+            let files = seen.len();
+            let others = files > 1 || self.current != back;
+            let what = if per_file { "file" } else { "place" };
+            let mut said = format!("ran at {ran} {what}{}", if ran == 1 { "" } else { "s" });
+            if others && self.docs.iter().any(|d| d.modified()) {
+                said.push_str(", :wa saves them all");
+            }
+            self.info(said);
+        }
+    }
+
     // lists the quickfix list in the picker, in its order
     pub(crate) fn open_quickfix(&mut self) {
         let Some(q) = self.quickfix.clone() else {
