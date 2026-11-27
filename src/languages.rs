@@ -49,8 +49,9 @@ pub enum Ask {
     // to the new name
     Rename(String),
     Complete,
-    // what can be done with the code from the place asked about to this one
+    // what can be done with the code from one place to another, as a selection covers
     Actions {
+        from: Pos,
         to: Pos,
     },
     // the whole file, or only these lines, with tabs this wide, or spaces in their place
@@ -341,8 +342,8 @@ impl Languages {
                     params.push(("range", Json::object([("start", position(first, 0)), ("end", end)])));
                 }
             }
-            Ask::Actions { to } => {
-                let (from, to) = (at.min(*to), at.max(*to));
+            Ask::Actions { from, to } => {
+                let (from, to) = (*from.min(to), *from.max(to));
                 let range = Json::object([
                     ("start", position(from.row, from.col)),
                     ("end", position(to.row, to.col)),
@@ -1686,9 +1687,11 @@ mod tests {
         fake.send(&diagnostics(&format!("{unused},{later}")));
         r.until(&docs, |_| false);
 
-        r.langs
-            .ask(1, Pos::new(0, 2), Ask::Actions { to: Pos::new(1, 3) })
-            .unwrap();
+        let ask = Ask::Actions {
+            from: Pos::new(1, 3),
+            to: Pos::new(0, 2),
+        };
+        r.langs.ask(1, Pos::new(1, 3), ask).unwrap();
         let a = Json::from(uri("/work/a.rs"));
         let remove = format!(
             r#"{{"documentChanges":[{{"textDocument":{{"uri":{a},"version":1}},"edits":[{{"range":{{"start":{{"line":0,"character":0}},"end":{{"line":1,"character":0}}}},"newText":""}}]}}]}}"#
