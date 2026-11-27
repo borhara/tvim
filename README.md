@@ -138,6 +138,8 @@ lsp go off
 
 **Spelling.** Words spelled wrong are underlined in red: every word in Markdown and plain text, and only comments in code. They're checked against the system's word list, `/usr/share/dict/words`, with endings like `-s`, `-ed` and `-ing` taken off. `]s` and `[s` go to the next and previous one. `z=` lists words it may have meant, and `zg` takes it as right from then on, keeping it in `spell.txt` beside your config. `:set nospell` turns it off.
 
+**Help.** `:help` opens this README inside tvim, read only, in a window above. `:help spelling` goes to a topic, and `:help zg` or `:help :Gdiff` to where a key or command is described. Topics are suggested as you type.
+
 **Splits.** `Ctrl-w s` and `Ctrl-w v` (or `:sp` and `:vs`) split the window. `Ctrl-w` with `h`/`j`/`k`/`l` moves between windows and `Ctrl-w q` closes one.
 
 **Colours.** Syntax colouring covers Rust, Python, JavaScript and TypeScript, Go, C and C++, Java, shell, Lua, TOML, YAML, JSON and Markdown. tvim uses its own colour scheme rather than your terminal's, and switches to a light one on a light background.
