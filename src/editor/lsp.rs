@@ -7,6 +7,11 @@ use crate::buffer::Pos;
 use crate::grep::Grep;
 use crate::languages::{Answer, Ask, Edit, FileEdits, OpenDoc, Place, Problem, Said};
 
+// what a set of edits is doing, to say so: as a verb, done, and being done
+pub(super) struct Doing(&'static str, &'static str, &'static str);
+
+pub(super) const RENAMING: Doing = Doing("rename", "renamed", "renaming");
+
 // how long a write waits for the language server to tidy the file
 const FORMAT_WAIT: Duration = Duration::from_secs(2);
 
@@ -72,7 +77,7 @@ impl Editor {
             (Ask::References, Said::Places(places)) => self.list_places("references", "to", &places, &answer.read),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
-            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions),
+            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions, &RENAMING),
             (Ask::Complete, Said::Items(items)) => self.offer_items(items),
             (Ask::Format { .. }, Said::Edits(files)) => self.formatted(files),
             _ => {}
@@ -136,7 +141,8 @@ impl Editor {
     }
 
     // makes each file's edits, opening those that aren't open yet, and leaves them unsaved
-    pub(super) fn apply_edits(&mut self, files: Vec<FileEdits>, asked: &[(usize, u64)]) {
+    pub(super) fn apply_edits(&mut self, files: Vec<FileEdits>, asked: &[(usize, u64)], doing: &Doing) {
+        let Doing(verb, done, being) = *doing;
         // an open file changed since asking would take the edits in the wrong places
         let open = std::iter::once((self.buffer_id, self.version, self.file.path.as_deref())).chain(
             (self.docs.iter().enumerate())
@@ -151,7 +157,7 @@ impl Editor {
             .iter()
             .find(|f| changed.contains(&crate::paths::absolute(&f.path)))
         {
-            return self.error(format!("{} changed while renaming, so nothing was", listed(&f.path)));
+            return self.error(format!("{} changed while {being}, so nothing was", listed(&f.path)));
         }
         // in full rather than canonical, as a file not saved yet has no canonical path
         let back = self.current;
@@ -180,11 +186,11 @@ impl Editor {
         self.switch_to(back);
         self.no_jumps = false;
         let mut said = match (changed, touched) {
-            (0, _) if skipped.is_empty() => return self.error("nothing to rename"),
-            (0, _) => "renamed nothing".to_string(),
-            (1, _) => "renamed 1 place".to_string(),
-            (n, 1) => format!("renamed {n} places"),
-            (n, f) => format!("renamed {n} places in {f} files"),
+            (0, _) if skipped.is_empty() => return self.error(format!("nothing to {verb}")),
+            (0, _) => format!("{done} nothing"),
+            (1, _) => format!("{done} 1 place"),
+            (n, 1) => format!("{done} {n} places"),
+            (n, f) => format!("{done} {n} places in {f} files"),
         };
         if !skipped.is_empty() {
             return self.error(format!("{said}, but couldn't open {}", skipped.join("; ")));
