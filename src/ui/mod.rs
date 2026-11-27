@@ -289,15 +289,25 @@ fn paint_kind(kind: Kind, s: &str, c: &Colors) -> String {
 }
 
 fn styled_line(line: &str, kinds: Option<&[Kind]>, ts: usize, c: &Colors) -> String {
+    styled_with(line, kinds, &[], ts, c)
+}
+
+// with the characters in `wrong` underlined, as words spelled wrong are
+fn styled_with(line: &str, kinds: Option<&[Kind]>, wrong: &[(usize, usize)], ts: usize, c: &Colors) -> String {
     let mut out = String::new();
     let mut run = String::new();
-    let mut run_kind = Kind::Plain;
+    let mut run_kind = (Kind::Plain, false);
     let mut v = 0;
+    let paint = |(kind, wrong): (Kind, bool), run: &str| match wrong {
+        true => tinsel::underline(&paint(palette::RED, run)),
+        false => paint_kind(kind, run, c),
+    };
     for (i, ch) in line.chars().enumerate() {
         let w = cell_width(ch, v, ts);
         let kind = kinds.and_then(|k| k.get(i).copied()).unwrap_or(Kind::Plain);
+        let kind = (kind, wrong.iter().any(|&(a, b)| (a..b).contains(&i)));
         if kind != run_kind && !run.is_empty() {
-            out.push_str(&paint_kind(run_kind, &run, c));
+            out.push_str(&paint(run_kind, &run));
             run.clear();
         }
         run_kind = kind;
@@ -312,7 +322,7 @@ fn styled_line(line: &str, kinds: Option<&[Kind]>, ts: usize, c: &Colors) -> Str
         v += w;
     }
     if !run.is_empty() {
-        out.push_str(&paint_kind(run_kind, &run, c));
+        out.push_str(&paint(run_kind, &run));
     }
     out
 }
@@ -1173,7 +1183,13 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
         }
 
         let kinds = v.text.highlight(row, e.options.syntax);
-        let shown = styled_line(line, kinds.as_deref(), ts, c);
+        // not while typing on the line, when the word isn't finished
+        let typing = on_cursor && matches!(mode, Mode::Insert | Mode::Replace);
+        let wrong = match typing || preview.is_some() {
+            true => Vec::new(),
+            false => e.misspelled(line, kinds.as_deref(), v.text.syntax(true)),
+        };
+        let shown = styled_with(line, kinds.as_deref(), &wrong, ts, c);
         frame.print_from(Rect::new(body.x, y, width, 1), 0, &shown, left);
         if let Some(end) = slice.fold {
             draw_fold(

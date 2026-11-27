@@ -50,6 +50,7 @@ mod pickers;
 mod quickfix;
 mod repeat;
 mod search;
+mod spelling;
 mod surround;
 mod undo;
 mod view;
@@ -140,6 +141,8 @@ pub struct Options {
     pub auto_complete: bool,
     // the language server tidies a file before it's written
     pub format_on_save: bool,
+    // words spelled wrong are underlined, in prose and comments
+    pub spell: bool,
     pub roomy: bool,
     pub zero_pad: bool,
     pub wrap: bool,
@@ -176,6 +179,7 @@ impl Default for Options {
             lsp: true,
             auto_complete: true,
             format_on_save: false,
+            spell: true,
             roomy: true,
             zero_pad: false,
             wrap: false,
@@ -213,6 +217,7 @@ impl Options {
             "lsp" => ("lsp", &mut self.lsp),
             "autocomplete" | "acp" => ("autocomplete", &mut self.auto_complete),
             "formatonsave" | "fos" => ("formatonsave", &mut self.format_on_save),
+            "spell" => ("spell", &mut self.spell),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
@@ -592,6 +597,8 @@ pub struct Editor {
     pub(crate) menu: Option<(crate::menu::Menu, Choosing)>,
     pub(crate) quickfix: Option<crate::quickfix::Quickfix>,
     multi: Option<multi::Multi>,
+    // the word list for spelling, None until it's wanted, and inside None if there's none
+    dictionary: RefCell<Option<Option<crate::spell::Dictionary>>>,
     // the lines :s would change as it's typed, as they'd be, and where it replaces in each
     pub(crate) substitute_preview: Option<HashMap<usize, crate::ex::Replaced>>,
     // the first lines of the folds closed in this buffer
@@ -704,6 +711,7 @@ impl Editor {
             menu: None,
             quickfix: None,
             multi: None,
+            dictionary: RefCell::new(None),
             substitute_preview: None,
             closed: Vec::new(),
             fold_cache: RefCell::new(None),

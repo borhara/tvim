@@ -901,6 +901,7 @@ impl Editor {
                 flag(o.lsp, "lsp"),
                 flag(o.auto_complete, "autocomplete"),
                 flag(o.format_on_save, "formatonsave"),
+                flag(o.spell, "spell"),
                 flag(o.roomy, "roomy"),
                 flag(o.zero_pad, "zeropad"),
                 flag(o.wrap, "wrap"),

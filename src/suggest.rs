@@ -107,6 +107,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
         "",
         "the language server tidies a file before it's written",
     ),
+    ("spell", "", "underline words spelled wrong, in prose and comments"),
     (
         "roomy",
         "",
