@@ -335,6 +335,21 @@ impl Languages {
         Ok(())
     }
 
+    // whether something like `ask` asked about file `id` is still waiting on its answer
+    pub fn waiting(&self, id: usize, ask: &Ask) -> bool {
+        let like = |a: &Asked| a.id == id && std::mem::discriminant(&a.ask) == std::mem::discriminant(ask);
+        self.running.values().any(|r| r.asked.values().any(like))
+    }
+
+    // no longer wants answers to anything like `ask` about file `id`, which are dropped when
+    // they come
+    pub fn forget(&mut self, id: usize, ask: &Ask) {
+        let like = |a: &Asked| a.id == id && std::mem::discriminant(&a.ask) == std::mem::discriminant(ask);
+        for r in self.running.values_mut() {
+            r.asked.retain(|_, a| !like(a));
+        }
+    }
+
     // takes in what the servers have said, then tells them what changed in `docs`
     pub fn update(&mut self, docs: &[OpenDoc], servers: &Servers) -> Update {
         let mut update = Update::default();
@@ -1540,6 +1555,38 @@ mod tests {
             };
             assert!(files[0].edits.is_empty(), "null is nothing to change");
         }
+    }
+
+    #[test]
+    fn what_was_asked_can_be_waited_on_or_forgotten() {
+        let mut r = rig();
+        let v1 = lines("a");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(
+            &docs,
+            r#"{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true}"#,
+        );
+        fake.recv().unwrap();
+        let format = Ask::Format {
+            lines: None,
+            tab_size: 4,
+            spaces: true,
+        };
+        r.langs.ask(1, Pos::new(0, 0), format.clone()).unwrap();
+        assert!(r.langs.waiting(1, &format));
+        assert!(!r.langs.waiting(1, &Ask::Hover));
+        assert!(!r.langs.waiting(2, &format), "another file");
+        reply(&mut fake, "textDocument/formatting", "[]");
+        answer(&mut r, &docs);
+        assert!(!r.langs.waiting(1, &format), "answered");
+
+        r.langs.ask(1, Pos::new(0, 0), format.clone()).unwrap();
+        r.langs.forget(1, &format);
+        assert!(!r.langs.waiting(1, &format));
+        reply(&mut fake, "textDocument/formatting", "[]");
+        r.langs.ask(1, Pos::new(0, 0), Ask::Hover).unwrap();
+        reply(&mut fake, "textDocument/hover", "null");
+        assert_eq!(answer(&mut r, &docs).ask, Ask::Hover, "the forgotten one dropped");
     }
 
     #[test]

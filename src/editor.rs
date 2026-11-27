@@ -135,6 +135,8 @@ pub struct Options {
     pub lsp: bool,
     // a language server's completions show as you type
     pub auto_complete: bool,
+    // the language server tidies a file before it's written
+    pub format_on_save: bool,
     pub roomy: bool,
     pub zero_pad: bool,
     pub wrap: bool,
@@ -170,6 +172,7 @@ impl Default for Options {
             gitlens: true,
             lsp: true,
             auto_complete: true,
+            format_on_save: false,
             roomy: true,
             zero_pad: false,
             wrap: false,
@@ -206,6 +209,7 @@ impl Options {
             "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
             "lsp" => ("lsp", &mut self.lsp),
             "autocomplete" | "acp" => ("autocomplete", &mut self.auto_complete),
+            "formatonsave" | "fos" => ("formatonsave", &mut self.format_on_save),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
@@ -1293,6 +1297,17 @@ mod tests {
         assert_eq!(e.cursor, Pos::new(0, 0), "to the first line, as = goes");
         assert_eq!(e.message.as_ref().unwrap().text, "no language server for this file");
         assert_eq!(e.buf.lines(), ["a", "  b"]);
+    }
+
+    #[test]
+    fn formatonsave_without_a_server_writes_the_file_as_it_is() {
+        let path = temp_file("fos.rs", "fn a(){}\n");
+        let mut e = Editor::open(&path).unwrap();
+        e.ex("set fos");
+        e.keys(&parse("A x<Esc>"));
+        e.ex("w");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "fn a(){} x\n");
+        assert!(e.message.as_ref().unwrap().text.ends_with("written"));
     }
 
     #[test]

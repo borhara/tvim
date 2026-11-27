@@ -95,6 +95,11 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("lsp", "", "language servers check the code as you type"),
     ("autocomplete", "", "a language server's completions show as you type"),
     (
+        "formatonsave",
+        "",
+        "the language server tidies a file before it's written",
+    ),
+    (
         "roomy",
         "",
         "a twinkling row under the top line and a blank one above the stars",

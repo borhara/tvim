@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use super::{Editor, cwd, listed, relative_to_cwd};
 use crate::buffer::Pos;
 use crate::grep::Grep;
 use crate::languages::{Answer, Ask, Edit, FileEdits, OpenDoc, Place, Problem, Said};
+
+// how long a write waits for the language server to tidy the file
+const FORMAT_WAIT: Duration = Duration::from_secs(2);
 
 impl Editor {
     // tells the language servers what changed in the open files, and takes in what they found
@@ -93,6 +97,30 @@ impl Editor {
             spaces: self.options.expand_tab,
         };
         self.ask_server(ask);
+    }
+
+    // with formatonsave, asks the language server to tidy the file and waits a moment for it,
+    // so what's written is tidy; a server that's slow or can't is left out of it
+    pub(super) fn format_before_writing(&mut self) {
+        if !self.options.lsp || !self.options.format_on_save {
+            return;
+        }
+        self.sync_languages();
+        let ask = Ask::Format {
+            lines: None,
+            tab_size: self.options.shift_width,
+            spaces: self.options.expand_tab,
+        };
+        if self.languages.ask(self.buffer_id, self.cursor, ask.clone()).is_err() {
+            return;
+        }
+        let deadline = Instant::now() + FORMAT_WAIT;
+        while self.languages.waiting(self.buffer_id, &ask) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+            self.sync_languages();
+        }
+        // so it isn't tidied after it's written, when it would look changed again
+        self.languages.forget(self.buffer_id, &ask);
     }
 
     fn formatted(&mut self, files: Vec<FileEdits>) {

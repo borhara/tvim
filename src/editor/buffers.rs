@@ -379,6 +379,9 @@ impl Editor {
             self.error("E140: Use ! to write partial buffer");
             return false;
         }
+        if ours && rows.is_none() {
+            self.format_before_writing();
+        }
         let contents = self.contents(rows);
         let existed = target.exists();
         if let Err(e) = std::fs::write(&target, &contents) {
