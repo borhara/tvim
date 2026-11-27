@@ -407,6 +407,7 @@ impl Editor {
         }
         if ours && rows.is_none() {
             self.format_before_writing();
+            self.tidy_for_editorconfig();
         }
         let contents = self.contents(rows);
         let existed = target.exists();

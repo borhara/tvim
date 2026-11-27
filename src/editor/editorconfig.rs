@@ -23,4 +23,29 @@ impl Editor {
         o.tab_stop = tab_stop.unwrap_or(o.tab_stop);
         o.shift_width = shift_width.unwrap_or(o.shift_width);
     }
+
+    // before writing: trailing spaces taken off and the last newline kept or not, if it says
+    pub(super) fn tidy_for_editorconfig(&mut self) {
+        let ec = self.file.editorconfig.clone();
+        if let Some(newline) = ec.insert_final_newline {
+            self.file.final_newline = newline;
+        }
+        if ec.trim_trailing_whitespace != Some(true) {
+            return;
+        }
+        let lines = self.buf.lines();
+        let trimmed: Vec<String> = lines
+            .iter()
+            .map(|l| l.trim_end_matches([' ', '\t']).to_string())
+            .collect();
+        if trimmed == lines {
+            return;
+        }
+        let cursor = self.cursor;
+        self.touch();
+        self.buf.replace_all(trimmed);
+        self.cursor = cursor;
+        self.clamp();
+        self.end_change();
+    }
 }

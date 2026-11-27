@@ -43,3 +43,23 @@ fn your_own_settings_come_back_in_a_file_without_one() {
     e.ex("b2");
     assert_eq!(e.options.shift_width, 3);
 }
+
+#[test]
+fn writing_trims_and_ends_the_file_as_it_says() {
+    let config = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = false\n";
+    let path = project("ec_write", config, "a.txt", "one  \ntwo\t\n");
+    let mut e = Editor::open(&path).unwrap();
+    e.ex("w");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "one\ntwo");
+    e.keys(&parse("u"));
+    assert_eq!(e.text(), "one  \ntwo\t", "taken off as a change of its own");
+    let path = project(
+        "ec_newline",
+        "root = true\n[*]\ninsert_final_newline = true\n",
+        "b.txt",
+        "no end",
+    );
+    let mut e = Editor::open(&path).unwrap();
+    e.ex("w");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "no end\n");
+}
