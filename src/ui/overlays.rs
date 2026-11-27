@@ -878,11 +878,19 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
         ),
         "]" => (
             "]".into(),
-            owned(&[("c", "the next change"), ("d", "the next problem")]),
+            owned(&[
+                ("c", "the next change"),
+                ("d", "the next problem"),
+                ("q", "the next place in the quickfix list"),
+            ]),
         ),
         "[" => (
             "[".into(),
-            owned(&[("c", "the previous change"), ("d", "the previous problem")]),
+            owned(&[
+                ("c", "the previous change"),
+                ("d", "the previous problem"),
+                ("q", "the previous place in the quickfix list"),
+            ]),
         ),
         "g" => ("g".into(), owned(G)),
         "gs" if !visual => (
