@@ -842,6 +842,7 @@ impl Editor {
                 flag(o.dim, "dim"),
                 flag(o.gitlens, "gitlens"),
                 flag(o.lsp, "lsp"),
+                flag(o.auto_complete, "autocomplete"),
                 flag(o.roomy, "roomy"),
                 flag(o.zero_pad, "zeropad"),
                 flag(o.wrap, "wrap"),

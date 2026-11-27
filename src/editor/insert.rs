@@ -1,6 +1,6 @@
 use tinsel::app::Key;
 
-use super::{Choice, Completion, Editor, Input, InsertSession, Mode, Range};
+use super::{Asking, Choice, Completion, Editor, Input, InsertSession, Mode, Range};
 use crate::buffer::Pos;
 use crate::command::Op;
 use crate::languages::{Ask, Item};
@@ -86,6 +86,9 @@ impl Editor {
                 if !c.is_whitespace() {
                     self.break_long_line();
                 }
+                self.clamp();
+                self.set_want();
+                return self.complete_as_typed(Some(c));
             }
             Key::Tab => {
                 if self.options.expand_tab {
@@ -98,7 +101,12 @@ impl Editor {
                 }
             }
             Key::Enter | Key::Ctrl('j') | Key::Ctrl('m') => self.newline(),
-            Key::Backspace | Key::Ctrl('h') => self.backspace(),
+            Key::Backspace | Key::Ctrl('h') => {
+                self.backspace();
+                self.clamp();
+                self.set_want();
+                return self.complete_as_typed(None);
+            }
             Key::Delete => {
                 let p = self.cursor;
                 let len = self.buf.line_len(p.row);
@@ -177,6 +185,31 @@ impl Editor {
         };
         // a key typed before the server answers means its answer is about text gone by
         self.completion_asked = None;
+        if let Some(c) = self.completion.as_ref().filter(|c| c.auto.is_some()) {
+            let picked = c.at.is_some();
+            match key {
+                Some(Key::Ctrl(c @ ('n' | 'p'))) => self.cycle_completion(c == 'p'),
+                Some(k @ (Key::Down | Key::Up)) => self.cycle_completion(k == Key::Up),
+                Some(Key::Ctrl('y')) => {
+                    if !picked {
+                        self.pick_completion(Some(0));
+                    }
+                    self.accept_completion();
+                }
+                Some(Key::Ctrl('e')) => {
+                    self.pick_completion(None);
+                    self.completion = None;
+                }
+                // typing more of the word matches the choices again once it's in
+                Some(Key::Char(c)) if !picked && is_word(c) => return false,
+                // anything else is typed as usual, keeping a choice that has gone in
+                _ => {
+                    self.accept_completion();
+                    return false;
+                }
+            }
+            return true;
+        }
         if self.completion.is_some() {
             match key {
                 Some(Key::Ctrl(c @ ('n' | 'p'))) => self.cycle_completion(c == 'p'),
@@ -215,11 +248,35 @@ impl Editor {
         if self.options.lsp {
             self.sync_languages();
             if self.languages.ask(self.buffer_id, self.cursor, Ask::Complete).is_ok() {
-                self.completion_asked = Some(back);
+                self.completion_asked = Some(Asking::Typed { back });
                 return;
             }
         }
         self.complete_words(back);
+    }
+
+    // after typing `c`, what's offered is matched again, and the server asked afresh when
+    // there's a word before the cursor or `c` is one it completes after
+    pub(super) fn complete_as_typed(&mut self, c: Option<char>) {
+        if !self.options.lsp || !self.options.auto_complete || self.mode != Mode::Insert || self.insert_replay {
+            return;
+        }
+        if let Some(items) = self.completion.as_mut().and_then(|c| c.auto.take()) {
+            self.completion = None;
+            self.show_items(items, Asking::Auto);
+        }
+        let Some(triggers) = self.languages.completion_triggers(self.buffer_id) else {
+            return;
+        };
+        let trigger = c.is_some_and(|c| triggers.iter().any(|t| t.ends_with(c)));
+        if !trigger && self.word_before().1.is_empty() {
+            self.completion = None;
+            return;
+        }
+        self.sync_languages();
+        if self.languages.ask(self.buffer_id, self.cursor, Ask::Complete).is_ok() {
+            self.completion_asked = Some(Asking::Auto);
+        }
     }
 
     fn complete_words(&mut self, back: bool) {
@@ -245,12 +302,21 @@ impl Editor {
     // what the server suggested, matched against the word before the cursor; with nothing to
     // offer, words from the open files are
     pub(super) fn offer_items(&mut self, items: Vec<Item>) {
-        let Some(back) = self.completion_asked.take() else {
+        let Some(asking) = self.completion_asked.take() else {
             return;
         };
         if self.mode != Mode::Insert {
             return;
         }
+        // a choice made from what was shown before stays
+        if self.completion.as_ref().is_some_and(|c| c.at.is_some()) {
+            return;
+        }
+        self.completion = None;
+        self.show_items(items, asking);
+    }
+
+    fn show_items(&mut self, items: Vec<Item>, asking: Asking) {
         let (start, prefix) = self.word_before();
         let row = self.cursor.row;
         // the text replaced starts where the earliest item's does, if that's on this line
@@ -277,11 +343,23 @@ impl Editor {
             .collect();
         // those that start with what was typed first, otherwise in the server's order
         choices.sort_by_key(|(rank, _)| *rank);
-        if choices.is_empty() {
-            return self.complete_words(back);
+        let choices: Vec<Choice> = choices.into_iter().map(|(_, c)| c).collect();
+        match asking {
+            Asking::Typed { back } if choices.is_empty() => self.complete_words(back),
+            Asking::Typed { back } => self.offer(from, typed, prefix, choices, back),
+            // nothing worth showing when the word typed is all there is
+            Asking::Auto if choices.iter().all(|c| c.keep == 0 && c.text == typed) => {}
+            Asking::Auto => {
+                self.completion = Some(Completion {
+                    from,
+                    typed,
+                    prefix,
+                    choices,
+                    at: None,
+                    auto: Some(items),
+                });
+            }
         }
-        let choices = choices.into_iter().map(|(_, c)| c).collect();
-        self.offer(from, typed, prefix, choices, back);
     }
 
     fn offer(&mut self, from: Pos, typed: String, prefix: String, choices: Vec<Choice>, back: bool) {
@@ -294,6 +372,7 @@ impl Editor {
             prefix,
             choices,
             at: None,
+            auto: None,
         });
         self.cycle_completion(back);
     }

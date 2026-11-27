@@ -239,6 +239,19 @@ impl Languages {
         self.choices.clear();
     }
 
+    // the characters other than those of words that the server for file `id` would complete
+    // after, or None if it's not ready to complete things
+    pub fn completion_triggers(&self, id: usize) -> Option<Vec<String>> {
+        let s = self.synced.get(&id)?;
+        let r = self.running.get(&s.key).filter(|r| r.server.ready())?;
+        let provider = &r.server.capabilities()["completionProvider"];
+        if !provides(provider) {
+            return None;
+        }
+        let triggers = provider["triggerCharacters"].as_array().unwrap_or(&[]);
+        Some(triggers.iter().filter_map(|t| t.as_str().map(str::to_string)).collect())
+    }
+
     // asks the server for file `id` about the place `at`, the answer coming with a later update
     pub fn ask(&mut self, id: usize, at: Pos, ask: Ask) -> Result<(), String> {
         let Some(s) = self.synced.get(&id) else {

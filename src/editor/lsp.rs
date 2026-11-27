@@ -261,7 +261,18 @@ impl Editor {
     // as if Ctrl-n had asked the server, which answered with `items`, for testing
     #[cfg(test)]
     pub(crate) fn suggested(&mut self, items: Vec<crate::languages::Item>) {
-        self.completion_asked = Some(false);
+        self.suggested_by(items, super::Asking::Typed { back: false });
+    }
+
+    // as if typing had asked the server, which answered with `items`, for testing
+    #[cfg(test)]
+    pub(crate) fn suggested_as_typed(&mut self, items: Vec<crate::languages::Item>) {
+        self.suggested_by(items, super::Asking::Auto);
+    }
+
+    #[cfg(test)]
+    fn suggested_by(&mut self, items: Vec<crate::languages::Item>, asking: super::Asking) {
+        self.completion_asked = Some(asking);
         let versions = vec![(self.buffer_id, self.version)];
         self.answered(Answer {
             id: self.buffer_id,

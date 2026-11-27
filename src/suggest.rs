@@ -88,6 +88,7 @@ const OPTIONS: &[(&str, &str, &str)] = &[
     ("dim", "", "fade whichever of text and sidebar is not in use"),
     ("gitlens", "", "who last changed the cursor's line, and when"),
     ("lsp", "", "language servers check the code as you type"),
+    ("autocomplete", "", "a language server's completions show as you type"),
     (
         "roomy",
         "",

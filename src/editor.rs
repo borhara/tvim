@@ -133,6 +133,8 @@ pub struct Options {
     pub dim: bool,
     pub gitlens: bool,
     pub lsp: bool,
+    // a language server's completions show as you type
+    pub auto_complete: bool,
     pub roomy: bool,
     pub zero_pad: bool,
     pub wrap: bool,
@@ -167,6 +169,7 @@ impl Default for Options {
             dim: true,
             gitlens: true,
             lsp: true,
+            auto_complete: true,
             roomy: true,
             zero_pad: false,
             wrap: false,
@@ -202,6 +205,7 @@ impl Options {
             "dim" => ("dim", &mut self.dim),
             "gitlens" | "gl" => ("gitlens", &mut self.gitlens),
             "lsp" => ("lsp", &mut self.lsp),
+            "autocomplete" | "acp" => ("autocomplete", &mut self.auto_complete),
             "roomy" | "ro" => ("roomy", &mut self.roomy),
             "zeropad" | "zp" => ("zeropad", &mut self.zero_pad),
             "wrap" => ("wrap", &mut self.wrap),
@@ -275,6 +279,17 @@ pub(crate) struct Completion {
     prefix: String,
     choices: Vec<Choice>,
     at: Option<usize>,
+    // shown as the server answered while typing, with nothing put in until one is chosen, and
+    // what it said, to match again as more is typed
+    auto: Option<Vec<crate::languages::Item>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Asking {
+    // by Ctrl-n, or by Ctrl-p to start from the end
+    Typed { back: bool },
+    // by typing, to show what's offered without choosing any
+    Auto,
 }
 
 // one of the things offered to type, a word from the open files or what a server suggests
@@ -542,8 +557,8 @@ pub struct Editor {
     insert_replay: bool,
     insert: InsertSession,
     pub(crate) completion: Option<Completion>,
-    // completions asked of the language server, and whether Ctrl-p asked, to show when they come
-    completion_asked: Option<bool>,
+    // completions asked of the language server, to show when they come
+    completion_asked: Option<Asking>,
     recording: Option<(char, Vec<Input>)>,
     macros: HashMap<char, Vec<Input>>,
     last_macro: Option<char>,
@@ -1222,18 +1237,72 @@ mod tests {
         completed(&mut e, vec![item("zzz", None, "zzz")]);
         assert_eq!(e.buf.lines(), ["plenty", "plenty"]);
         e.keys(&parse("<C-e>"));
-        e.completion_asked = Some(false);
+        e.completion_asked = Some(super::Asking::Typed { back: false });
         let refused = answer(&e, Ask::Complete, Said::Refused("busy".into()));
         e.answered(refused);
         assert_eq!(e.buf.lines(), ["plenty", "plenty"], "nor when it refuses");
         assert!(e.message.is_none(), "which isn't worth saying");
     }
 
+    fn labels(e: &Editor) -> Vec<String> {
+        let (_, choices, _) = e.completion().expect("shown");
+        choices.iter().map(|c| c.label.clone()).collect()
+    }
+
+    #[test]
+    fn completions_shown_while_typing_go_in_only_when_chosen() {
+        let mut e = Editor::with_text("");
+        e.keys(&parse("ip"));
+        e.suggested_as_typed(vec![item("print", None, "print"), item("push", None, "push")]);
+        assert_eq!(e.buf.lines(), ["p"], "nothing put in yet");
+        assert_eq!(e.completion().unwrap().2, None);
+        e.keys(&parse("u"));
+        assert_eq!(labels(&e), ["push"], "matched again as more is typed");
+        e.keys(&parse("<C-n>"));
+        assert_eq!(e.buf.lines(), ["push"]);
+        e.keys(&parse("(<Esc>"));
+        assert_eq!(e.buf.lines(), ["push()"], "and kept when typing carries on");
+    }
+
+    #[test]
+    fn ctrl_y_takes_the_first_completion_shown_while_typing() {
+        let mut e = Editor::with_text("x\nx");
+        e.keys(&parse("ip"));
+        e.suggested_as_typed(vec![item("print", None, "print"), item("push", None, "push")]);
+        e.keys(&parse("<C-y>"));
+        assert_eq!(e.buf.lines(), ["printx", "x"]);
+        assert!(e.completion().is_none());
+        e.keys(&parse("<Esc>j0."));
+        assert_eq!(e.buf.lines(), ["printx", "printx"], "and . has it as typed");
+    }
+
+    #[test]
+    fn enter_and_esc_go_on_as_usual_past_completions_shown_while_typing() {
+        let mut e = Editor::with_text("");
+        e.keys(&parse("ip"));
+        e.suggested_as_typed(vec![item("print", None, "print")]);
+        e.keys(&parse("<CR>"));
+        assert_eq!(e.buf.lines(), ["p", ""], "a new line, nothing chosen");
+        e.keys(&parse("p"));
+        e.suggested_as_typed(vec![item("print", None, "print")]);
+        e.keys(&parse("<Esc>"));
+        assert_eq!(e.mode, super::Mode::Normal, "esc leaves insert mode");
+        assert_eq!(e.buf.lines(), ["p", "p"]);
+    }
+
+    #[test]
+    fn completions_that_only_repeat_the_word_typed_arent_shown() {
+        let mut e = Editor::with_text("");
+        e.keys(&parse("ipush"));
+        e.suggested_as_typed(vec![item("push", None, "push")]);
+        assert!(e.completion().is_none());
+    }
+
     #[test]
     fn a_completion_answered_after_another_key_is_dropped() {
         let mut e = Editor::with_text("s.p");
         e.keys(&parse("A"));
-        e.completion_asked = Some(false);
+        e.completion_asked = Some(super::Asking::Typed { back: false });
         let late = answer(&e, Ask::Complete, Said::Items(vec![item("push", None, "push")]));
         e.keys(&parse("<Left><Right>"));
         e.answered(late);
