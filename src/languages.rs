@@ -48,6 +48,7 @@ pub enum Ask {
     References,
     // to the new name
     Rename(String),
+    Complete,
 }
 
 // a stretch of a file, in the editor's columns
@@ -72,9 +73,23 @@ pub struct FileEdits {
     pub edits: Vec<Edit>,
 }
 
+// one of the things a server offers to type at the cursor
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Item {
+    pub label: String,
+    // what goes in, over `range` when the server gives one, or else the word before the cursor
+    pub text: String,
+    pub range: Option<(Pos, Pos)>,
+    // what's matched against what has been typed
+    pub filter: String,
+    pub kind: Option<&'static str>,
+    pub detail: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Said {
     Places(Vec<Place>),
+    Items(Vec<Item>),
     Edits(Vec<FileEdits>),
     // markdown, empty when there's nothing to say
     Text(String),
@@ -243,6 +258,7 @@ impl Languages {
             Ask::Hover => ("textDocument/hover", "hoverProvider", "describe things"),
             Ask::References => ("textDocument/references", "referencesProvider", "find references"),
             Ask::Rename(_) => ("textDocument/rename", "renameProvider", "rename things"),
+            Ask::Complete => ("textDocument/completion", "completionProvider", "complete things"),
         };
         if !provides(&r.server.capabilities()[provider]) {
             return Err(format!("{} can't {what}", r.name));
@@ -332,7 +348,7 @@ impl Languages {
                     Incoming::Reply { id, result } => {
                         if let Some(asked) = r.asked.remove(&id) {
                             let (said, read) = match result {
-                                Ok(result) => said(&asked.ask, &result, synced, r.server.encoding()),
+                                Ok(result) => said(&asked, &result, synced, r.server.encoding()),
                                 Err(e) => (Said::Refused(e.message), HashMap::new()),
                             };
                             update.answers.push(Answer {
@@ -467,16 +483,20 @@ fn provides(capability: &Json) -> bool {
 
 // what was said, and the files read from disk to make sense of it
 fn said(
-    ask: &Ask,
+    asked: &Asked,
     result: &Json,
     synced: &HashMap<usize, Synced>,
     encoding: Encoding,
 ) -> (Said, HashMap<PathBuf, Vec<String>>) {
     let mut lines = Lines::new(synced);
-    let said = match ask {
+    let said = match &asked.ask {
         Ask::Definition | Ask::References => Said::Places(places(result, &mut lines, encoding)),
         Ask::Hover => Said::Text(hover_text(&result["contents"])),
         Ask::Rename(_) => Said::Edits(file_edits(result, &mut lines, encoding)),
+        Ask::Complete => {
+            let text = synced.get(&asked.id).map_or(&[][..], |s| s.lines.as_slice());
+            Said::Items(items(result, text, encoding))
+        }
     };
     // in full, as the editor has its paths
     let read = lines.read.into_iter().map(|(p, l)| (paths::absolute(&p), l)).collect();
@@ -513,6 +533,78 @@ fn file_edits(workspace: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Fi
         }
     }
     out
+}
+
+// a CompletionList or a bare list of CompletionItems, in the order the server would show them
+fn items(result: &Json, lines: &[String], encoding: Encoding) -> Vec<Item> {
+    let list = match result {
+        Json::Array(list) => list.as_slice(),
+        _ => result["items"].as_array().unwrap_or(&[]),
+    };
+    let pos = |p: &Json| {
+        let row = p["line"].as_u64().unwrap_or(0) as usize;
+        let line = lines.get(row).map_or("", String::as_str);
+        Pos::new(row, encoding.chars(line, p["character"].as_u64().unwrap_or(0) as usize))
+    };
+    let mut out: Vec<(String, Item)> = list
+        .iter()
+        .filter_map(|i| {
+            let label = i["label"].as_str()?.to_string();
+            let edit = &i["textEdit"];
+            // an InsertReplaceEdit gives both; inserting leaves the rest of the word alone
+            let range = match edit.get("insert") {
+                Some(r) => r,
+                None => &edit["range"],
+            };
+            let range = range.get("start").map(|_| (pos(&range["start"]), pos(&range["end"])));
+            let text = (edit["newText"].as_str())
+                .or(i["insertText"].as_str())
+                .unwrap_or(&label)
+                .to_string();
+            let item = Item {
+                filter: i["filterText"].as_str().unwrap_or(&label).to_string(),
+                kind: i["kind"].as_u64().and_then(kind_name),
+                detail: i["detail"].as_str().unwrap_or("").trim().to_string(),
+                label: label.clone(),
+                text,
+                range,
+            };
+            Some((i["sortText"].as_str().unwrap_or(&label).to_string(), item))
+        })
+        .collect();
+    out.sort_by(|(a, x), (b, y)| a.cmp(b).then_with(|| x.label.cmp(&y.label)));
+    out.into_iter().map(|(_, i)| i).collect()
+}
+
+fn kind_name(kind: u64) -> Option<&'static str> {
+    const NAMES: [&str; 25] = [
+        "text",
+        "method",
+        "function",
+        "constructor",
+        "field",
+        "variable",
+        "class",
+        "interface",
+        "module",
+        "property",
+        "unit",
+        "value",
+        "enum",
+        "keyword",
+        "snippet",
+        "color",
+        "file",
+        "reference",
+        "folder",
+        "member",
+        "constant",
+        "struct",
+        "event",
+        "operator",
+        "type",
+    ];
+    NAMES.get((kind as usize).checked_sub(1)?).copied()
 }
 
 // MarkupContent, a MarkedString, or a list of MarkedStrings
@@ -1259,6 +1351,55 @@ mod tests {
         r.langs.ask(1, Pos::new(0, 0), Ask::Hover).unwrap();
         reply(&mut fake, "textDocument/hover", "null");
         assert_eq!(answer(&mut r, &docs).said, Said::Text(String::new()), "nothing to say");
+    }
+
+    #[test]
+    fn completions_come_back_in_the_servers_order_with_their_ranges() {
+        let mut r = rig();
+        let v1 = lines("let 😀 = s.");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let mut fake = r.start(&docs, r#"{"textDocumentSync":1,"completionProvider":{}}"#);
+        fake.recv().unwrap();
+        r.langs.ask(1, Pos::new(0, 10), Ask::Complete).unwrap();
+        let list = r#"{"isIncomplete":false,"items":[
+            {"label":"len","kind":2,"detail":"fn(&self) -> usize ","sortText":"b"},
+            {"label":"push","kind":2,"sortText":"a","insertText":"push_str",
+             "textEdit":{"insert":{"start":{"line":0,"character":11},"end":{"line":0,"character":11}},
+                         "replace":{"start":{"line":0,"character":11},"end":{"line":0,"character":12}},"newText":"push"}},
+            {"label":"x","kind":99,"filterText":"xx",
+             "textEdit":{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":6}},"newText":"y"}},
+            {"kind":1}
+        ]}"#;
+        reply(&mut fake, "textDocument/completion", list);
+        let Said::Items(items) = answer(&mut r, &docs).said else {
+            panic!("items")
+        };
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            ["push", "len", "x"],
+            "by sortText, then label, and only those with one"
+        );
+        assert_eq!(items[0].text, "push", "the edit's text over insertText");
+        assert_eq!(
+            items[0].range,
+            Some((Pos::new(0, 10), Pos::new(0, 10))),
+            "inserting, in the editor's columns"
+        );
+        assert_eq!(
+            (items[1].kind, items[1].detail.as_str()),
+            (Some("method"), "fn(&self) -> usize")
+        );
+        assert_eq!((items[1].text.as_str(), items[1].range), ("len", None));
+        assert_eq!((items[2].kind, items[2].filter.as_str()), (None, "xx"));
+        assert_eq!(items[2].range, Some((Pos::new(0, 4), Pos::new(0, 5))));
+
+        r.langs.ask(1, Pos::new(0, 10), Ask::Complete).unwrap();
+        reply(&mut fake, "textDocument/completion", r#"[{"label":"a"}]"#);
+        let Said::Items(items) = answer(&mut r, &docs).said else {
+            panic!("items")
+        };
+        assert_eq!(items[0].filter, "a", "or as a bare list");
     }
 
     #[test]

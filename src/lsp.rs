@@ -320,6 +320,11 @@ fn initialize_params(root: &Path) -> Json {
                         ("definition", Json::object([("linkSupport", true.into())])),
                         ("references", Json::Object(Vec::new())),
                         ("rename", Json::Object(Vec::new())),
+                        // without snippets, so what comes back is plain text to type
+                        (
+                            "completion",
+                            Json::object([("completionItem", Json::object([("snippetSupport", false.into())]))]),
+                        ),
                         (
                             "hover",
                             Json::object([("contentFormat", vec!["markdown", "plaintext"].into())]),
