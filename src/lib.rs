@@ -29,6 +29,7 @@ pub mod quickfix;
 pub mod regex;
 pub mod servers;
 pub mod session;
+pub mod spell;
 pub mod suggest;
 mod sync;
 pub mod syntax;
