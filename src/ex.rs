@@ -309,7 +309,7 @@ impl Editor {
         } else if is("diffoff", 5) {
             self.diff_off(force);
         } else if is("help", 1) {
-            self.info(HELP);
+            self.show_help(arg);
         } else if is("shell", 2) {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
             self.push_effect(Effect::Shell(shell));
@@ -1141,9 +1141,6 @@ fn is_known(word: &str) -> bool {
     ]
     .contains(&word)
 }
-
-const HELP: &str =
-    "i insert · Esc normal · :w save · :q quit · :wq both · u undo · ^R redo · /text search · :s/a/b/g replace";
 
 // how many to move by, as :cnext 3 gives, or one
 fn count_arg(arg: &str) -> isize {

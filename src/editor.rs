@@ -42,6 +42,7 @@ mod diffmode;
 mod editorconfig;
 mod folds;
 mod git;
+mod help;
 mod input;
 mod insert;
 mod jumps;

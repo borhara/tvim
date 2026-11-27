@@ -78,7 +78,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("diffthis", "difft", "compare this window with another, as each does it"),
     ("diffoff", "diffo", "stop comparing this window, or ! every window"),
     ("preview", "prev", "show or hide a markdown preview"),
-    ("help", "h", "a quick reminder"),
+    ("help", "h", "the docs, at a topic or key if given"),
     ("version", "ve", "show the version"),
 ];
 
