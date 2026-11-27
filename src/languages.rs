@@ -49,6 +49,12 @@ pub enum Ask {
     // to the new name
     Rename(String),
     Complete,
+    // the whole file, or only these lines, with tabs this wide, or spaces in their place
+    Format {
+        lines: Option<(usize, usize)>,
+        tab_size: usize,
+        spaces: bool,
+    },
 }
 
 // a stretch of a file, in the editor's columns
@@ -274,14 +280,43 @@ impl Languages {
             Ask::References => ("textDocument/references", "referencesProvider", "find references"),
             Ask::Rename(_) => ("textDocument/rename", "renameProvider", "rename things"),
             Ask::Complete => ("textDocument/completion", "completionProvider", "complete things"),
+            Ask::Format { lines: None, .. } => {
+                ("textDocument/formatting", "documentFormattingProvider", "format files")
+            }
+            Ask::Format { lines: Some(_), .. } => (
+                "textDocument/rangeFormatting",
+                "documentRangeFormattingProvider",
+                "format only some lines",
+            ),
         };
         if !provides(&r.server.capabilities()[provider]) {
             return Err(format!("{} can't {what}", r.name));
         }
-        let line = s.lines.get(at.row).map_or("", String::as_str);
-        let character = r.server.encoding().units(line, at.col);
-        let position = Json::object([("line", at.row.into()), ("character", character.into())]);
-        let mut params = vec![("textDocument", document(&s.uri)), ("position", position)];
+        let encoding = r.server.encoding();
+        let position = |row: usize, col: usize| {
+            let line = s.lines.get(row).map_or("", String::as_str);
+            Json::object([("line", row.into()), ("character", encoding.units(line, col).into())])
+        };
+        let mut params = vec![("textDocument", document(&s.uri))];
+        match &ask {
+            Ask::Format {
+                lines,
+                tab_size,
+                spaces,
+            } => {
+                let options = Json::object([("tabSize", (*tab_size).into()), ("insertSpaces", (*spaces).into())]);
+                params.push(("options", options));
+                if let Some((first, last)) = *lines {
+                    // to the start of the line after, or the end of the last
+                    let end = match last + 1 < s.lines.len() {
+                        true => position(last + 1, 0),
+                        false => position(last, usize::MAX),
+                    };
+                    params.push(("range", Json::object([("start", position(first, 0)), ("end", end)])));
+                }
+            }
+            _ => params.push(("position", position(at.row, at.col))),
+        }
         match &ask {
             Ask::References => params.push(("context", Json::object([("includeDeclaration", true.into())]))),
             Ask::Rename(name) => params.push(("newName", name.as_str().into())),
@@ -511,6 +546,21 @@ fn said(
         Ask::Complete => {
             let text = synced.get(&asked.id).map_or(&[][..], |s| s.lines.as_slice());
             Said::Items(items(result, text, encoding))
+        }
+        // a list of TextEdits, all to the file asked about
+        Ask::Format { .. } => {
+            let path = synced.get(&asked.id).and_then(|s| lsp::uri_path(&s.uri));
+            let files = path.map(|path| {
+                let edits = (result.as_array().unwrap_or(&[]).iter())
+                    .map(|e| Edit {
+                        start: lines.pos(&path, &e["range"]["start"], encoding),
+                        end: lines.pos(&path, &e["range"]["end"], encoding),
+                        text: e["newText"].as_str().unwrap_or("").to_string(),
+                    })
+                    .collect();
+                FileEdits { path, edits }
+            });
+            Said::Edits(files.into_iter().collect())
         }
     };
     // in full, as the editor has its paths
@@ -1429,6 +1479,67 @@ mod tests {
             panic!("items")
         };
         assert_eq!(items[0].filter, "a", "or as a bare list");
+    }
+
+    #[test]
+    fn formatting_is_asked_for_the_whole_file_or_some_lines() {
+        let mut r = rig();
+        let v1 = lines("fn a(){}\nfn b(){}\nfn 😀(){}");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let capabilities =
+            r#"{"textDocumentSync":1,"documentFormattingProvider":true,"documentRangeFormattingProvider":true}"#;
+        let mut fake = r.start(&docs, capabilities);
+        fake.recv().unwrap();
+        let whole = Ask::Format {
+            lines: None,
+            tab_size: 2,
+            spaces: false,
+        };
+        r.langs.ask(1, Pos::new(0, 0), whole).unwrap();
+        let edits = r#"[{"range":{"start":{"line":0,"character":6},"end":{"line":0,"character":6}},"newText":" "}]"#;
+        let asked = reply(&mut fake, "textDocument/formatting", edits);
+        assert_eq!(
+            asked["params"]["options"].to_string(),
+            r#"{"tabSize":2,"insertSpaces":false}"#
+        );
+        assert_eq!(asked["params"].get("position"), None);
+        let edit = Edit {
+            start: Pos::new(0, 6),
+            end: Pos::new(0, 6),
+            text: " ".into(),
+        };
+        let path = paths::absolute(Path::new("/work/a.rs"));
+        assert_eq!(
+            answer(&mut r, &docs).said,
+            Said::Edits(vec![FileEdits {
+                path,
+                edits: vec![edit]
+            }])
+        );
+
+        for (lines, end) in [((0, 0), (1, 0)), ((1, 2), (3, 0)), ((3, 3), (3, 0))] {
+            let some = Ask::Format {
+                lines: Some(lines),
+                tab_size: 4,
+                spaces: true,
+            };
+            r.langs.ask(1, Pos::new(0, 0), some).unwrap();
+            let asked = reply(&mut fake, "textDocument/rangeFormatting", "null");
+            let range = &asked["params"]["range"];
+            assert_eq!(
+                (range["start"]["line"].as_u64(), range["start"]["character"].as_u64()),
+                (Some(lines.0 as u64), Some(0))
+            );
+            assert_eq!(
+                (range["end"]["line"].as_u64(), range["end"]["character"].as_u64()),
+                (Some(end.0), Some(end.1)),
+                "to the next line's start, or the end of the last"
+            );
+            let Said::Edits(files) = answer(&mut r, &docs).said else {
+                panic!("edits")
+            };
+            assert!(files[0].edits.is_empty(), "null is nothing to change");
+        }
     }
 
     #[test]

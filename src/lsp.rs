@@ -320,6 +320,8 @@ fn initialize_params(root: &Path) -> Json {
                         ("definition", Json::object([("linkSupport", true.into())])),
                         ("references", Json::Object(Vec::new())),
                         ("rename", Json::Object(Vec::new())),
+                        ("formatting", Json::Object(Vec::new())),
+                        ("rangeFormatting", Json::Object(Vec::new())),
                         // without snippets, so what comes back is plain text to type
                         (
                             "completion",
