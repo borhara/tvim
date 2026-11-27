@@ -75,6 +75,8 @@ Normal, insert, replace and visual modes work as you'd expect, along with motion
 | `Space m` | Markdown preview |
 | `Space n` | Rename what's under the cursor, with a language server |
 | `Space c` | Code: `a` for what the language server can do here, `f` formats the file |
+| `Space s` / `Space S` | Symbols in the file, or across the project |
+| `Space x` | Problems in every open file |
 | `Space z` | Zen mode: just the text, centred |
 
 **Surround.** `ys` with a motion or text object and then a bracket or quote puts that pair around the text, so `ysiw)` turns `foo` into `(foo)`. `yss` does the whole line, and `S` does a selection in visual mode, each row on its own in block mode. `ds"` takes away the quotes around the cursor, and `cs"'` swaps them for single quotes. An opening bracket, as in `ysiw(`, puts spaces inside, and with `ds(` or `cs(` it takes them away. LazyVim's names work too: `gsa` for `ys`, `gsd` for `ds` and `gsr` for `cs`.
@@ -97,6 +99,9 @@ The server also knows what the code means, so with the cursor on a name:
 | `gr` | List everywhere it's used, with a preview. Type to narrow the list |
 | `K` | Show its type and docs beside the cursor, until the next key |
 | `Space n` or `:rename new_name` | Rename it in every file. Files it changes are left unsaved, and `:wa` saves them |
+| `Space s` | List what's defined in the file. Type to narrow the list |
+| `Space S` or `:Symbols name` | List what's defined across the project with that name |
+| `Space x` | List the problems in every open file, worst first, to go through with `]q` and `[q` |
 | `Space c a` | List what the server can do here, such as fixing the problem on the line or adding an import, and do the one you choose. In visual mode it's about what's selected |
 
 The server can tidy the code too. `Space c f` or `:Format` formats the file, and `=` formats the lines it covers, so `==` does one line, `=ip` a paragraph and `:10,20Format` those lines. Each is one change for `u` to undo. `:set formatonsave` formats every file before it's written, if its server answers within two seconds.
@@ -120,6 +125,8 @@ tvim knows these servers, and runs whichever you have:
 lsp python pylsp
 lsp go off
 ```
+
+**Quickfix list.** `Ctrl-q` in a search, or in any list of places such as `gr` or `Space x`, keeps what's listed (narrowed to what you've typed) as the quickfix list. `]q` and `[q` (or `:cn` and `:cp`) go to the next and previous place, `:cfirst`, `:clast` and `:cc 3` to others, and `:copen` lists them again. `:cdo cmd` runs a `:` command at each place and `:cfdo cmd` once in each file, so a search for `old_name` then `Ctrl-q` and `:cfdo %s/old_name/new_name/g` replaces it across the project. `:wa` saves the files changed.
 
 **Several files.** Open files are listed along the top. Switch with `gt`/`gT`, `:b name` or `:bn`/`:bp`, and close one with `:bd`. `:wa` saves them all.
 
