@@ -74,6 +74,8 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("copen", "cope", "list the quickfix list's places, kept with Ctrl-q"),
     ("cnext", "cn", "the next place in the quickfix list"),
     ("cprevious", "cp", "the previous place in the quickfix list"),
+    ("diffthis", "difft", "compare this window with another, as each does it"),
+    ("diffoff", "diffo", "stop comparing this window, or ! every window"),
     ("preview", "prev", "show or hide a markdown preview"),
     ("help", "h", "a quick reminder"),
     ("version", "ve", "show the version"),

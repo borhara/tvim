@@ -302,6 +302,10 @@ impl Editor {
             self.show_registers();
         } else if is("marks", 4) {
             self.show_marks();
+        } else if is("diffthis", 5) {
+            self.diff_this();
+        } else if is("diffoff", 5) {
+            self.diff_off(force);
         } else if is("help", 1) {
             self.info(HELP);
         } else if is("shell", 2) {

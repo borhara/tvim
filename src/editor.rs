@@ -38,6 +38,7 @@ mod block;
 mod buffers;
 mod cmdline;
 mod conflicts;
+mod diffmode;
 mod folds;
 mod git;
 mod input;
@@ -309,6 +310,9 @@ enum Asking {
 
 // the closed folds, outermost first, for the version of the text and the first lines closed
 type FoldCache = (u64, Vec<usize>, Vec<(usize, usize)>);
+
+// the changes between the windows compared, for their buffers and versions
+type DiffPairCache = ((usize, u64, usize, u64), Rc<[Hunk]>);
 
 // the merge conflicts in a buffer, for its id and the version of its text
 type ConflictCache = ((usize, u64), Vec<crate::conflict::Conflict>);
@@ -664,6 +668,9 @@ pub struct Editor {
     pub(crate) outline: RefCell<Option<OutlineCache>>,
     // the focused window's cursor and scroll live in the fields above; wins has the rest
     pub(crate) wins: Vec<Win>,
+    // the windows :diffthis compares, the first two still open being the pair
+    diff_wins: Vec<usize>,
+    diff_cache: RefCell<Option<DiffPairCache>>,
     pub(crate) layout: Node,
     pub(crate) focus: usize,
     pub(crate) next_win: usize,
@@ -771,6 +778,8 @@ impl Editor {
             next_id: 2,
             recent: Vec::new(),
             outline: RefCell::new(None),
+            diff_wins: Vec::new(),
+            diff_cache: RefCell::new(None),
             wins: vec![Win {
                 id: 1,
                 buffer: 1,

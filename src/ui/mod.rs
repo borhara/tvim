@@ -1020,6 +1020,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let block = e.block_selection().filter(|_| active);
     let pattern = e.search_pattern();
     let marks = v.text.change_marks();
+    let compared = e.diff_view(v.id);
     let conflicts = match v.text.id == e.buffer_id {
         true => e.conflicts(),
         false => crate::conflict::find(buf.lines()),
@@ -1086,6 +1087,19 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
                 Part::Theirs => (palette::AMBER, 0.14),
             };
             frame.tint(Rect::new(body.x, y, body.width, 1), mix(c.app, color, amount));
+        }
+
+        // compared with another window: what's gone from this side or new on it, and changed
+        if let Some((old, hunks)) = &compared {
+            let side = |h: &crate::diff::Hunk| if *old { h.old.clone() } else { h.new.clone() };
+            if let Some(h) = hunks.iter().find(|h| side(h).contains(&row)) {
+                let color = match (h.old.is_empty(), h.new.is_empty()) {
+                    (_, true) => palette::RED,
+                    (true, _) => palette::SAGE,
+                    _ => palette::AMBER,
+                };
+                frame.tint(Rect::new(body.x, y, body.width, 1), mix(c.app, color, 0.16));
+            }
         }
 
         let glow = if active { e.anim.glow(row, time) } else { 0.0 };
