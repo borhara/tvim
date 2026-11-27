@@ -7,6 +7,7 @@ pub mod complete;
 pub mod conflict;
 pub mod diff;
 pub mod editor;
+pub mod editorconfig;
 mod ex;
 pub mod explorer;
 pub mod finder;
