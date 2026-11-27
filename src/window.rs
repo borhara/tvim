@@ -275,12 +275,15 @@ impl Editor {
                 let w = self.wins.iter().find(|w| w.id == id)?;
                 let text = self.text_of(w.buffer);
                 let last = text.buf.last_row();
+                // compared with the focused window, it scrolls along with it
+                let along = |row: usize, own: usize| self.diff_row(self.focus, id, row).unwrap_or(own);
+                let (top, row) = (along(self.top.get(), w.top), along(self.cursor.row, w.cursor.row));
                 Some(View {
                     id,
                     rect,
                     focused: false,
-                    cursor: Pos::new(w.cursor.row.min(last), w.cursor.col),
-                    top: w.top.min(last),
+                    cursor: Pos::new(row.min(last), w.cursor.col),
+                    top: top.min(last),
                     left: w.left,
                     text,
                 })
@@ -345,6 +348,14 @@ impl Editor {
         }
         self.sync_windows();
         self.save_window();
+        // a window compared with this one picks up where it's been shown
+        let (top, row) = (
+            self.diff_row(self.focus, id, self.top.get()),
+            self.diff_row(self.focus, id, self.cursor.row),
+        );
+        if let (Some(top), Some(row), Some(w)) = (top, row, self.wins.iter_mut().find(|w| w.id == id)) {
+            (w.top, w.cursor.row) = (top, row);
+        }
         self.enter_window(id);
     }
 

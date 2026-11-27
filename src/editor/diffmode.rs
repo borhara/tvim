@@ -49,6 +49,27 @@ impl Editor {
         Some((old, self.diff_hunks(pair)?))
     }
 
+    /// Where row `row` of window `from` is in the window it's compared with, if it is.
+    pub(crate) fn diff_row(&self, from: usize, to: usize, row: usize) -> Option<usize> {
+        let pair = self.diff_pair()?;
+        let hunks = self.diff_hunks(pair)?;
+        let found = match (from, to) {
+            (a, b) if (a, b) == pair => diff::follow(&hunks, row),
+            (a, b) if (b, a) == pair => {
+                let back: Vec<Hunk> = hunks
+                    .iter()
+                    .map(|h| Hunk {
+                        old: h.new.clone(),
+                        new: h.old.clone(),
+                    })
+                    .collect();
+                diff::follow(&back, row)
+            }
+            _ => return None,
+        };
+        Some(found.unwrap_or_else(|r| r))
+    }
+
     // :Gdiff: the file as of HEAD, or its last save outside git, beside it and compared
     pub(crate) fn diff_head(&mut self) {
         let Some(name) = self

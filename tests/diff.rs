@@ -109,6 +109,26 @@ fn compared_lines_are_tinted_until_diffoff() {
 }
 
 #[test]
+fn compared_windows_scroll_together() {
+    let Some(dir) = repo("gdiff_scroll", &(1..=60).map(|n| format!("{n}\n")).collect::<String>()) else {
+        return;
+    };
+    let file = dir.join("a.txt");
+    // ten lines put in at the top
+    let now: String = (0..10)
+        .map(|n| format!("new{n}\n"))
+        .chain((1..=60).map(|n| format!("{n}\n")))
+        .collect();
+    std::fs::write(&file, now).unwrap();
+    let mut e = open(&file);
+    e.ex("Gdiff");
+    e.keys(&parse("50G<C-w>h"));
+    assert_eq!(e.cursor().row, 39, "line 40 on both sides");
+    e.keys(&parse("gg<C-w>l"));
+    assert_eq!(e.cursor().row, 10, "the first line kept");
+}
+
+#[test]
 fn diffthis_compares_two_windows_of_any_files() {
     let a = temp("diffthis_a.txt");
     let b = temp("diffthis_b.txt");
