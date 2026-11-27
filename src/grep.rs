@@ -476,6 +476,31 @@ mod tests {
     }
 
     #[test]
+    fn notes_given_with_places_are_matched_and_kept() {
+        let root = project("notes");
+        let a = crate::paths::canonical(&root.join("src/a.rs")).unwrap();
+        let spot = |row, note: &str| Spot {
+            path: a.clone(),
+            pos: Pos::new(row, 0),
+            note: note.into(),
+        };
+        let places = [spot(0, "unused function"), spot(1, "")];
+        let mut g = Grep::listing(&root, "problems", "", &places, |_| None);
+        assert_eq!(g.hits()[0].note.as_deref(), Some("unused function"));
+        assert_eq!(g.hits()[1].note, None);
+        assert_eq!(
+            g.spots()[1].note,
+            g.line(&g.hits()[1]).trim(),
+            "its line when there's no note"
+        );
+        for c in "unused".chars() {
+            g.key(Key::Char(c));
+        }
+        assert_eq!(g.hits().len(), 1, "matched by the note");
+        assert_eq!(g.spots()[0].note, "unused function");
+    }
+
+    #[test]
     fn places_given_are_listed_and_typing_narrows_them() {
         let root = project("given");
         let a = crate::paths::canonical(&root.join("src/a.rs")).unwrap();

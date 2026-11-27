@@ -1676,6 +1676,14 @@ mod tests {
         e.ex("cfirst");
         e.ex("cn");
         assert_eq!(e.cursor, Pos::new(1, 0));
+
+        e.ex("copen");
+        let g = e.grep_picker().expect("listed again");
+        assert_eq!(g.title(), Some("references to fn"));
+        assert_eq!(g.hits().len(), 3);
+        e.keys(&parse("<Down><Down><CR>"));
+        e.keys(&parse("[q"));
+        assert_eq!(e.cursor, Pos::new(1, 0), "on from the one chosen");
     }
 
     #[test]
