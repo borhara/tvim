@@ -11,6 +11,7 @@ use crate::languages::{Answer, Ask, Edit, FileEdits, OpenDoc, Place, Problem, Sa
 pub(super) struct Doing(&'static str, &'static str, &'static str);
 
 pub(super) const RENAMING: Doing = Doing("rename", "renamed", "renaming");
+pub(super) const CHANGING: Doing = Doing("change", "changed", "changing");
 
 // how long a write waits for the language server to tidy the file
 const FORMAT_WAIT: Duration = Duration::from_secs(2);
@@ -44,6 +45,10 @@ impl Editor {
         }
         for answer in update.answers {
             self.answered(answer);
+        }
+        // asked for by the server itself, so made whatever has changed since
+        for files in update.edits {
+            self.apply_edits(files, &[], &CHANGING);
         }
     }
 
