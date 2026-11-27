@@ -16,6 +16,7 @@ pub mod format;
 pub mod git;
 pub mod gitmenu;
 pub mod grep;
+pub mod help;
 pub mod json;
 pub mod jumps;
 pub mod keys;
