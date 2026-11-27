@@ -51,6 +51,8 @@ pub enum Ask {
     Complete,
     // what's being called, and which of its parameters the cursor is in
     Signature,
+    // what's defined in the file, or across the project those whose names match
+    Symbols(Option<String>),
     // what can be done with the code from one place to another, as a selection covers
     Actions {
         from: Pos,
@@ -336,6 +338,12 @@ impl Languages {
             Ask::Complete => ("textDocument/completion", "completionProvider", "complete things"),
             Ask::Actions { .. } => ("textDocument/codeAction", "codeActionProvider", "change code"),
             Ask::Signature => ("textDocument/signatureHelp", "signatureHelpProvider", "describe calls"),
+            Ask::Symbols(None) => (
+                "textDocument/documentSymbol",
+                "documentSymbolProvider",
+                "list what's in a file",
+            ),
+            Ask::Symbols(Some(_)) => ("workspace/symbol", "workspaceSymbolProvider", "search the project"),
             Ask::Format { lines: None, .. } => {
                 ("textDocument/formatting", "documentFormattingProvider", "format files")
             }
@@ -355,6 +363,9 @@ impl Languages {
         };
         let mut params = vec![("textDocument", document(&s.uri))];
         match &ask {
+            Ask::Symbols(None) => {}
+            // about the project rather than the file
+            Ask::Symbols(Some(query)) => params = vec![("query", query.as_str().into())],
             Ask::Format {
                 lines,
                 tab_size,
@@ -668,6 +679,10 @@ fn said(
         }
         Ask::Actions { .. } => Said::Actions(actions(result, &mut lines, encoding)),
         Ask::Signature => Said::Signature(signature(result)),
+        Ask::Symbols(_) => {
+            let path = synced.get(&asked.id).and_then(|s| lsp::uri_path(&s.uri));
+            Said::Places(symbols(result, path.as_deref(), &mut lines, encoding))
+        }
         // a list of TextEdits, all to the file asked about
         Ask::Format { .. } => {
             let path = synced.get(&asked.id).and_then(|s| lsp::uri_path(&s.uri));
@@ -716,6 +731,45 @@ fn file_edits(workspace: &Json, lines: &mut Lines, encoding: Encoding) -> Vec<Fi
                 let edits = edits.collect();
                 out.push(FileEdits { path, edits });
             }
+        }
+    }
+    out
+}
+
+// DocumentSymbols, those inside others after them, in `path`; or SymbolInformation, each with
+// its own place
+fn symbols(result: &Json, path: Option<&Path>, lines: &mut Lines, encoding: Encoding) -> Vec<Place> {
+    fn walk(list: &[Json], path: &Path, lines: &mut Lines, encoding: Encoding, out: &mut Vec<Place>) {
+        for s in list {
+            let range = match s.get("selectionRange") {
+                Some(r) => r,
+                None => &s["range"],
+            };
+            let start = lines.pos(path, &range["start"], encoding);
+            let end = lines.pos(path, &range["end"], encoding);
+            out.push(Place {
+                path: path.to_path_buf(),
+                start,
+                end,
+            });
+            walk(s["children"].as_array().unwrap_or(&[]), path, lines, encoding, out);
+        }
+    }
+    let list = result.as_array().unwrap_or(&[]);
+    let mut out = Vec::new();
+    for s in list {
+        match (s.get("location"), path) {
+            (Some(at), _) => {
+                let Some(path) = at["uri"].as_str().and_then(lsp::uri_path) else {
+                    continue;
+                };
+                // a WorkspaceSymbol may leave the range out, to be asked for later
+                let start = lines.pos(&path, &at["range"]["start"], encoding);
+                let end = lines.pos(&path, &at["range"]["end"], encoding);
+                out.push(Place { path, start, end });
+            }
+            (None, Some(path)) => walk(std::slice::from_ref(s), path, lines, encoding, &mut out),
+            (None, None) => {}
         }
     }
     out
@@ -1862,6 +1916,58 @@ mod tests {
         r.langs.ask(1, Pos::new(0, 5), Ask::Signature).unwrap();
         reply(&mut fake, "textDocument/signatureHelp", "null");
         assert_eq!(answer(&mut r, &docs).said, Said::Signature(None), "not in a call");
+    }
+
+    #[test]
+    fn symbols_come_back_as_places_in_the_file_or_across_the_project() {
+        let mut r = rig();
+        let v1 = lines("struct A {\n    😀b: u8,\n}\nfn c() {}");
+        let docs = [doc("/work/a.rs", 1, 1, &v1)];
+        let capabilities = r#"{"textDocumentSync":1,"documentSymbolProvider":true,"workspaceSymbolProvider":true}"#;
+        let mut fake = r.start(&docs, capabilities);
+        fake.recv().unwrap();
+        let range = |line: usize, from: usize, to: usize| {
+            format!(r#"{{"start":{{"line":{line},"character":{from}}},"end":{{"line":{line},"character":{to}}}}}"#)
+        };
+        let tree = format!(
+            r#"[{{"name":"A","kind":23,"range":{},"selectionRange":{},"children":[{{"name":"b","kind":8,"range":{},"selectionRange":{}}}]}},
+                {{"name":"c","kind":12,"range":{},"selectionRange":{}}}]"#,
+            range(0, 0, 1),
+            range(0, 7, 8),
+            range(1, 4, 9),
+            range(1, 6, 7),
+            range(3, 0, 9),
+            range(3, 3, 4)
+        );
+        r.langs.ask(1, Pos::new(0, 0), Ask::Symbols(None)).unwrap();
+        let asked = reply(&mut fake, "textDocument/documentSymbol", &tree);
+        assert_eq!(
+            asked["params"]["textDocument"]["uri"].as_str(),
+            Some(uri("/work/a.rs").as_str())
+        );
+        let Said::Places(places) = answer(&mut r, &docs).said else {
+            panic!("places")
+        };
+        let starts: Vec<Pos> = places.iter().map(|p| p.start).collect();
+        assert_eq!(
+            starts,
+            [Pos::new(0, 7), Pos::new(1, 5), Pos::new(3, 3)],
+            "the field after its struct, in the editor's columns"
+        );
+
+        r.langs.ask(1, Pos::new(0, 0), Ask::Symbols(Some("c".into()))).unwrap();
+        let a = Json::from(uri("/work/a.rs"));
+        let found = format!(
+            r#"[{{"name":"c","kind":12,"location":{{"uri":{a},"range":{}}}}},{{"name":"x","location":{{"uri":"https://x"}}}}]"#,
+            range(3, 3, 4)
+        );
+        let asked = reply(&mut fake, "workspace/symbol", &found);
+        assert_eq!(asked["params"].to_string(), r#"{"query":"c"}"#);
+        let Said::Places(places) = answer(&mut r, &docs).said else {
+            panic!("places")
+        };
+        assert_eq!(places.len(), 1, "only in files");
+        assert_eq!(places[0].start, Pos::new(3, 3));
     }
 
     #[test]

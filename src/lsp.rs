@@ -334,6 +334,10 @@ fn initialize_params(root: &Path) -> Json {
                         ("rename", Json::Object(Vec::new())),
                         ("formatting", Json::Object(Vec::new())),
                         (
+                            "documentSymbol",
+                            Json::object([("hierarchicalDocumentSymbolSupport", true.into())]),
+                        ),
+                        (
                             "signatureHelp",
                             Json::object([(
                                 "signatureInformation",
