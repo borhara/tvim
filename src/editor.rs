@@ -1710,6 +1710,27 @@ mod tests {
     }
 
     #[test]
+    fn space_x_lists_problems_worst_first_and_keeps_them_to_go_through() {
+        let a = temp_file("probs-a.rs", "a\nb\nc\n");
+        let mut e = Editor::open(&a).unwrap();
+        e.keys(&parse(" x"));
+        assert_eq!(e.message.as_ref().unwrap().text, "no problems");
+        let found = vec![
+            problem((0, 0), (0, 1), Severity::Warning, "unused a\nmore"),
+            problem((2, 0), (2, 1), Severity::Error, "c is wrong"),
+        ];
+        e.languages.found(e.buffer_id, found);
+        e.keys(&parse(" x"));
+        let g = e.grep_picker().expect("listed");
+        assert_eq!(g.title(), Some("problems"));
+        let notes: Vec<_> = g.hits().iter().map(|h| h.note.clone().unwrap()).collect();
+        assert_eq!(notes, ["error: c is wrong", "warning: unused a"]);
+        e.keys(&parse("<Esc>]q"));
+        assert_eq!(e.cursor, Pos::new(2, 0));
+        assert_eq!(e.message.as_ref().unwrap().text, "(1 of 2) error: c is wrong");
+    }
+
+    #[test]
     fn definitions_in_more_than_one_place_are_listed() {
         let a = temp_file("defs-a.rs", "fn f() {}\nfn f() {}\nf();\n");
         let mut e = Editor::open(&a).unwrap();

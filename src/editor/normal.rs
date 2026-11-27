@@ -135,6 +135,7 @@ impl Editor {
             'r' => self.pick_recent(),
             'n' => self.rename(""),
             's' => self.symbols(None),
+            'x' => self.list_problems(),
             'S' => self.symbols(Some("")),
             _ => self.grep(None),
         }

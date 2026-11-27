@@ -866,6 +866,7 @@ pub(super) fn hints_for(e: &Editor) -> Option<(String, Vec<(String, String)>)> {
                 ("n", "rename"),
                 ("s", "symbols in the file"),
                 ("S", "symbols in the project"),
+                ("x", "problems in open files"),
             ]),
         ),
         " h" => ("hunk".into(), owned(&[("r", "back to HEAD, or the last save")])),

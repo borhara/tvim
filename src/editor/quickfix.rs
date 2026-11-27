@@ -57,6 +57,40 @@ impl Editor {
         }
     }
 
+    // lists the problems language servers see in every open file, this one's first, worst
+    // first in each, and keeps them as the quickfix list
+    pub(crate) fn list_problems(&mut self) {
+        use crate::languages::Severity;
+        let others = self.docs.iter().enumerate().filter(|&(i, _)| i != self.current);
+        let files = std::iter::once((self.buffer_id, self.file.path.clone()))
+            .chain(others.map(|(_, d)| (d.id, d.file.path.clone())))
+            .filter_map(|(id, path)| Some((id, path?)));
+        let mut spots = Vec::new();
+        for (id, path) in files.collect::<Vec<_>>() {
+            let mut found = self.problems(id).to_vec();
+            found.sort_by_key(|p| (p.severity, p.start));
+            spots.extend(found.into_iter().map(|p| {
+                let what = match p.severity {
+                    Severity::Error => "error",
+                    Severity::Warning => "warning",
+                    Severity::Info => "info",
+                    Severity::Hint => "hint",
+                };
+                let first = p.message.lines().next().unwrap_or("");
+                Spot {
+                    path: path.clone(),
+                    pos: p.start,
+                    note: format!("{what}: {first}"),
+                }
+            }));
+        }
+        if spots.is_empty() {
+            return self.info("no problems");
+        }
+        self.quickfix = Some(Quickfix::new("problems", spots));
+        self.open_quickfix();
+    }
+
     // lists the quickfix list in the picker, in its order
     pub(crate) fn open_quickfix(&mut self) {
         let Some(q) = self.quickfix.clone() else {
