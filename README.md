@@ -130,6 +130,8 @@ lsp go off
 
 **Quickfix list.** `Ctrl-q` in a search, or in any list of places such as `gr` or `Space x`, keeps what's listed (narrowed to what you've typed) as the quickfix list. `]q` and `[q` (or `:cn` and `:cp`) go to the next and previous place, `:cfirst`, `:clast` and `:cc 3` to others, and `:copen` lists them again. `:cdo cmd` runs a `:` command at each place and `:cfdo cmd` once in each file, so a search for `old_name` then `Ctrl-q` and `:cfdo %s/old_name/new_name/g` replaces it across the project. `:wa` saves the files changed.
 
+**EditorConfig.** A project's `.editorconfig` sets how its files indent, with `indent_style`, `indent_size` and `tab_width`, while they're shown. Your own settings come back in files it doesn't cover. Writing a file takes off trailing spaces with `trim_trailing_whitespace`, and adds or leaves off the last newline with `insert_final_newline`.
+
 **Several files.** Open files are listed along the top. Switch with `gt`/`gT`, `:b name` or `:bn`/`:bp`, and close one with `:bd`. `:wa` saves them all.
 
 **Folds.** A line folds the lines indented under it, along with a closing `}` or `end`. `zc` closes the fold around the cursor, `zo` opens it and `za` does whichever it isn't. `zM` closes them all and `zR` opens them all. A closed fold shows as its first line and how many it hides. `j` and `k` step over it, and `dd` or `yy` on it takes all of it. Searching or going to a mark inside one opens it.
