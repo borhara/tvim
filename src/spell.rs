@@ -85,7 +85,12 @@ impl Dictionary {
         let capital = word.chars().next().is_some_and(char::is_uppercase);
         out.into_iter()
             .map(|w| match capital {
-                true => w[..1].to_uppercase() + &w[1..],
+                true => {
+                    let mut chars = w.chars();
+                    chars
+                        .next()
+                        .map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
+                }
                 false => w,
             })
             .collect()
@@ -128,9 +133,13 @@ fn stems(word: &str) -> Vec<String> {
         if let Some(base) = word.strip_suffix(end) {
             push(&format!("{base}{back}"));
             // running is run with its last letter doubled
-            let b = base.as_bytes();
-            if b.len() >= 3 && b[b.len() - 1] == b[b.len() - 2] && back.is_empty() {
-                push(&base[..base.len() - 1]);
+            let mut last = base.char_indices().rev();
+            if let (Some((at, x)), Some((_, y))) = (last.next(), last.next())
+                && x == y
+                && base.chars().count() >= 3
+                && back.is_empty()
+            {
+                push(&base[..at]);
             }
         }
     }
@@ -201,6 +210,20 @@ fn is_apostrophe(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_doubled_letter_before_an_ending_can_be_any_character() {
+        let d = Dictionary::from_words(["xપ"]);
+        assert!(d.knows("xપપing"));
+        assert!(!d.knows("\u{aaa}\u{aaa}ing"), "too short to undouble, and no panic");
+        assert!(Dictionary::from_words(["run"]).knows("running"));
+    }
+
+    #[test]
+    fn a_capital_suggestion_can_start_with_an_accent() {
+        let d = Dictionary::from_words(["élan"]);
+        assert_eq!(d.suggest("Élann", 9), ["Élan"]);
+    }
 
     fn dict() -> Dictionary {
         Dictionary::from_words([
