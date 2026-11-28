@@ -54,3 +54,9 @@ fn any_other_key_leaves_the_cursors() {
     e.keys(&parse("<C-n><C-n>cy<CR>z"));
     assert_eq!(e.text(), "y y\nz", "a new line leaves them too");
 }
+
+#[test]
+fn typing_with_a_place_right_of_the_cursor_on_its_line_keeps_each_in_its_own_place() {
+    assert_eq!(t("foo foo", "w<C-n><C-n>cxy<Esc>"), "xy xy");
+    assert_eq!(t("ab ab ab", "ww<C-n><C-n><C-n>iZ<BS>Q<Esc>"), "Qab Qab Qab");
+}

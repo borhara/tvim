@@ -206,7 +206,11 @@ impl Editor {
         let mut order: Vec<usize> = (0..others.len()).collect();
         order.sort_by_key(|&i| std::cmp::Reverse(others[i]));
         for &i in &order {
-            let p = others[i];
+            // one right of the cursor on its line has already moved by what was typed there
+            let p = match others[i] {
+                p if p.row == at.row && p.col > at.col => Pos::new(p.row, p.col + new - old),
+                p => p,
+            };
             self.buf.delete(p, Pos::new(p.row, p.col + old));
             self.buf.insert(p, &typed);
         }
