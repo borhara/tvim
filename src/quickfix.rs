@@ -37,7 +37,7 @@ impl Quickfix {
         let to = match self.at {
             None if by > 0 => (by as usize - 1).min(last),
             None => return None,
-            Some(at) => at.checked_add_signed(by)?.min(last),
+            Some(at) => at.saturating_add_signed(by).min(last),
         };
         if Some(to) == self.at {
             return None;
@@ -70,5 +70,7 @@ mod tests {
         assert_eq!(q.step(1), None);
         assert_eq!(q.step(-2), Some(0));
         assert_eq!(list(0).step(1), None);
+        q.step(1);
+        assert_eq!(q.step(-5), Some(0), "back as far as there is too");
     }
 }
