@@ -1021,10 +1021,7 @@ fn draw_text(e: &Editor, v: &View, frame: &mut Frame, gutter: Rect, body: Rect, 
     let pattern = e.search_pattern();
     let marks = v.text.change_marks();
     let compared = e.diff_view(v.id);
-    let conflicts = match v.text.id == e.buffer_id {
-        true => e.conflicts(),
-        false => crate::conflict::find(buf.lines()),
-    };
+    let conflicts = e.conflicts_of(&v.text);
     let word = (mode == Mode::Normal && focused)
         .then(|| word_at(buf.line(cursor.row), cursor.col))
         .flatten();

@@ -55,16 +55,7 @@ impl Editor {
         let hunks = self.diff_hunks(pair)?;
         let found = match (from, to) {
             (a, b) if (a, b) == pair => diff::follow(&hunks, row),
-            (a, b) if (b, a) == pair => {
-                let back: Vec<Hunk> = hunks
-                    .iter()
-                    .map(|h| Hunk {
-                        old: h.new.clone(),
-                        new: h.old.clone(),
-                    })
-                    .collect();
-                diff::follow(&back, row)
-            }
+            (a, b) if (b, a) == pair => diff::follow_back(&hunks, row),
             _ => return None,
         };
         Some(found.unwrap_or_else(|r| r))

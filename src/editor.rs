@@ -326,13 +326,13 @@ enum Asking {
 }
 
 // the closed folds, outermost first, for the version of the text and the first lines closed
-type FoldCache = (u64, Vec<usize>, Vec<(usize, usize)>);
+type FoldCache = (u64, Vec<usize>, Rc<[(usize, usize)]>);
 
 // the changes between the windows compared, for their buffers and versions
 type DiffPairCache = ((usize, u64, usize, u64), Rc<[Hunk]>);
 
-// the merge conflicts in a buffer, for its id and the version of its text
-type ConflictCache = ((usize, u64), Vec<crate::conflict::Conflict>);
+// the merge conflicts in each buffer, by its id, for a version of its text
+type ConflictCache = HashMap<usize, (u64, Rc<[crate::conflict::Conflict]>)>;
 
 // what the menu by the cursor is choosing between, to do once one is chosen
 #[derive(Clone, Debug)]
@@ -645,7 +645,7 @@ pub struct Editor {
     closed: Vec<usize>,
     // the closed folds, outermost only, as of a version of the text and those closed
     fold_cache: RefCell<Option<FoldCache>>,
-    conflict_cache: RefCell<Option<ConflictCache>>,
+    conflict_cache: RefCell<ConflictCache>,
     // the call the cursor is in while typing, as the server described it
     signature: Option<crate::languages::Signature>,
     // typed keys that may yet be the start of a mapping
@@ -762,7 +762,7 @@ impl Editor {
             substitute_preview: None,
             closed: Vec::new(),
             fold_cache: RefCell::new(None),
-            conflict_cache: RefCell::new(None),
+            conflict_cache: RefCell::new(HashMap::new()),
             signature: None,
             map_typed: Vec::new(),
             map_depth: 0,

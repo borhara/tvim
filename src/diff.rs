@@ -93,20 +93,30 @@ pub fn hunks(old: &[String], new: &[String]) -> Vec<Hunk> {
 /// changed (one of fewer changed lines than before goes to the last of them), and Err for a
 /// line removed, with the line now in its place.
 pub fn follow(hunks: &[Hunk], row: usize) -> Result<usize, usize> {
-    let mut new = row;
+    follow_from(hunks, row, false)
+}
+
+/// As [`follow`], from the new text back to the old.
+pub fn follow_back(hunks: &[Hunk], row: usize) -> Result<usize, usize> {
+    follow_from(hunks, row, true)
+}
+
+fn follow_from(hunks: &[Hunk], row: usize, back: bool) -> Result<usize, usize> {
+    let mut to = row;
     for h in hunks {
-        if row < h.old.start {
+        let (from, into) = if back { (&h.new, &h.old) } else { (&h.old, &h.new) };
+        if row < from.start {
             break;
         }
-        if row < h.old.end {
-            if h.new.is_empty() {
-                return Err(h.new.start);
+        if row < from.end {
+            if into.is_empty() {
+                return Err(into.start);
             }
-            return Ok((h.new.start + row - h.old.start).min(h.new.end - 1));
+            return Ok((into.start + row - from.start).min(into.end - 1));
         }
-        new = new + h.new.len() - h.old.len();
+        to = to + into.len() - from.len();
     }
-    Ok(new)
+    Ok(to)
 }
 
 fn common(a: &[String], b: &[String]) -> Vec<(usize, usize)> {
@@ -180,6 +190,12 @@ mod tests {
     fn hunks_know_both_sides() {
         let h = hunks(&lines("1\n2\n3\n4"), &lines("1\nX\nY\n3"));
         assert_eq!(h, [Hunk { old: 1..2, new: 1..3 }, Hunk { old: 3..4, new: 4..4 }]);
+        assert_eq!(follow_back(&h, 4), Ok(4));
+        assert_eq!(
+            follow_back(&h, 2),
+            Ok(1),
+            "a line put in goes back to the one it replaced"
+        );
         assert_eq!((h[0].row(), h[1].row()), (1, 3));
     }
 

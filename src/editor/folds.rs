@@ -1,29 +1,31 @@
+use std::rc::Rc;
+
 use super::Editor;
 use crate::fold;
 
 impl Editor {
     // the closed folds of the buffer with id `id`, outermost only, each as its first and last
     // line, in order
-    pub(crate) fn closed_folds(&self, id: usize) -> Vec<(usize, usize)> {
+    pub(crate) fn closed_folds(&self, id: usize) -> Rc<[(usize, usize)]> {
         if id == self.buffer_id {
             return self.folded();
         }
         match self.docs.iter().find(|d| d.id == id) {
-            Some(d) => outermost(d.buf.lines(), &d.closed, self.options.tab_stop),
-            None => Vec::new(),
+            Some(d) if !d.closed.is_empty() => outermost(d.buf.lines(), &d.closed, self.options.tab_stop).into(),
+            _ => Rc::new([]),
         }
     }
 
     // this buffer's closed folds, worked out again only when they or the text change
-    pub(crate) fn folded(&self) -> Vec<(usize, usize)> {
+    pub(crate) fn folded(&self) -> Rc<[(usize, usize)]> {
         if self.closed.is_empty() {
-            return Vec::new();
+            return Rc::new([]);
         }
         let mut cache = self.fold_cache.borrow_mut();
         match &*cache {
             Some((version, closed, folds)) if *version == self.version && *closed == self.closed => folds.clone(),
             _ => {
-                let folds = outermost(self.buf.lines(), &self.closed, self.options.tab_stop);
+                let folds: Rc<[_]> = outermost(self.buf.lines(), &self.closed, self.options.tab_stop).into();
                 *cache = Some((self.version, self.closed.clone(), folds.clone()));
                 folds
             }
@@ -33,7 +35,8 @@ impl Editor {
     // the closed fold line `row` is in, if it's in one
     pub(crate) fn fold_holding(&self, row: usize) -> Option<(usize, usize)> {
         self.folded()
-            .into_iter()
+            .iter()
+            .copied()
             .find(|&(start, end)| (start..=end).contains(&row))
     }
 
