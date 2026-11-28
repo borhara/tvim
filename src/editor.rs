@@ -9,7 +9,7 @@
 //! - `lsp`, `git` and `pickers`: language servers, the git menu, and the overlays
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -255,7 +255,8 @@ pub struct FileInfo {
 
 #[derive(Clone, Debug, Default)]
 struct Snapshot {
-    lines: Vec<String>,
+    // shared with the history, which holds the same text
+    lines: Rc<[String]>,
     cursor: Pos,
     version: u64,
     marks: HashMap<char, Pos>,
@@ -264,9 +265,12 @@ struct Snapshot {
 // the text as a change left it, and when, which a file's kept history doesn't know
 #[derive(Clone, Debug, Default)]
 struct Moment {
-    lines: Vec<String>,
+    lines: Rc<[String]>,
     cursor: Pos,
     when: Option<i64>,
+    // its version of the text, and that of the text the change was made to
+    version: u64,
+    from: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -406,7 +410,7 @@ struct Doc {
     last_visual: Option<(Pos, Pos, Mode)>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
-    history: Vec<Moment>,
+    history: VecDeque<Moment>,
     version: u64,
     saved: u64,
     marks: HashMap<char, Pos>,
@@ -594,9 +598,7 @@ pub struct Editor {
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     // every state the text has been in, in the order it got there, undone ones too
-    history: Vec<Moment>,
-    // going back to one of those, which isn't a new one
-    revisiting: bool,
+    history: VecDeque<Moment>,
     version: u64,
     saved: u64,
     versions: u64,
@@ -721,8 +723,7 @@ impl Editor {
             registers: HashMap::new(),
             undo: Vec::new(),
             redo: Vec::new(),
-            history: Vec::new(),
-            revisiting: false,
+            history: VecDeque::new(),
             version: 0,
             saved: 0,
             versions: 0,

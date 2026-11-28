@@ -43,3 +43,36 @@ fn nothing_to_list_before_a_change() {
     assert!(e.menu().is_none());
     assert_eq!(e.message().unwrap().text, "no changes yet");
 }
+
+#[test]
+fn each_state_says_what_changed_from_the_one_it_was_made_to() {
+    let mut e = ed("one");
+    e.keys(&parse("o1<CR>2<CR>3<CR>4<CR>5<Esc>"));
+    e.keys(&parse("u"));
+    e.keys(&parse("oonly<Esc>"));
+    e.keys(&parse("<Space>u"));
+    let hints: Vec<String> = e.menu().unwrap().entries.iter().map(|x| x.hint.clone()).collect();
+    assert_eq!(hints, ["+1", "+5", ""], "from one, not from the five lines undone");
+}
+
+#[test]
+fn a_files_kept_history_is_listed_before_any_change() {
+    let dir = common::temp("history_kept");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let (file, undo) = (dir.join("a.txt"), dir.join("undo"));
+    std::fs::write(&file, "a\n").unwrap();
+    let open = |file: &std::path::Path| {
+        let mut e = tvim::Editor::open(file).unwrap();
+        e.set_undo_dir(Some(undo.clone()));
+        e
+    };
+    let mut e = open(&file);
+    e.keys(&parse("Ab<Esc>"));
+    e.ex("w");
+    let mut e = open(&file);
+    e.keys(&parse("<Space>u"));
+    let m = e.menu().expect("the kept history");
+    assert_eq!(m.entries.len(), 2);
+    assert!(m.entries[0].label.ends_with("· now"));
+}

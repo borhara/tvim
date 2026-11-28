@@ -39,7 +39,7 @@ impl Editor {
         if self.changing && self.grouped == 0 && self.file.image.is_some() {
             self.changing = false;
             if let Some(s) = self.undo.pop() {
-                self.buf.replace_all(s.lines);
+                self.buf.replace_all(s.lines.to_vec());
                 self.version = s.version;
                 self.cursor = Pos::default();
             }
@@ -48,7 +48,7 @@ impl Editor {
         }
         if self.changing && self.grouped == 0 {
             self.changing = false;
-            if self.undo.last().is_some_and(|s| s.lines == self.buf.lines()) {
+            if self.undo.last().is_some_and(|s| *s.lines == *self.buf.lines()) {
                 let s = self.undo.pop().expect("just checked");
                 self.version = s.version;
             } else if let Some(s) = self.undo.last() {
@@ -134,7 +134,7 @@ impl Editor {
             .map(|(lines, cursor)| {
                 self.versions += 1;
                 Snapshot {
-                    lines,
+                    lines: lines.into(),
                     cursor,
                     version: self.versions,
                     marks: HashMap::new(),
@@ -150,7 +150,7 @@ impl Editor {
             let _ = std::fs::remove_file(&at);
             return;
         }
-        let steps: Vec<_> = self.undo.iter().map(|s| (s.lines.as_slice(), s.cursor)).collect();
+        let steps: Vec<_> = self.undo.iter().map(|s| (&s.lines[..], s.cursor)).collect();
         let text = crate::undofile::encode(&file, self.buf.lines(), &steps, crate::undofile::KEPT_LINES);
         if let Err(e) = write_private(&at, &text) {
             self.error(format!("E828: Cannot open undo file for writing: {e}"));
@@ -158,8 +158,11 @@ impl Editor {
     }
 
     pub(super) fn snapshot(&self) -> Snapshot {
+        // the history's copy of this text, when the last change it kept left it so; a version
+        // is only ever one text
+        let kept = (self.history.back()).filter(|m| m.version == self.version);
         Snapshot {
-            lines: self.buf.lines().to_vec(),
+            lines: kept.map_or_else(|| self.buf.lines().into(), |m| m.lines.clone()),
             cursor: self.cursor,
             version: self.version,
             marks: self.marks.clone(),
@@ -180,7 +183,7 @@ impl Editor {
         } else {
             self.buf.lines().to_vec()
         };
-        self.buf.replace_all(s.lines);
+        self.buf.replace_all(s.lines.to_vec());
         self.follow_folds(&old);
         self.version = s.version;
         let row = changed.min(self.buf.last_row());

@@ -5,38 +5,58 @@ use crate::menu::{Entry, Menu};
 const LISTED: usize = 100;
 
 impl Editor {
-    // after a change: the text as it left it, kept with what came before
+    // what the undo history had before this session, as far back as it goes, and with `now`
+    // the text as it is
+    fn seed_history(&mut self, now: bool) {
+        let mut from = None;
+        for s in &self.undo {
+            self.history.push_back(Moment {
+                lines: s.lines.clone(),
+                cursor: s.cursor,
+                when: None,
+                version: s.version,
+                from,
+            });
+            from = Some(s.version);
+        }
+        if now && from.is_some() {
+            self.history.push_back(Moment {
+                lines: self.buf.lines().into(),
+                cursor: self.cursor,
+                when: None,
+                version: self.version,
+                from,
+            });
+        }
+    }
+
+    // after a change: the text as it left it, and the version it was made to
     pub(super) fn remember(&mut self) {
-        if self.revisiting {
-            return;
-        }
-        // what the undo history had before this session, as far back as it goes
         if self.history.is_empty() {
-            self.history = (self.undo.iter())
-                .map(|s| Moment {
-                    lines: s.lines.clone(),
-                    cursor: s.cursor,
-                    when: None,
-                })
-                .collect();
+            self.seed_history(false);
         }
-        self.history.push(Moment {
-            lines: self.buf.lines().to_vec(),
+        self.history.push_back(Moment {
+            lines: self.buf.lines().into(),
             cursor: self.cursor,
             when: Some(crate::time::now()),
+            version: self.version,
+            from: self.undo.last().map(|s| s.version),
         });
-        if self.history.len() > MAX_UNDO {
-            self.history.remove(0);
+        while self.history.len() > MAX_UNDO {
+            self.history.pop_front();
         }
     }
 
     // Space u or :undolist: every state the text has been in, the newest first, to go back to
     pub(crate) fn list_history(&mut self) {
+        if self.history.is_empty() {
+            self.seed_history(true);
+        }
         if self.history.len() < 2 {
             return self.info("no changes yet");
         }
         let now = crate::time::now();
-        let current = self.history.iter().rposition(|m| m.lines == self.buf.lines());
+        let current = self.history.iter().rposition(|m| m.version == self.version);
         let picks: Vec<usize> = (0..self.history.len()).rev().take(LISTED).collect();
         let entries = (picks.iter())
             .map(|&i| {
@@ -50,11 +70,10 @@ impl Editor {
                 } else {
                     when
                 };
+                let made_to = m.from.and_then(|v| self.history.iter().rfind(|o| o.version == v));
                 Entry {
                     label,
-                    hint: i
-                        .checked_sub(1)
-                        .map_or_else(String::new, |p| change(&self.history[p].lines, &m.lines)),
+                    hint: made_to.map_or_else(String::new, |o| change(&o.lines, &m.lines)),
                     disabled: None,
                 }
             })
@@ -64,19 +83,18 @@ impl Editor {
         self.menu = Some((menu, Choosing::History(picks)));
     }
 
-    // the text back as it was at moment `i`, as a change of its own that u takes back
+    // the text back as it was at moment `i`, as a change of its own that u takes back and
+    // the history keeps
     pub(super) fn revisit(&mut self, i: usize) {
         let Some(m) = self.history.get(i).cloned() else { return };
-        if m.lines == self.buf.lines() || self.refuses_change() {
+        if *m.lines == *self.buf.lines() || self.refuses_change() {
             return;
         }
-        self.revisiting = true;
         self.touch();
-        self.buf.replace_all(m.lines);
+        self.buf.replace_all(m.lines.to_vec());
         self.cursor = m.cursor;
         self.clamp();
         self.end_change();
-        self.revisiting = false;
     }
 }
 
