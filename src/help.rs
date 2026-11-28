@@ -36,9 +36,9 @@ pub fn topics(docs: &str) -> Vec<Topic> {
     out
 }
 
-/// Where in `docs` to read about `query`: a topic by that name, or starting with it, or
-/// with it in its name; then a line naming it in code, as `zg` or `:Gdiff`; then any line
-/// with it. Case doesn't matter.
+/// Where in `docs` to read about `query`: a topic by that name, or starting with it; then a
+/// line naming it in code, as `zg` or `:Gdiff`; then a topic with it in its name; then any
+/// line with it. A single character is only found as a name or in code. Case doesn't matter.
 pub fn find(docs: &str, query: &str) -> Option<usize> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {
@@ -48,10 +48,14 @@ pub fn find(docs: &str, query: &str) -> Option<usize> {
     let named = |test: &dyn Fn(&str) -> bool| topics.iter().find(|t| test(&t.name.to_lowercase())).map(|t| t.row);
     let lines: Vec<String> = docs.lines().map(str::to_lowercase).collect();
     let code = format!("`{q}`");
+    // a single letter is a key, found as one or not at all, not inside some other word
+    if q.chars().count() == 1 {
+        return named(&|n| n == q).or_else(|| lines.iter().position(|l| l.contains(&code)));
+    }
     named(&|n| n == q)
         .or_else(|| named(&|n| n.starts_with(&q)))
-        .or_else(|| named(&|n| n.contains(&q)))
         .or_else(|| lines.iter().position(|l| l.contains(&code)))
+        .or_else(|| named(&|n| n.contains(&q)))
         .or_else(|| {
             lines
                 .iter()
@@ -64,7 +68,7 @@ pub fn find(docs: &str, query: &str) -> Option<usize> {
 mod tests {
     use super::*;
 
-    const DOCS: &str = "# tvim\n\nAn editor.\n\n## Extras\n\n**Folds.** `zc` closes one.\n\n**Spelling.** `z=` and `zg`, and `]s`.\n\n## Settings\n\nSet with `:set`.\n";
+    const DOCS: &str = "# tvim\n\nAn editor.\n\n## Extras\n\n**Folds.** `zc` closes one.\n\n**Spelling.** `z=` and `zg`, and `]s`.\n\n## Settings\n\nSet with `:set`.\n\n`x` deletes a character.\n";
 
     #[test]
     fn headings_and_bold_names_are_topics() {
@@ -83,6 +87,8 @@ mod tests {
         assert_eq!(find(DOCS, "closes"), Some(6));
         assert_eq!(find(DOCS, "nothing like it"), None);
         assert_eq!(find(DOCS, ""), Some(0));
+        assert_eq!(find(DOCS, "x"), Some(14), "a key before a letter inside Extras");
+        assert_eq!(find(DOCS, "e"), None, "not the e in Extras or anywhere");
     }
 
     #[test]
