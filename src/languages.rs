@@ -162,7 +162,15 @@ pub struct Update {
     pub errors: Vec<String>,
     pub answers: Vec<Answer>,
     // edits servers asked to have made, such as by a command they were asked to run
-    pub edits: Vec<Vec<FileEdits>>,
+    pub edits: Vec<ServerEdits>,
+}
+
+/// Edits a server asked to have made, to tell it with [`Languages::edits_made`] whether they were.
+#[derive(Debug, PartialEq)]
+pub struct ServerEdits {
+    server: Key,
+    id: Json,
+    pub files: Vec<FileEdits>,
 }
 
 // a server is one command run for one project
@@ -418,6 +426,14 @@ impl Languages {
 
     // has the server for file `id` run `command`, a Command it gave, if it says it can; what
     // the command changes comes as edits it asks to have made
+    /// Tells the server that asked for `edits` whether they were made.
+    pub fn edits_made(&mut self, edits: &ServerEdits, applied: bool) {
+        if let Some(r) = self.running.get_mut(&edits.server) {
+            r.server
+                .answer(edits.id.clone(), Json::object([("applied", applied.into())]));
+        }
+    }
+
     pub fn run(&mut self, id: usize, command: &Json) -> Result<(), String> {
         let name = command["command"].as_str().unwrap_or("");
         let r = (self.synced.get(&id))
@@ -514,6 +530,17 @@ impl Languages {
             while let Some(incoming) = r.server.poll() {
                 let (method, params) = match incoming {
                     Incoming::Notice { method, params } => (method, params),
+                    Incoming::Request { id, method, params } => {
+                        if method == "workspace/applyEdit" {
+                            let mut lines = Lines::new(synced);
+                            update.edits.push(ServerEdits {
+                                server: key.clone(),
+                                id,
+                                files: file_edits(&params["edit"], &mut lines, r.server.encoding()),
+                            });
+                        }
+                        continue;
+                    }
                     Incoming::Reply { id, result } => {
                         if let Some(asked) = r.asked.remove(&id) {
                             let (said, read) = match result {
@@ -533,13 +560,6 @@ impl Languages {
                         continue;
                     }
                 };
-                if method == "workspace/applyEdit" {
-                    let mut lines = Lines::new(synced);
-                    update
-                        .edits
-                        .push(file_edits(&params["edit"], &mut lines, r.server.encoding()));
-                    continue;
-                }
                 if method != "textDocument/publishDiagnostics" {
                     continue;
                 }
@@ -1874,8 +1894,15 @@ mod tests {
         ));
         let update = r.until(&docs, |_| false);
         assert_eq!(update.edits.len(), 1);
-        assert_eq!(update.edits[0][0].edits[0].text, "b");
-        assert_eq!(fake.recv().unwrap()["result"]["applied"].as_bool(), Some(true));
+        assert_eq!(update.edits[0].files[0].edits[0].text, "b");
+        r.langs.edits_made(&update.edits[0], false);
+        let answer = fake.recv().unwrap();
+        assert_eq!(answer["id"].as_i64(), Some(9));
+        assert_eq!(
+            answer["result"]["applied"].as_bool(),
+            Some(false),
+            "as the editor found"
+        );
     }
 
     #[test]

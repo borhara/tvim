@@ -66,6 +66,12 @@ pub enum Incoming {
         method: String,
         params: Json,
     },
+    // asked of the editor, which answers it with `answer`
+    Request {
+        id: Json,
+        method: String,
+        params: Json,
+    },
 }
 
 enum State {
@@ -207,6 +213,11 @@ impl Server {
         }
     }
 
+    /// Answers a request the server made of the editor.
+    pub fn answer(&mut self, id: Json, result: Json) {
+        self.write(reply(id, Ok(result)));
+    }
+
     fn write(&self, msg: Json) {
         // a closed channel means the server has gone, which poll reports
         let _ = self.outgoing.send(msg);
@@ -214,14 +225,12 @@ impl Server {
 
     fn receive(&mut self, msg: Json) -> Option<Incoming> {
         match (msg["method"].as_str(), msg.get("id")) {
-            // edits it wants made, which are, so it's told they were and the editor told what
-            (Some(method @ "workspace/applyEdit"), Some(id)) => {
-                self.write(reply(id.clone(), Ok(Json::object([("applied", true.into())]))));
-                Some(Incoming::Notice {
-                    method: method.to_string(),
-                    params: msg["params"].clone(),
-                })
-            }
+            // edits it wants made, answered once the editor has tried them
+            (Some(method @ "workspace/applyEdit"), Some(id)) => Some(Incoming::Request {
+                id: id.clone(),
+                method: method.to_string(),
+                params: msg["params"].clone(),
+            }),
             (Some(method), Some(id)) => {
                 let answer = answer(method, &msg["params"]);
                 self.write(reply(id.clone(), answer));
@@ -864,14 +873,16 @@ mod tests {
     }
 
     #[test]
-    fn edits_the_server_asks_for_are_said_to_be_made_and_passed_on() {
+    fn edits_the_server_asks_for_are_passed_on_and_answered_once_tried() {
         let (mut server, mut fake) = started();
         fake.send(r#"{"jsonrpc":"2.0","id":5,"method":"workspace/applyEdit","params":{"edit":{"changes":{}}}}"#);
-        let passed = Incoming::Notice {
+        let passed = Incoming::Request {
+            id: 5.into(),
             method: "workspace/applyEdit".into(),
             params: Json::parse(r#"{"edit":{"changes":{}}}"#).unwrap(),
         };
         assert_eq!(next(&mut server), passed);
+        server.answer(5.into(), Json::object([("applied", true.into())]));
         assert_eq!(
             fake.recv().unwrap().to_string(),
             r#"{"jsonrpc":"2.0","id":5,"result":{"applied":true}}"#

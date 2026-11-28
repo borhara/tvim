@@ -48,9 +48,11 @@ impl Editor {
         for answer in update.answers {
             self.answered(answer);
         }
-        // asked for by the server itself, so made whatever has changed since
-        for files in update.edits {
-            self.apply_edits(files, &[], &CHANGING);
+        // asked for by the server itself, so made whatever has changed since, and it told if so
+        for asked in update.edits {
+            let nothing = asked.files.iter().all(|f| f.edits.is_empty());
+            let applied = nothing || self.apply_edits(asked.files.clone(), &[], &CHANGING);
+            self.languages.edits_made(&asked, applied);
         }
     }
 
@@ -86,7 +88,9 @@ impl Editor {
             (Ask::References, Said::Places(places)) => self.list_about("references", "to", &places, &answer.read),
             (Ask::Hover, Said::Text(text)) if text.is_empty() => self.error("nothing to say about this"),
             (Ask::Hover, Said::Text(text)) => self.hover = Some(text),
-            (Ask::Rename(_), Said::Edits(files)) => self.apply_edits(files, &answer.versions, &RENAMING),
+            (Ask::Rename(_), Said::Edits(files)) => {
+                self.apply_edits(files, &answer.versions, &RENAMING);
+            }
             (Ask::Complete, Said::Items(items)) => self.offer_items(items),
             (Ask::Format { .. }, Said::Edits(files)) => self.formatted(files),
             (Ask::Actions { .. }, Said::Actions(actions)) => self.offer_actions(actions, answer.versions),
@@ -239,7 +243,8 @@ impl Editor {
     }
 
     // makes each file's edits, opening those that aren't open yet, and leaves them unsaved
-    pub(super) fn apply_edits(&mut self, files: Vec<FileEdits>, asked: &[(usize, u64)], doing: &Doing) {
+    // whether every one of them was made
+    pub(super) fn apply_edits(&mut self, files: Vec<FileEdits>, asked: &[(usize, u64)], doing: &Doing) -> bool {
         let Doing(verb, done, being) = *doing;
         // an open file changed since asking would take the edits in the wrong places
         let open = std::iter::once((self.buffer_id, self.version, self.file.path.as_deref())).chain(
@@ -255,7 +260,8 @@ impl Editor {
             .iter()
             .find(|f| changed.contains(&crate::paths::absolute(&f.path)))
         {
-            return self.error(format!("{} changed while {being}, so nothing was", listed(&f.path)));
+            self.error(format!("{} changed while {being}, so nothing was", listed(&f.path)));
+            return false;
         }
         // in full rather than canonical, as a file not saved yet has no canonical path
         let back = self.current;
@@ -284,19 +290,24 @@ impl Editor {
         self.switch_to(back);
         self.no_jumps = false;
         let mut said = match (changed, touched) {
-            (0, _) if skipped.is_empty() => return self.error(format!("nothing to {verb}")),
+            (0, _) if skipped.is_empty() => {
+                self.error(format!("nothing to {verb}"));
+                return false;
+            }
             (0, _) => format!("{done} nothing"),
             (1, _) => format!("{done} 1 place"),
             (n, 1) => format!("{done} {n} places"),
             (n, f) => format!("{done} {n} places in {f} files"),
         };
         if !skipped.is_empty() {
-            return self.error(format!("{said}, but couldn't open {}", skipped.join("; ")));
+            self.error(format!("{said}, but couldn't open {}", skipped.join("; ")));
+            return false;
         }
         if elsewhere > 0 {
             said.push_str(", :wa saves them all");
         }
         self.info(said);
+        true
     }
 
     // as one change, keeping the cursor on the same text
