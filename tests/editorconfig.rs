@@ -63,3 +63,15 @@ fn writing_trims_and_ends_the_file_as_it_says() {
     e.ex("w");
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "no end\n");
 }
+
+#[test]
+fn a_set_made_in_a_file_with_one_carries_to_files_without() {
+    let path = project("ec_set", "root = true\n[*.md]\nindent_size = 2\n", "a.md", "x\n");
+    let other = project("ec_set_none", "root = true\n", "b.txt", "y\n");
+    let mut e = Editor::open(&path).unwrap();
+    e.ex("set sw=5 noet");
+    assert_eq!(e.options.shift_width, 5);
+    e.ex(&format!("e {}", other.display()));
+    assert_eq!((e.options.shift_width, e.options.expand_tab), (5, false), "not lost");
+    assert_eq!(e.options.tab_stop, 4, "what wasn't set is as it was");
+}

@@ -9,6 +9,21 @@ impl Editor {
         }
     }
 
+    // after :set, what it changed of the indenting is yours, kept past this buffer's .editorconfig
+    pub(crate) fn kept_own_indent(&mut self, before: (bool, usize, usize)) {
+        let o = &self.options;
+        let Some(own) = self.own_indent.as_mut() else { return };
+        if o.expand_tab != before.0 {
+            own.0 = o.expand_tab;
+        }
+        if o.tab_stop != before.1 {
+            own.1 = o.tab_stop;
+        }
+        if o.shift_width != before.2 {
+            own.2 = o.shift_width;
+        }
+    }
+
     // the buffer's .editorconfig indenting, while it's the one shown, and your own otherwise
     pub(crate) fn apply_editorconfig(&mut self) {
         self.own_indenting();

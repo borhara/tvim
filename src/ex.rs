@@ -881,6 +881,12 @@ impl Editor {
     }
 
     fn set(&mut self, arg: &str) {
+        let before = (self.options.expand_tab, self.options.tab_stop, self.options.shift_width);
+        self.set_options(arg);
+        self.kept_own_indent(before);
+    }
+
+    fn set_options(&mut self, arg: &str) {
         if arg.is_empty() {
             let o = &self.options;
             let flag = |on: bool, name: &str| if on { name.to_string() } else { format!("no{name}") };
