@@ -1,4 +1,5 @@
 use super::Editor;
+use crate::buffer::Pos;
 use crate::quickfix::{Quickfix, Spot};
 
 impl Editor {
@@ -24,21 +25,32 @@ impl Editor {
         }
         let mut seen = Vec::new();
         let (back, mut ran) = (self.current, 0);
+        // where each place is now, as runs before it put lines in or took them out
+        let full: Vec<_> = q.spots.iter().map(|s| crate::paths::absolute(&s.path)).collect();
+        let mut rows: Vec<usize> = q.spots.iter().map(|s| s.pos.row).collect();
         self.no_jumps = true;
         for (i, spot) in q.spots.iter().enumerate() {
-            let path = crate::paths::absolute(&spot.path);
-            if per_file && seen.contains(&path) {
+            let path = &full[i];
+            if per_file && seen.contains(path) {
                 continue;
             }
-            seen.push(path);
-            if !self.go_to(&spot.path, spot.pos) {
+            seen.push(path.clone());
+            if !self.go_to(&spot.path, Pos::new(rows[i], spot.pos.col)) {
                 break;
             }
             if let Some(q) = self.quickfix.as_mut() {
                 q.at = Some(i);
             }
+            let before = self.buf.lines().to_vec();
             self.ex(cmd);
             ran += 1;
+            let same_file = self.file.path.as_deref().map(crate::paths::absolute).as_ref() == Some(path);
+            if same_file && self.buf.lines() != before {
+                let hunks = crate::diff::hunks(&before, self.buf.lines());
+                for j in (i + 1..rows.len()).filter(|&j| full[j] == *path) {
+                    rows[j] = crate::diff::follow(&hunks, rows[j]).unwrap_or_else(|r| r);
+                }
+            }
             if self.message.as_ref().is_some_and(|m| m.error) || self.should_quit() {
                 break;
             }

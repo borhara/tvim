@@ -1789,6 +1789,23 @@ mod tests {
     }
 
     #[test]
+    fn cdo_follows_lines_an_earlier_run_put_in_or_took_out() {
+        let a = temp_file("cdo-shift.rs", "x\ndrop\nx\nkeep\nx\n");
+        let mut e = Editor::open(&a).unwrap();
+        let spot = |row| crate::quickfix::Spot {
+            path: a.clone(),
+            pos: Pos::new(row, 0),
+            note: String::new(),
+        };
+        e.keep_quickfix("t", vec![spot(1), spot(3)]);
+        e.ex("cdo normal dd");
+        assert_eq!(e.buf.lines(), ["x", "x", "x"], "both lines, where they'd moved to");
+        e.keep_quickfix("t", vec![spot(0), spot(1), spot(2)]);
+        e.ex("cdo s/x/a\\rb/");
+        assert_eq!(e.buf.lines(), ["a", "b", "a", "b", "a", "b"]);
+    }
+
+    #[test]
     fn space_x_lists_problems_worst_first_and_keeps_them_to_go_through() {
         let a = temp_file("probs-a.rs", "a\nb\nc\n");
         let mut e = Editor::open(&a).unwrap();
